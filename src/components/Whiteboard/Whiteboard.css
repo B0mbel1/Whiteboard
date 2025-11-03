@@ -27,3 +27,22 @@
   display: flex;
   overflow: hidden;
 }
+
+.fullscreen-btn, .file-menu {
+  padding: 5px 10px;
+  background: #34495e;
+  border: none;
+  color: white;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.save-btn {
+  padding: 5px 10px;
+  background: #34495e;
+  border: none;
+  color: white;
+  border-radius: 3px;
+  cursor: pointer;
+}
+

@@ -86,3 +86,8 @@
   font-family: monospace;
   font-size: 0.9em;
 }
+.tool-undo-redo {
+  display: flex;
+  gap: 5px;
+}
+

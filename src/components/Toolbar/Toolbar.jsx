@@ -21,8 +21,6 @@ const Toolbar = ({ position }) => {
     { icon: '⬆️', name: 'Zaznaczenie' },
     { icon: '🖼️', name: 'Gify' },
     { icon: '📎', name: 'Multimedia' },
-    { icon: '↶', name: 'Undo' },
-    { icon: '↷', name: 'Redo' }
   ];
 
   const handleSizeChange = (toolKey, value) => {
@@ -57,7 +55,10 @@ const Toolbar = ({ position }) => {
           </div>
         ))}
       </div>
-
+        <div className="tool-item tool-undo-redo"> 
+          <button className="tool-btn" title="Undo">↶</button> 
+          <button className="tool-btn" title="Redo">↷</button> 
+        </div>
       <div className="toolbar-section">
         <h4>Kolor</h4>
         <div className="color-picker">
@@ -69,6 +70,7 @@ const Toolbar = ({ position }) => {
           />
           <span className="selected-color">{selectedColor}</span>
         </div>
+       
       </div>
     </div>
   );

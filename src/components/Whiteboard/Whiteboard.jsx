@@ -10,6 +10,7 @@ const Whiteboard = () => {
       {/* Fullscreen */}
       <div className="whiteboard-header">
         <button className="fullscreen-btn">⛶ Fullscreen</button>
+        <div className='save-btn'>Zapisz📝</div>
         <div className="file-menu">Plik ▼</div>
       </div>
 
