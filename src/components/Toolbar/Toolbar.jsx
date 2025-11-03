@@ -2,10 +2,17 @@ import React from 'react';
 import './Toolbar.css';
 
 const Toolbar = ({ position }) => {
+
+      const [toolSizes, setToolSizes] = useState({
+    pencil: 3,
+    eraser: 3,
+    brush: 3
+  });
+
   const tools = [
-    { icon: '✏️', name: 'Ołówek', size: true },
-    { icon: '🧽', name: 'Gumka', size: true },
-    { icon: '🖌️', name: 'Pędzle', size: true },
+    { icon: '✏️', name: 'Ołówek', size: true, key: 'pencil' },
+    { icon: '🧽', name: 'Gumka', size: true, key: 'eraser' },
+    { icon: '🖌️', name: 'Pędzle', size: true, key: 'brush' },
     { icon: '🔺', name: 'Kształty' },
     { icon: '📝', name: 'Tekst' },
     { icon: '😊', name: 'Emotki' },
@@ -16,6 +23,13 @@ const Toolbar = ({ position }) => {
     { icon: '↶', name: 'Undo' },
     { icon: '↷', name: 'Redo' }
   ];
+
+    const handleSizeChange = (toolKey, value) => {
+    setToolSizes(prev => ({
+      ...prev,
+      [toolKey]: parseInt(value)
+    }));
+  };
 
   return (
     <div className={`toolbar toolbar-${position}`}>
