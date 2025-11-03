@@ -42,7 +42,14 @@ const Toolbar = ({ position }) => {
             </button>
             {tool.size && (
               <div className="tool-size">
-                <input type="range" min="1" max="10" defaultValue="3" />
+                <input 
+                  type="range" 
+                  min="1" 
+                  max="10" 
+                  value={toolSizes[tool.key]}
+                  onChange={(e) => handleSizeChange(tool.key, e.target.value)}
+                />
+                <span className="size-value">{toolSizes[tool.key]}</span>
               </div>
             )}
           </div>
