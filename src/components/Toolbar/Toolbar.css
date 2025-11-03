@@ -1,5 +1,5 @@
 .toolbar {
-  width: 80px;
+  width: 130px;
   background: #ecf0f1;
   padding: 10px;
   overflow-y: auto;
@@ -36,6 +36,12 @@
 
 .tool-size {
   margin-top: 5px;
+  width: 100%;   
+}
+
+.tool-size input[type="range"] {
+  width: 100%;     
+  box-sizing: border-box; 
 }
 
 .color-palette {
@@ -50,4 +56,33 @@
   border: 2px solid #bdc3c7;
   border-radius: 3px;
   cursor: pointer;
+}
+
+.color-btn {
+  width: 24px;
+  height: 24px;
+  border: 2px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.color-btn:hover {
+  transform: scale(1.1);
+}
+
+.color-btn.selected {
+  border-color: #333;
+}
+
+.color-picker {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.selected-color {
+  font-family: monospace;
+  font-size: 0.9em;
 }

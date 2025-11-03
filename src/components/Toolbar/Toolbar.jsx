@@ -2,12 +2,13 @@ import React, { useState } from 'react';
 import './Toolbar.css';
 
 const Toolbar = ({ position }) => {
-
-      const [toolSizes, setToolSizes] = useState({
+  const [toolSizes, setToolSizes] = useState({
     pencil: 3,
     eraser: 3,
     brush: 3
   });
+
+  const [selectedColor, setSelectedColor] = useState('#000000');
 
   const tools = [
     { icon: '✏️', name: 'Ołówek', size: true, key: 'pencil' },
@@ -24,10 +25,10 @@ const Toolbar = ({ position }) => {
     { icon: '↷', name: 'Redo' }
   ];
 
-    const handleSizeChange = (toolKey, value) => {
+  const handleSizeChange = (toolKey, value) => {
     setToolSizes(prev => ({
       ...prev,
-      [toolKey]: parseInt(value)
+      [toolKey]: parseInt(value, 10)
     }));
   };
 
@@ -40,16 +41,17 @@ const Toolbar = ({ position }) => {
             <button className="tool-btn" title={tool.name}>
               {tool.icon}
             </button>
-            {tool.size && (
+
+            {tool.size && tool.key && (
               <div className="tool-size">
-                <input 
-                  type="range" 
-                  min="1" 
-                  max="10" 
+                <input
+                  type="range"
+                  min="1"
+                  max="10"
                   value={toolSizes[tool.key]}
                   onChange={(e) => handleSizeChange(tool.key, e.target.value)}
                 />
-                <span className="size-value">{toolSizes[tool.key]}</span>
+                <span className="tool-size-value">{toolSizes[tool.key]}</span>
               </div>
             )}
           </div>
@@ -57,16 +59,15 @@ const Toolbar = ({ position }) => {
       </div>
 
       <div className="toolbar-section">
-        <h4>Kolory</h4>
-        <div className="color-palette">
-          {['#000000', '#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff'].map((color, index) => (
-            <button 
-              key={index} 
-              className="color-btn" 
-              style={{ backgroundColor: color }}
-              title={color}
-            />
-          ))}
+        <h4>Kolor</h4>
+        <div className="color-picker">
+          <input
+            type="color"
+            value={selectedColor}
+            onChange={(e) => setSelectedColor(e.target.value)}
+            title="Wybierz kolor"
+          />
+          <span className="selected-color">{selectedColor}</span>
         </div>
       </div>
     </div>
