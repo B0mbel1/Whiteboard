@@ -1,0 +1,15 @@
+.canvas-container {
+  flex: 1;
+  background: #f8f9fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.canvas-placeholder {
+  background: white;
+  border: 2px dashed #bdc3c7;
+  padding: 50px;
+  text-align: center;
+  color: #7f8c8d;
+}
