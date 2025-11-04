@@ -34,6 +34,12 @@ console.log('Wybrano kształt:', shape);
 };
 
 const tools = [
+{
+icon: ( <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="2" strokeDasharray="4 2"> <rect x="3" y="3" width="18" height="18" /> </svg>
+),
+name: 'Zaznacz obszar',
+type: 'select'
+},
 { icon: '✏️', name: 'Ołówek', size: true, key: 'pencil' },
 { icon: '🧽', name: 'Gumka', size: true, key: 'eraser' },
 { icon: '🖌️', name: 'Pędzle', size: true, key: 'brush' },
@@ -41,7 +47,6 @@ const tools = [
 { icon: '📝', name: 'Tekst' },
 { icon: '😊', name: 'Emotki' },
 { icon: '🎨', name: 'Kolory' },
-{ icon: '⬆️', name: 'Zaznaczenie' },
 { icon: '🖼️', name: 'Gify' },
 { icon: '📎', name: 'Multimedia' },
 ];
@@ -65,6 +70,7 @@ title={tool.name}
 onClick={tool.name === 'Kształty' ? handleShapeClick : tool.onClick || null}
 >
 {tool.icon} </button>
+
         {tool.size && tool.key && (
           <div className="tool-size">
             <input
