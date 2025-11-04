@@ -91,3 +91,42 @@
   gap: 5px;
 }
 
+.tool-item {
+  position: relative;
+}
+
+.floating-shapes-popup {
+  position: fixed;
+  background: white;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 9999;
+}
+
+.shape-btn {
+  background: #f4f4f4;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 20px;
+  padding: 8px;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.shape-btn:hover {
+  background: #3498db;
+  color: white;
+  transform: scale(1.1);
+}
+
+.shape-btn.selected {
+  background: #2ecc71;
+  color: white;
+}
+
+
