@@ -1,0 +1,109 @@
+.canvas-container {
+  flex: 1;
+  background: #f8f9fa;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
+.canvas-area {
+  flex: 1;
+  position: relative;
+  overflow: auto;
+}
+
+/* Style dla różnych trybów tła */
+
+/* Białe tło */
+.background-white {
+  background: white;
+}
+
+/* Kratka (dots) */
+.background-grid {
+  background: 
+    linear-gradient(45deg, #f0f0f0 25%, transparent 25%), 
+    linear-gradient(-45deg, #f0f0f0 25%, transparent 25%), 
+    linear-gradient(45deg, transparent 75%, #f0f0f0 75%), 
+    linear-gradient(-45deg, transparent 75%, #f0f0f0 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+}
+
+/* Siatka linii (jak w normalnym whiteboard) */
+.background-lines {
+  background: 
+    linear-gradient(90deg, #f0f0f0 1px, transparent 1px),
+    linear-gradient(0deg, #f0f0f0 1px, transparent 1px);
+  background-size: 20px 20px;
+  background-position: -1px -1px;
+}
+
+/* Czarne tło */
+.background-black {
+  background: #000000;
+  color: white;
+}
+
+/* Przycisk przełączania tła */
+.background-toggle {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  z-index: 1000;
+  width: 50px;
+  height: 50px;
+  border: 2px solid #3498db;
+  background: white;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+  transition: all 0.2s ease;
+}
+
+.background-toggle:hover {
+  background: #3498db;
+  color: white;
+  transform: scale(1.1);
+}
+
+.background-toggle:active {
+  transform: scale(0.95);
+}
+
+/* Placeholder canvas */
+.canvas-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #ddd;
+  text-align: center;
+  padding: 20px;
+}
+
+.background-info {
+  margin-top: 20px;
+  font-size: 14px;
+  background: rgba(255,255,255,0.9);
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: bold;
+}
+
+/* Dla czarnego tła zmień kolory tekstu */
+.background-black .canvas-placeholder {
+  color: white;
+  border-color: #333;
+}
+
+.background-black .background-info {
+  color: #333;
+  background: rgba(255,255,255,0.9);
+}
