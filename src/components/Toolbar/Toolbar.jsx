@@ -8,7 +8,9 @@ eraser: 3,
 brush: 3
 });
 const [showShapes, setShowShapes] = useState(false);
+const [showEmojis, setShowEmojis] = useState(false);
 const [selectedShape, setSelectedShape] = useState(null);
+const [selectedEmoji, setSelectedEmoji] = useState(null);
 const [selectedColor, setSelectedColor] = useState('#000000');
 
 const handleSizeChange = (toolKey, value) => {
@@ -27,10 +29,25 @@ y: rect.top - 20
 }));
 };
 
+const handleEmojiClick = (e) => {
+const rect = e.target.getBoundingClientRect();
+setShowEmojis(prev => ({
+visible: !prev.visible,
+x: rect.right + 10,
+y: rect.top - 20
+}));
+};
+
 const handleSelectShape = (shape) => {
 setSelectedShape(shape);
 setShowShapes({ visible: false, x: 0, y: 0 });
 console.log('Wybrano kształt:', shape);
+};
+
+const handleSelectEmoji = (emoji) => {
+setSelectedEmoji(emoji);
+setShowEmojis({ visible: false, x: 0, y: 0 });
+console.log('Wybrano emotkę:', emoji);
 };
 
 const tools = [
@@ -45,7 +62,7 @@ type: 'select'
 { icon: '🖌️', name: 'Pędzle', size: true, key: 'brush' },
 { icon: '🔺', name: 'Kształty', onClick: handleShapeClick },
 { icon: '📝', name: 'Tekst' },
-{ icon: '😊', name: 'Emotki' },
+{ icon: '😊', name: 'Emotki', onClick: handleEmojiClick },
 { icon: '🎨', name: 'Kolory' },
 { icon: '🖼️', name: 'Gify' },
 { icon: '📎', name: 'Multimedia' },
@@ -61,16 +78,17 @@ const shapes = [
 { label: '❌', name: 'Zaprzeczenie' },
 ];
 
+const emojis = ['😀','😁','😂','🤣','😊','😍','😎','😢','😡','👍','👎','❤️','🔥','🎉','💡'];
+
 return (
 <div className={`toolbar toolbar-${position}`}> <div className="toolbar-section"> <h4>Narzędzia</h4>
 {tools.map((tool, index) => ( <div key={index} className="tool-item">
 <button
 className="tool-btn"
 title={tool.name}
-onClick={tool.name === 'Kształty' ? handleShapeClick : tool.onClick || null}
+onClick={tool.name === 'Kształty' ? handleShapeClick : tool.name === 'Emotki' ? handleEmojiClick : tool.onClick || null}
 >
 {tool.icon} </button>
-
         {tool.size && tool.key && (
           <div className="tool-size">
             <input
@@ -105,13 +123,11 @@ onClick={tool.name === 'Kształty' ? handleShapeClick : tool.onClick || null}
     </div>
   </div>
 
+  {/* Popup z kształtami */}
   {showShapes.visible && (
     <div
       className="floating-shapes-popup"
-      style={{
-        top: `${showShapes.y}px`,
-        left: `${showShapes.x}px`
-      }}
+      style={{ top: `${showShapes.y}px`, left: `${showShapes.x}px` }}
     >
       {shapes.map((shape, i) => (
         <button
@@ -121,6 +137,25 @@ onClick={tool.name === 'Kształty' ? handleShapeClick : tool.onClick || null}
           onClick={() => handleSelectShape(shape.name)}
         >
           {shape.label}
+        </button>
+      ))}
+    </div>
+  )}
+
+  {/* Popup z emotkami */}
+  {showEmojis.visible && (
+    <div
+      className="floating-emojis-popup"
+      style={{ top: `${showEmojis.y}px`, left: `${showEmojis.x}px` }}
+    >
+      {emojis.map((emoji, i) => (
+        <button
+          key={i}
+          className={`emoji-btn ${selectedEmoji === emoji ? 'selected' : ''}`}
+          title={emoji}
+          onClick={() => handleSelectEmoji(emoji)}
+        >
+          {emoji}
         </button>
       ))}
     </div>

@@ -158,4 +158,44 @@
   border-color: #3498db;
 }
 
+/* Popup z emoji */
+.floating-emojis-popup {
+  position: fixed;
+  background: #2c3e50;
+  border: 2px solid #34495e;
+  border-radius: 10px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+  z-index: 2000;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.emoji-btn {
+  background: #3b4b5a;
+  border: none;
+  border-radius: 6px;
+  font-size: 22px;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 5px;
+}
+
+.emoji-btn:hover {
+  background: #4e637a;
+  transform: scale(1.1);
+}
+
+.emoji-btn.selected {
+  background: #1abc9c;
+  transform: scale(1.15);
+}
+
+/* Animacja wejścia */
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
 
