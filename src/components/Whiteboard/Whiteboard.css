@@ -11,6 +11,14 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0; /* Zapobiega kurczeniu się nagłówka */
+}
+
+.whiteboard-main {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0; /* Ważne dla poprawnego flexbox */
 }
 
 .fullscreen-btn, .file-menu {
@@ -20,12 +28,6 @@
   color: white;
   border-radius: 3px;
   cursor: pointer;
-}
-
-.whiteboard-main {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
 }
 
 .fullscreen-btn, .file-menu {
