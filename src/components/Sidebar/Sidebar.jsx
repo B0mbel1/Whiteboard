@@ -1,41 +1,59 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { io } from 'socket.io-client';
 import './Sidebar.css';
 
 const Sidebar = () => {
-  const users = [
-    { name: 'User1', color: '#ff0000' },
-    { name: 'User2', color: '#00ff00' },
-    { name: 'User3', color: '#0000ff' }
-  ];
-
-  const [messages, setMessages] = useState([
-    { user: 'User1', text: 'Cześć!' },
-    { user: 'User2', text: 'Hej, jak tam rysowanie?' }
-  ]);
-
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
-  const currentUser = 'User1'; // Możesz dynamicznie ustawiać później
+  const [users, setUsers] = useState([]);
+  const [currentUser] = useState(() => {
+    return {
+      name: 'User' + Math.floor(Math.random() * 1000),
+      color: `hsl(${Math.random() * 360}, 80%, 60%)`
+    };
+  });
 
+  const socket = useRef(null);
   const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    socket.current = io('http://localhost:3001');
+
+    // Join event
+    socket.current.emit('join', currentUser);
+
+    // Listen for users
+    socket.current.on('users', (userList) => {
+      setUsers(userList);
+    });
+
+    // Listen for messages
+    socket.current.on('chat-message', (msg) => {
+      setMessages(prev => [...prev, msg]);
+    });
+
+    return () => {
+      socket.current.disconnect();
+    };
+  }, [currentUser]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const sendMessage = () => {
-    if (input.trim() === '') return;
-    setMessages([...messages, { user: currentUser, text: input }]);
+    if (!input.trim()) return;
+    const message = { user: currentUser.name, text: input };
+    socket.current.emit('chat-message', message);
     setInput('');
   };
 
   return (
     <div className="sidebar">
-      {/* Kamera użytkownika */}
       <div className="user-camera">
         <div className="camera-placeholder">📹 Twoja kamera</div>
       </div>
 
-      {/* Lista użytkowników */}
       <div className="users-list">
         <h4>Online ({users.length})</h4>
         {users.map((user, index) => (
@@ -46,12 +64,11 @@ const Sidebar = () => {
         ))}
       </div>
 
-      {/* Chat */}
       <div className="chat-section">
         <h4>Chat</h4>
         <div className="chat-messages">
           {messages.map((msg, i) => {
-            const isMine = msg.user === currentUser;
+            const isMine = msg.user === currentUser.name;
             const userColor = users.find(u => u.name === msg.user)?.color || '#fff';
             return (
               <div key={i} className={`message-bubble ${isMine ? 'mine' : ''}`}>
@@ -64,6 +81,7 @@ const Sidebar = () => {
           })}
           <div ref={messagesEndRef} />
         </div>
+
         <div className="chat-input">
           <input
             type="text"
@@ -76,7 +94,6 @@ const Sidebar = () => {
         </div>
       </div>
 
-      {/* Notki */}
       <div className="notes-section">
         <h4>Notatki</h4>
         <textarea placeholder="Dodaj notatkę..." />
