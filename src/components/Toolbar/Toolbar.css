@@ -1,4 +1,5 @@
 .toolbar {
+  position: relative; /* Add this line */
   width: 130px;
   background: #ecf0f1;
   padding: 10px;
@@ -29,7 +30,7 @@
   font-size: 16px;
 }
 
-.tool-btn:hover {
+.tool-btn:hover, .tool-btn.selected {
   background: #3498db;
   color: white;
 }
@@ -75,17 +76,20 @@
   border-color: #333;
 }
 
-.color-picker {
-  margin-top: 10px;
+.color-tool-icon {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
 }
 
-.selected-color {
-  font-family: monospace;
-  font-size: 0.9em;
+.color-swatch-indicator {
+  width: 16px;
+  height: 16px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
 }
+
 .tool-undo-redo {
   display: flex;
   gap: 5px;
