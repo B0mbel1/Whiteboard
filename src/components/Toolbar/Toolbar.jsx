@@ -12,6 +12,10 @@ const Toolbar = ({ position }) => {
   const [selectedShape, setSelectedShape] = useState(null);
   const [selectedEmoji, setSelectedEmoji] = useState(null);
   const [selectedColor, setSelectedColor] = useState('#000000');
+  const [recentColors, setRecentColors] = useState([]);
+  const [tempColor, setTempColor] = useState(selectedColor); // 🟦 nowy stan tymczasowy
+
+
   const [collapsed, setCollapsed] = useState(false);
 
   const handleSizeChange = (toolKey, value) => {
@@ -52,6 +56,9 @@ const Toolbar = ({ position }) => {
   };
 
   const tools = [
+    { icon: '🖱️', name: 'Kursor' },
+    { icon: '☝️', name: 'Pointer' },
+
     {
       icon: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="2" strokeDasharray="4 2">
@@ -122,18 +129,74 @@ const Toolbar = ({ position }) => {
               <button className="tool-btn" title="Ponów">↷</button>
             </div>
 
-            <div className="toolbar-section">
-              <h4>Kolor</h4>
-              <div className="color-picker">
-                <input
-                  type="color"
-                  value={selectedColor}
-                  onChange={(e) => setSelectedColor(e.target.value)}
-                  title="Wybierz kolor"
-                />
-                <span className="selected-color">{selectedColor}</span>
-              </div>
-            </div>
+         <div className="toolbar-section">
+  <h4>Kolor</h4>
+  <div className="color-picker">
+    <input
+      type="color"
+      value={tempColor}
+      onChange={(e) => setTempColor(e.target.value)} // podgląd
+      onMouseUp={(e) => {
+        const newColor = e.target.value;
+        if (newColor !== selectedColor) {
+          // dodaj aktualny kolor do historii
+          setRecentColors(prev => {
+            const updated = [selectedColor, ...prev.filter(c => c !== selectedColor)];
+            return updated.slice(0, 3); // max 3 ostatnie
+          });
+          setSelectedColor(newColor);
+        }
+      }}
+      onBlur={(e) => {
+        const newColor = e.target.value;
+        if (newColor !== selectedColor) {
+          setRecentColors(prev => {
+            const updated = [selectedColor, ...prev.filter(c => c !== selectedColor)];
+            return updated.slice(0, 3);
+          });
+          setSelectedColor(newColor);
+        }
+      }}
+      title="Wybierz kolor"
+    />
+    <span className="selected-color">{selectedColor}</span>
+  </div>
+
+  {/* 🎨 Sekcja z trzema ostatnimi kolorami */}
+  <div className="last-colors-section">
+    <h4>Ostatnie kolory</h4>
+    <div className="last-colors-container">
+      {recentColors.length === 0 && <span className="no-colors">Brak</span>}
+      {recentColors.map((color, i) => (
+        <div
+          key={i}
+          className="last-color-box"
+          title={`Kliknij, aby użyć ${color}`}
+          style={{
+            backgroundColor: color,
+            width: '32px',
+            height: '32px',
+            border: '2px solid #ccc',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            transition: 'transform 0.2s, border-color 0.2s',
+          }}
+          onClick={() => {
+            // kliknięcie w dowolny kolor przenosi go na początek listy
+            setSelectedColor(color);
+            setTempColor(color);
+            setRecentColors(prev => {
+              const updated = [color, ...prev.filter(c => c !== color)];
+              return updated.slice(0, 3);
+            });
+          }}
+        />
+      ))}
+    </div>
+  </div>
+</div>
+
+            
           </div>
 
           {/* Popup z kształtami */}
