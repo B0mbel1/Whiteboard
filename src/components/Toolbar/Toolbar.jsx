@@ -1,254 +1,154 @@
 import React, { useState } from 'react';
 import './Toolbar.css';
 
-const Toolbar = ({ position }) => {
-  const [toolSizes, setToolSizes] = useState({
-    pencil: 3,
-    eraser: 3,
-    brush: 3
-  });
-  const [showShapes, setShowShapes] = useState({ visible: false, x: 0, y: 0 });
-  const [showEmojis, setShowEmojis] = useState({ visible: false, x: 0, y: 0 });
-  const [selectedShape, setSelectedShape] = useState(null);
-  const [selectedEmoji, setSelectedEmoji] = useState(null);
-  const [selectedColor, setSelectedColor] = useState('#000000');
-  const [recentColors, setRecentColors] = useState([]);
-  const [tempColor, setTempColor] = useState(selectedColor); // 🟦 nowy stan tymczasowy
+const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker }) => {
+const [showShapes, setShowShapes] = useState(false);
+const [showEmojis, setShowEmojis] = useState(false);
+const [selectedShape, setSelectedShape] = useState(null);
+const [selectedEmoji, setSelectedEmoji] = useState(null);
 
+const handleSizeChange = (tool, value) => {
+  setSize(prev => ({ ...prev, [tool]: parseInt(value, 10) }));
+};
 
-  const [collapsed, setCollapsed] = useState(false);
+const handleShapeClick = (e) => {
+const rect = e.target.getBoundingClientRect();
+setShowShapes(prev => ({
+visible: !prev.visible,
+x: rect.right + 10,
+y: rect.top - 20
+}));
+};
 
-  const handleSizeChange = (toolKey, value) => {
-    setToolSizes(prev => ({
-      ...prev,
-      [toolKey]: parseInt(value, 10)
-    }));
-  };
+const handleEmojiClick = (e) => {
+const rect = e.target.getBoundingClientRect();
+setShowEmojis(prev => ({
+visible: !prev.visible,
+x: rect.right + 10,
+y: rect.top - 20
+}));
+};
 
-  const handleShapeClick = (e) => {
-    const rect = e.target.getBoundingClientRect();
-    setShowShapes(prev => ({
-      visible: !prev.visible,
-      x: rect.right + 10,
-      y: rect.top - 20
-    }));
-  };
+const handleColorClick = () => {
+  setShowColorPicker(prev => !prev);
+};
 
-  const handleEmojiClick = (e) => {
-    const rect = e.target.getBoundingClientRect();
-    setShowEmojis(prev => ({
-      visible: !prev.visible,
-      x: rect.right + 10,
-      y: rect.top - 20
-    }));
-  };
+const handleSelectShape = (shape) => {
+setSelectedShape(shape);
+setShowShapes({ visible: false, x: 0, y: 0 });
+console.log('Wybrano kształt:', shape);
+};
 
-  const handleSelectShape = (shape) => {
-    setSelectedShape(shape);
-    setShowShapes({ visible: false, x: 0, y: 0 });
-    console.log('Wybrano kształt:', shape);
-  };
+const handleSelectEmoji = (emoji) => {
+setSelectedEmoji(emoji);
+setShowEmojis({ visible: false, x: 0, y: 0 });
+console.log('Wybrano emotkę:', emoji);
+};
 
-  const handleSelectEmoji = (emoji) => {
-    setSelectedEmoji(emoji);
-    setShowEmojis({ visible: false, x: 0, y: 0 });
-    console.log('Wybrano emotkę:', emoji);
-  };
+const tools = [
+{
+icon: ( <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="2" strokeDasharray="4 2"> <rect x="3" y="3" width="18" height="18" /> </svg>
+),
+name: 'Zaznacz obszar',
+type: 'select'
+},
+{ icon: '✏️', name: 'Ołówek', type: 'pencil' },
+{ icon: '🧽', name: 'Gumka', type: 'eraser' },
+{ icon: '🖌️', name: 'Pędzle', type: 'brush' },
+{ icon: '🔺', name: 'Kształty', onClick: handleShapeClick },
+{ icon: '📝', name: 'Tekst' },
+{ icon: '😊', name: 'Emotki', onClick: handleEmojiClick },
+{ 
+  icon: ( <div className="color-tool-icon">🎨<div className="color-swatch-indicator" style={{ backgroundColor: color }}></div></div> ), 
+  name: 'Kolory', 
+  onClick: handleColorClick 
+},
+{ icon: '🖼️', name: 'Gify' },
+{ icon: '📎', name: 'Multimedia' },
+];
 
-  const tools = [
-    { icon: '🖱️', name: 'Kursor' },
-    { icon: '☝️', name: 'Pointer' },
+const shapes = [
+{ label: '⬛', name: 'Kwadrat' },
+{ label: '▭', name: 'Prostokąt' },
+{ label: '➡️', name: 'Strzałka' },
+{ label: '⚪', name: 'Koło' },
+{ label: '⭐', name: 'Gwiazda' },
+{ label: '✅', name: 'Zatwierdzenie' },
+{ label: '❌', name: 'Zaprzeczenie' },
+];
 
-    {
-      icon: (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="2" strokeDasharray="4 2">
-          <rect x="3" y="3" width="18" height="18" />
-        </svg>
-      ),
-      name: 'Zaznacz obszar',
-      type: 'select'
-    },
-    { icon: '✏️', name: 'Ołówek', size: true, key: 'pencil' },
-    { icon: '🧽', name: 'Gumka', size: true, key: 'eraser' },
-    { icon: '🖌️', name: 'Pędzle', size: true, key: 'brush' },
-    { icon: '🔺', name: 'Kształty', onClick: handleShapeClick },
-    { icon: '📝', name: 'Tekst' },
-    { icon: '😊', name: 'Emotki', onClick: handleEmojiClick },
-    { icon: '🖼️', name: 'Gify' },
-    { icon: '📎', name: 'Multimedia' },
-  ];
+const emojis = ['😀','😁','😂','🤣','😊','😍','😎','😢','😡','👍','👎','❤️','🔥','🎉','💡'];
 
-  const shapes = [
-    { label: '⬛', name: 'Kwadrat' },
-    { label: '▭', name: 'Prostokąt' },
-    { label: '➡️', name: 'Strzałka' },
-    { label: '⚪', name: 'Koło' },
-    { label: '⭐', name: 'Gwiazda' },
-    { label: '✅', name: 'Zatwierdzenie' },
-    { label: '❌', name: 'Zaprzeczenie' },
-  ];
+return (
+<div className={`toolbar toolbar-${position}`}> <div className="toolbar-section"> <h4>Narzędzia</h4>
+{tools.map((toolItem, index) => ( <div key={index} className="tool-item">
+<button
+className={`tool-btn ${tool === toolItem.type ? 'selected' : ''}`}
+title={toolItem.name}
+onClick={() => toolItem.type ? setTool(toolItem.type) : toolItem.onClick ? toolItem.onClick() : null}
+>
+{toolItem.icon} </button>
+        {(toolItem.type === 'pencil' || toolItem.type === 'eraser' || toolItem.type === 'brush') && (
+          <div className="tool-size">
+            <input
+              type="range"
+              min="1"
+              max="20"
+              value={size[toolItem.type]}
+              onChange={(e) => handleSizeChange(toolItem.type, e.target.value)}
+            />
+            <span className="tool-size-value">{size[toolItem.type]}</span>
+          </div>
+        )}
+      </div>
+    ))}
 
-  const emojis = ['😀','😁','😂','🤣','😊','😍','😎','😢','😡','👍','👎','❤️','🔥','🎉','💡'];
-
-  return (
-    <>
-      <div className={`toolbar toolbar-${position} ${collapsed ? 'collapsed' : ''}`}>
-        <div className="toolbar-content">
-          <div className="toolbar-section">
-            <h4>Narzędzia</h4>
-            {tools.map((tool, index) => (
-              <div key={index} className="tool-item">
-                <button
-                  className="tool-btn"
-                  title={tool.name}
-                  onClick={
-                    tool.name === 'Kształty' ? handleShapeClick :
-                    tool.name === 'Emotki' ? handleEmojiClick :
-                    tool.onClick || null
-                  }
-                >
-                  {tool.icon}
-                </button>
-                {tool.size && tool.key && (
-                  <div className="tool-size">
-                    <input
-                      type="range"
-                      min="1"
-                      max="10"
-                      value={toolSizes[tool.key]}
-                      onChange={(e) => handleSizeChange(tool.key, e.target.value)}
-                    />
-                    <span className="tool-size-value">{toolSizes[tool.key]}</span>
-                  </div>
-                )}
-              </div>
-            ))}
-
-            <div className="tool-item tool-undo-redo">
-              <button className="tool-btn" title="Cofnij">↶</button>
-              <button className="tool-btn" title="Ponów">↷</button>
-            </div>
-
-         <div className="toolbar-section">
-  <h4>Kolor</h4>
-  <div className="color-picker">
-    <input
-      type="color"
-      value={tempColor}
-      onChange={(e) => setTempColor(e.target.value)} // podgląd
-      onMouseUp={(e) => {
-        const newColor = e.target.value;
-        if (newColor !== selectedColor) {
-          // dodaj aktualny kolor do historii
-          setRecentColors(prev => {
-            const updated = [selectedColor, ...prev.filter(c => c !== selectedColor)];
-            return updated.slice(0, 3); // max 3 ostatnie
-          });
-          setSelectedColor(newColor);
-        }
-      }}
-      onBlur={(e) => {
-        const newColor = e.target.value;
-        if (newColor !== selectedColor) {
-          setRecentColors(prev => {
-            const updated = [selectedColor, ...prev.filter(c => c !== selectedColor)];
-            return updated.slice(0, 3);
-          });
-          setSelectedColor(newColor);
-        }
-      }}
-      title="Wybierz kolor"
-    />
-    <span className="selected-color">{selectedColor}</span>
-  </div>
-
-  {/* 🎨 Sekcja z trzema ostatnimi kolorami */}
-  <div className="last-colors-section">
-    <h4>Ostatnie kolory</h4>
-    <div className="last-colors-container">
-      {recentColors.length === 0 && <span className="no-colors">Brak</span>}
-      {recentColors.map((color, i) => (
-        <div
-          key={i}
-          className="last-color-box"
-          title={`Kliknij, aby użyć ${color}`}
-          style={{
-            backgroundColor: color,
-            width: '32px',
-            height: '32px',
-            border: '2px solid #ccc',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            transition: 'transform 0.2s, border-color 0.2s',
-          }}
-          onClick={() => {
-            // kliknięcie w dowolny kolor przenosi go na początek listy
-            setSelectedColor(color);
-            setTempColor(color);
-            setRecentColors(prev => {
-              const updated = [color, ...prev.filter(c => c !== color)];
-              return updated.slice(0, 3);
-            });
-          }}
-        />
-      ))}
+    <div className="tool-item tool-undo-redo">
+      <button className="tool-btn" title="Cofnij">↶</button>
+      <button className="tool-btn" title="Ponów">↷</button>
     </div>
   </div>
+
+  {/* Popup z kształtami */}
+  {showShapes.visible && (
+    <div
+      className="floating-shapes-popup"
+      style={{ top: `${showShapes.y}px`, left: `${showShapes.x}px` }}
+    >
+      {shapes.map((shape, i) => (
+        <button
+          key={i}
+          className={`shape-btn ${selectedShape === shape.name ? 'selected' : ''}`}
+          title={shape.name}
+          onClick={() => handleSelectShape(shape.name)}
+        >
+          {shape.label}
+        </button>
+      ))}
+    </div>
+  )}
+
+  {/* Popup z emotkami */}
+  {showEmojis.visible && (
+    <div
+      className="floating-emojis-popup"
+      style={{ top: `${showEmojis.y}px`, left: `${showEmojis.x}px` }}
+    >
+      {emojis.map((emoji, i) => (
+        <button
+          key={i}
+          className={`emoji-btn ${selectedEmoji === emoji ? 'selected' : ''}`}
+          title={emoji}
+          onClick={() => handleSelectEmoji(emoji)}
+        >
+          {emoji}
+        </button>
+      ))}
+    </div>
+  )}
 </div>
 
-            
-          </div>
-
-          {/* Popup z kształtami */}
-          {showShapes.visible && (
-            <div
-              className="floating-shapes-popup"
-              style={{ top: `${showShapes.y}px`, left: `${showShapes.x}px` }}
-            >
-              {shapes.map((shape, i) => (
-                <button
-                  key={i}
-                  className={`shape-btn ${selectedShape === shape.name ? 'selected' : ''}`}
-                  title={shape.name}
-                  onClick={() => handleSelectShape(shape.name)}
-                >
-                  {shape.label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Popup z emotkami */}
-          {showEmojis.visible && (
-            <div
-              className="floating-emojis-popup"
-              style={{ top: `${showEmojis.y}px`, left: `${showEmojis.x}px` }}
-            >
-              {emojis.map((emoji, i) => (
-                <button
-                  key={i}
-                  className={`emoji-btn ${selectedEmoji === emoji ? 'selected' : ''}`}
-                  title={emoji}
-                  onClick={() => handleSelectEmoji(emoji)}
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* 🔘 Floating toggle poza toolbar */}
-      <div
-        className={`collapse-toggle small ${collapsed ? 'collapsed-position' : ''}`}
-        onClick={() => setCollapsed(!collapsed)}
-        title={collapsed ? 'Rozwiń pasek' : 'Zwiń pasek'}
-      >
-        <span className={`arrow ${collapsed ? 'arrow-right' : 'arrow-left'}`}>➤</span>
-      </div>
-    </>
-  );
+);
 };
 
 export default Toolbar;

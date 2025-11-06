@@ -19,6 +19,14 @@
   display: flex;
   overflow: hidden;
   min-height: 0; /* Ważne dla poprawnego flexbox */
+  position: relative; /* Add this */
+}
+
+.color-picker-wrapper {
+  position: absolute;
+  left: 150px; /* Toolbar width + margin */
+  top: 10px;
+  z-index: 1000;
 }
 
 .fullscreen-btn, .file-menu {
