@@ -1,84 +1,258 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './Canvas.css';
 
-const Canvas = ({ tool, color, size, setShowColorPicker }) => {
-  const [backgroundMode, setBackgroundMode] = useState('grid'); // 'white', 'grid', 'lines', 'black'
+const Canvas = ({ 
+  tool, 
+  color, 
+  size, 
+  setShowColorPicker, 
+  whiteboardId, 
+  socket, 
+  currentUser,
+  onDrawing,
+  onCursorMove 
+}) => {
+  const [backgroundMode, setBackgroundMode] = useState('grid');
+  const [remoteCursors, setRemoteCursors] = useState(new Map());
   const canvasRef = useRef(null);
   const contextRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const currentDrawingRef = useRef(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    canvas.width = window.innerWidth * 0.7;
-    canvas.height = window.innerHeight * 0.95;
+    if (!canvas) return;
+
+    const container = canvas.parentElement;
+    canvas.width = container.clientWidth;
+    canvas.height = container.clientHeight;
 
     const context = canvas.getContext('2d');
     context.lineCap = 'round';
     context.strokeStyle = color;
     context.lineWidth = size;
     contextRef.current = context;
-  }, []);
 
-  useEffect(() => {
-    if (contextRef.current) {
-      contextRef.current.strokeStyle = color;
-    }
-  }, [color]);
+    // Clear canvas
+    clearCanvas();
 
-  useEffect(() => {
-    if (contextRef.current) {
-      contextRef.current.lineWidth = size;
+    if (socket) {
+      console.log("📡 Setting up canvas listeners");
+
+      // Handle drawing from other users
+      const handleRemoteDrawing = (data) => {
+        drawRemote(data);
+      };
+
+      // Handle cursor movement from OTHER users only
+      const handleRemoteCursorMove = (data) => {
+        if (data.userId !== socket.id) {
+          setRemoteCursors(prev => {
+            const newMap = new Map(prev);
+            newMap.set(data.userId, {
+              userId: data.userId,
+              position: data.position,
+              user: data.user,
+              lastUpdate: Date.now()
+            });
+            return newMap;
+          });
+        }
+      };
+
+      // Handle initial whiteboard state - REDRAW EVERYTHING
+      const handleWhiteboardState = (data) => {
+        console.log("🎨 Redrawing", data.drawingData.length, "existing drawings");
+        
+        // Clear canvas first
+        clearCanvas();
+        
+        // Redraw ALL existing drawings with a small delay to ensure canvas is ready
+        setTimeout(() => {
+          data.drawingData.forEach(drawing => {
+            drawRemote(drawing);
+          });
+        }, 100);
+        
+        // Initialize cursors for OTHER users only
+        const otherUsers = data.users.filter(user => user.id !== socket.id);
+        const cursorsMap = new Map();
+        otherUsers.forEach(user => {
+          cursorsMap.set(user.id, {
+            userId: user.id,
+            position: user.position,
+            user: user,
+            lastUpdate: Date.now()
+          });
+        });
+        setRemoteCursors(cursorsMap);
+      };
+
+      // Handle users updated - remove cursors for users who left
+      const handleUsersUpdated = (data) => {
+        setRemoteCursors(prev => {
+          const newMap = new Map();
+          for (const [userId, cursor] of prev) {
+            if (data.users.some(user => user.id === userId)) {
+              newMap.set(userId, cursor);
+            }
+          }
+          return newMap;
+        });
+      };
+
+      // Set up listeners
+      socket.on('drawing', handleRemoteDrawing);
+      socket.on('cursor-move', handleRemoteCursorMove);
+      socket.on('whiteboard-data', handleWhiteboardState);
+      socket.on('user-joined', handleUsersUpdated);
+      socket.on('user-left', handleUsersUpdated);
+
+      return () => {
+        socket.off('drawing', handleRemoteDrawing);
+        socket.off('cursor-move', handleRemoteCursorMove);
+        socket.off('whiteboard-data', handleWhiteboardState);
+        socket.off('user-joined', handleUsersUpdated);
+        socket.off('user-left', handleUsersUpdated);
+      };
     }
-  }, [size]);
+  }, [socket]);
+
+  const clearCanvas = () => {
+    const context = contextRef.current;
+    const canvas = canvasRef.current;
+    if (!context || !canvas) return;
+
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    
+    if (backgroundMode === 'white') {
+      context.fillStyle = 'white';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+    } else if (backgroundMode === 'black') {
+      context.fillStyle = 'black';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+    }
+  };
+
+  const drawRemote = (data) => {
+    const context = contextRef.current;
+    if (!context || !data.points || data.points.length === 0) return;
+
+    context.save();
+    
+    if (data.tool === 'pencil' || data.tool === 'brush') {
+      context.globalCompositeOperation = 'source-over';
+      context.strokeStyle = data.color;
+      context.lineWidth = data.size;
+      context.lineCap = 'round';
+      context.lineJoin = 'round';
+      
+      if (data.tool === 'brush') {
+        context.shadowBlur = 5;
+        context.shadowColor = data.color;
+      } else {
+        context.shadowBlur = 0;
+      }
+    } else if (data.tool === 'eraser') {
+      context.globalCompositeOperation = 'destination-out';
+      context.strokeStyle = 'rgba(0,0,0,1)';
+      context.lineWidth = data.size;
+      context.shadowBlur = 0;
+    }
+
+    context.beginPath();
+    context.moveTo(data.points[0].x, data.points[0].y);
+    
+    for (let i = 1; i < data.points.length; i++) {
+      context.lineTo(data.points[i].x, data.points[i].y);
+    }
+    
+    context.stroke();
+    context.restore();
+  };
+
+  const getCanvasCoordinates = (clientX, clientY) => {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top
+    };
+  };
 
   const startDrawing = ({ nativeEvent }) => {
     if (setShowColorPicker) {
       setShowColorPicker(false);
     }
-    const { offsetX, offsetY } = nativeEvent;
+    
+    const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
+    
     contextRef.current.beginPath();
-    contextRef.current.moveTo(offsetX, offsetY);
+    contextRef.current.moveTo(x, y);
     setIsDrawing(true);
+    
+    currentDrawingRef.current = {
+      tool,
+      color,
+      size,
+      points: [{ x, y }]
+    };
   };
 
   const stopDrawing = () => {
+    if (!isDrawing) return;
+    
     contextRef.current.closePath();
     setIsDrawing(false);
+    
+    if (currentDrawingRef.current && onDrawing) {
+      onDrawing(currentDrawingRef.current);
+    }
+    
+    currentDrawingRef.current = null;
   };
 
   const draw = ({ nativeEvent }) => {
-    if (!isDrawing) {
-      return;
+    if (!isDrawing || !contextRef.current) return;
+    
+    const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
+    
+    if (currentDrawingRef.current) {
+      currentDrawingRef.current.points.push({ x, y });
     }
-    const { offsetX, offsetY } = nativeEvent;
 
+    // Local drawing
     if (tool === 'pencil') {
-      contextRef.current.lineCap = 'round';
-      contextRef.current.lineJoin = 'round';
       contextRef.current.globalCompositeOperation = 'source-over';
       contextRef.current.strokeStyle = color;
       contextRef.current.shadowBlur = 0;
-      contextRef.current.shadowColor = 'transparent'; // Reset shadow for pencil
-      contextRef.current.lineTo(offsetX, offsetY);
-      contextRef.current.stroke();
     } else if (tool === 'eraser') {
-      contextRef.current.lineCap = 'round';
-      contextRef.current.lineJoin = 'round';
-      contextRef.current.globalCompositeOperation = 'destination-out'; // Erase effect
-      contextRef.current.strokeStyle = 'rgba(0,0,0,1)'; // Any color with full opacity for destination-out
+      contextRef.current.globalCompositeOperation = 'destination-out';
+      contextRef.current.strokeStyle = 'rgba(0,0,0,1)';
       contextRef.current.shadowBlur = 0;
-      contextRef.current.shadowColor = 'transparent'; // Reset shadow for eraser
-      contextRef.current.lineTo(offsetX, offsetY);
-      contextRef.current.stroke();
     } else if (tool === 'brush') {
-      contextRef.current.lineCap = 'round'; // Changed to round for softer brush
-      contextRef.current.lineJoin = 'round'; // Changed to round for softer brush
       contextRef.current.globalCompositeOperation = 'source-over';
       contextRef.current.strokeStyle = color;
-      contextRef.current.shadowBlur = 5; // Subtle blur for brush effect
-      contextRef.current.shadowColor = color; // Shadow matches brush color
-      contextRef.current.lineTo(offsetX, offsetY);
-      contextRef.current.stroke();
+      contextRef.current.shadowBlur = 5;
+      contextRef.current.shadowColor = color;
+    }
+
+    contextRef.current.lineCap = 'round';
+    contextRef.current.lineJoin = 'round';
+    contextRef.current.lineTo(x, y);
+    contextRef.current.stroke();
+  };
+
+  const handleMouseMove = (e) => {
+    const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
+    
+    // Send cursor position continuously
+    if (onCursorMove) {
+      onCursorMove({ x, y });
+    }
+
+    if (isDrawing) {
+      draw(e);
     }
   };
 
@@ -93,21 +267,101 @@ const Canvas = ({ tool, color, size, setShowColorPicker }) => {
     const currentIndex = backgroundModes.findIndex(mode => mode.id === backgroundMode);
     const nextIndex = (currentIndex + 1) % backgroundModes.length;
     setBackgroundMode(backgroundModes[nextIndex].id);
+    
+    // Clear and redraw canvas with new background
+    setTimeout(() => {
+      clearCanvas();
+    }, 100);
   };
 
   const getCurrentBackgroundIcon = () => {
     return backgroundModes.find(mode => mode.id === backgroundMode)?.icon;
   };
 
+  // Clean up old cursors periodically
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setRemoteCursors(prev => {
+        const newMap = new Map();
+        for (const [userId, cursor] of prev) {
+          // Remove cursors that haven't been updated in 5 seconds
+          if (now - cursor.lastUpdate < 5000) {
+            newMap.set(userId, cursor);
+          }
+        }
+        return newMap;
+      });
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Convert Map to array for rendering
+  const remoteCursorsArray = Array.from(remoteCursors.values());
+
   return (
     <div className="canvas-container">
       <div className={`canvas-area background-${backgroundMode}`}>
         <canvas
+          ref={canvasRef}
           onMouseDown={startDrawing}
           onMouseUp={stopDrawing}
-          onMouseMove={draw}
-          ref={canvasRef}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={stopDrawing}
+          style={{
+            cursor: tool === 'eraser' ? 'crosshair' : 'default',
+            width: '100%',
+            height: '100%',
+            display: 'block'
+          }}
         />
+        
+        {/* Render ONLY other users' cursors */}
+        {remoteCursorsArray.map((cursor) => (
+          cursor.position && (
+            <div
+              key={cursor.userId}
+              className="remote-cursor"
+              style={{
+                position: 'absolute',
+                left: cursor.position.x,
+                top: cursor.position.y,
+                pointerEvents: 'none',
+                zIndex: 1000,
+                transform: 'translate(-50%, -50%)',
+                transition: 'left 0.1s linear, top 0.1s linear'
+              }}
+            >
+              <div style={{
+                width: '8px',
+                height: '8px',
+                backgroundColor: cursor.user?.color || '#ff4444',
+                borderRadius: '50%',
+                border: '2px solid white',
+                boxShadow: '0 0 4px rgba(0,0,0,0.5)'
+              }} />
+              <div style={{
+                position: 'absolute',
+                top: '15px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                fontSize: '12px',
+                background: cursor.user?.color || '#ff4444',
+                color: 'white',
+                padding: '3px 8px',
+                borderRadius: '10px',
+                whiteSpace: 'nowrap',
+                fontWeight: 'bold',
+                border: '1px solid white',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
+              }}>
+                {cursor.user?.name || 'Unknown'}
+              </div>
+            </div>
+          )
+        ))}
+        
         <button 
           className="background-toggle"
           onClick={toggleBackground}
