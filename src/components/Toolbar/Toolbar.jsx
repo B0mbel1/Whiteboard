@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './Toolbar.css';
 import PointerTrail from './PointerTrail.jsx';
-
 
 const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker }) => {
   const [showShapes, setShowShapes] = useState({ visible: false, x: 0, y: 0 });
@@ -10,7 +9,6 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
   const [selectedEmoji, setSelectedEmoji] = useState(null);
   const [collapsed, setCollapsed] = useState(false);
 
-  // 🟢 Kolory z historią
   const [selectedColor, setSelectedColor] = useState(color || '#000000');
   const [recentColors, setRecentColors] = useState([]);
   const [tempColor, setTempColor] = useState(selectedColor);
@@ -40,14 +38,40 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
   const handleSelectShape = (shape) => {
     setSelectedShape(shape);
     setShowShapes({ visible: false, x: 0, y: 0 });
-    console.log('Wybrano kształt:', shape);
   };
 
   const handleSelectEmoji = (emoji) => {
     setSelectedEmoji(emoji);
     setShowEmojis({ visible: false, x: 0, y: 0 });
-    console.log('Wybrano emotkę:', emoji);
   };
+
+  // 🖌️ Zmiana kursora w zależności od wybranego narzędzia
+  useEffect(() => {
+    switch (tool) {
+      case 'pencil':
+        document.body.style.cursor = 'url("/cursors/pencil.png") 0 32, auto';
+        break;
+      case 'brush':
+        document.body.style.cursor = 'url("/cursors/brush.png") 0 32, auto';
+        break;
+      case 'eraser':
+        document.body.style.cursor = 'url("/cursors/rubber.png") 0 32, auto';
+        break;
+      case 'pointer':
+        document.body.style.cursor = 'pointer';
+        break;
+      case 'select':
+        document.body.style.cursor = 'url("/cursors/select.png") 0 0, crosshair';
+        break;
+      case 'cursor':
+      default:
+        document.body.style.cursor = 'default';
+    }
+
+    return () => {
+      document.body.style.cursor = 'default';
+    };
+  }, [tool]);
 
   const tools = [
     { icon: '🖱️', name: 'Kursor', type: 'cursor' },
@@ -64,12 +88,11 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
     { icon: '✏️', name: 'Ołówek', type: 'pencil' },
     { icon: '🧽', name: 'Gumka', type: 'eraser' },
     { icon: '🖌️', name: 'Pędzle', type: 'brush' },
-    { icon: '🔺', name: 'Kształty', onClick: handleShapeClick },
-    { icon: '📝', name: 'Tekst' },
-    { icon: '😊', name: 'Emotki', onClick: handleEmojiClick },
-    // ❌ Usunięty stary przycisk 🎨 Kolory
-    { icon: '🖼️', name: 'Gify' },
-    { icon: '📎', name: 'Multimedia' },
+    { icon: '🔺', name: 'Kształty', type: 'shape', onClick: handleShapeClick },
+    { icon: '📝', name: 'Tekst', type: 'text' },
+    { icon: '😊', name: 'Emotki', type: 'emoji', onClick: handleEmojiClick },
+    { icon: '🖼️', name: 'Gify', type: 'gifs' },
+    { icon: '📎', name: 'Multimedia', type: 'multi' },
   ];
 
   const shapes = [
@@ -82,7 +105,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
     { label: '❌', name: 'Zaprzeczenie' },
   ];
 
-  const emojis = ['😀','😁','😂','🤣','😊','😍','😎','😢','😡','👍','👎','❤️','🔥','🎉','💡'];
+  const emojis = ['😀', '😁', '😂', '🤣', '😊', '😍', '😎', '😢', '😡', '👍', '👎', '❤️', '🔥', '🎉', '💡'];
 
   return (
     <>
@@ -94,13 +117,10 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
               <button
                 className={`tool-btn ${tool === toolItem.type ? 'selected' : ''}`}
                 title={toolItem.name}
-                onClick={(e) =>
-                  toolItem.type
-                    ? setTool(toolItem.type)
-                    : toolItem.onClick
-                    ? toolItem.onClick(e)
-                    : null
-                }
+                onClick={(e) => {
+                  if (toolItem.type) setTool(toolItem.type);
+                  if (toolItem.onClick) toolItem.onClick(e);
+                }}
               >
                 {toolItem.icon}
               </button>
@@ -119,41 +139,25 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
               )}
             </div>
           ))}
-
-          <div className="tool-item tool-undo-redo">
-            <button className="tool-btn" title="Cofnij">↶</button>
-            <button className="tool-btn" title="Ponów">↷</button>
-          </div>
         </div>
 
-        {/* 🎨 Sekcja koloru z historią */}
+        {/* Kolor i historia */}
         <div className="toolbar-section">
           <h4>Kolor</h4>
           <div className="color-picker">
             <input
               type="color"
               value={tempColor}
-              onChange={(e) => setTempColor(e.target.value)}
-              onMouseUp={(e) => {
+              onChange={(e) => {
                 const newColor = e.target.value;
-                if (newColor !== selectedColor) {
-                  setRecentColors(prev => {
-                    const updated = [selectedColor, ...prev.filter(c => c !== selectedColor)];
-                    return updated.slice(0, 3);
-                  });
-                  setSelectedColor(newColor);
-                  setColor(newColor);
-                }
+                setTempColor(newColor);    // natychmiastowa zmiana koloru
+                setColor(newColor);        // natychmiastowa zmiana do rysowania
               }}
-              onBlur={(e) => {
-                const newColor = e.target.value;
-                if (newColor !== selectedColor) {
-                  setRecentColors(prev => {
-                    const updated = [selectedColor, ...prev.filter(c => c !== selectedColor)];
-                    return updated.slice(0, 3);
-                  });
-                  setSelectedColor(newColor);
-                  setColor(newColor);
+              onMouseUp={() => {
+                // aktualizacja historii kolorów dopiero po zakończeniu zmiany
+                if (tempColor !== selectedColor) {
+                  setRecentColors(prev => [selectedColor, ...prev.filter(c => c !== selectedColor)].slice(0, 3));
+                  setSelectedColor(tempColor);
                 }
               }}
             />
@@ -174,10 +178,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
                     setSelectedColor(clr);
                     setColor(clr);
                     setTempColor(clr);
-                    setRecentColors(prev => {
-                      const updated = [clr, ...prev.filter(c => c !== clr)];
-                      return updated.slice(0, 3);
-                    });
+                    setRecentColors(prev => [clr, ...prev.filter(c => c !== clr)].slice(0, 3));
                   }}
                 />
               ))}
@@ -223,7 +224,6 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
         )}
       </div>
 
-      {/* 🔘 Strzałka chowająca toolbar */}
       <div
         className={`collapse-toggle small ${collapsed ? 'collapsed-position' : ''}`}
         onClick={() => setCollapsed(!collapsed)}
