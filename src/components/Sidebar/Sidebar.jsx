@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import './Sidebar.css';
 
 const Sidebar = () => {
@@ -8,13 +8,55 @@ const Sidebar = () => {
     { name: 'User3', color: '#0000ff' }
   ];
 
+  const videoRef = useRef(null);
+  const [stream, setStream] = useState(null);
+  const [cameraOn, setCameraOn] = useState(false); // Domyślnie wyłączona
+
+  useEffect(() => {
+    // Pobranie strumienia z kamerki
+    navigator.mediaDevices
+      .getUserMedia({ video: true, audio: false })
+      .then((mediaStream) => {
+        // Od razu wyłączamy track wideo
+        mediaStream.getVideoTracks().forEach(track => track.enabled = false);
+
+        setStream(mediaStream);
+        if (videoRef.current) {
+          videoRef.current.srcObject = mediaStream;
+        }
+      })
+      .catch((err) => console.error("Nie udało się uruchomić kamerki:", err));
+
+    // Sprzątanie przy unmount
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
+  const toggleCamera = () => {
+    if (stream) {
+      stream.getVideoTracks().forEach(track => {
+        track.enabled = !track.enabled;
+      });
+      setCameraOn(prev => !prev);
+    }
+  };
+
   return (
     <div className="sidebar">
       {/* Kamera użytkownika */}
       <div className="user-camera">
-        <div className="camera-placeholder">
-          📹 Twoja kamera
-        </div>
+        <video 
+          ref={videoRef} 
+          autoPlay 
+          playsInline 
+          className="camera-video"
+        />
+        <button className="camera-toggle-btn" onClick={toggleCamera}>
+          {cameraOn ? 'Wyłącz kamerę' : 'Włącz kamerę'}
+        </button>
       </div>
 
       {/* Lista użytkowników */}
