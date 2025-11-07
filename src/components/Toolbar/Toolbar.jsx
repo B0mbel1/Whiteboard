@@ -1,23 +1,14 @@
 import React, { useState } from 'react';
 import './Toolbar.css';
 
-const Toolbar = ({ position }) => {
-const [toolSizes, setToolSizes] = useState({
-pencil: 3,
-eraser: 3,
-brush: 3
-});
+const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker }) => {
 const [showShapes, setShowShapes] = useState(false);
 const [showEmojis, setShowEmojis] = useState(false);
 const [selectedShape, setSelectedShape] = useState(null);
 const [selectedEmoji, setSelectedEmoji] = useState(null);
-const [selectedColor, setSelectedColor] = useState('#000000');
 
-const handleSizeChange = (toolKey, value) => {
-setToolSizes(prev => ({
-...prev,
-[toolKey]: parseInt(value, 10)
-}));
+const handleSizeChange = (tool, value) => {
+  setSize(prev => ({ ...prev, [tool]: parseInt(value, 10) }));
 };
 
 const handleShapeClick = (e) => {
@@ -36,6 +27,10 @@ visible: !prev.visible,
 x: rect.right + 10,
 y: rect.top - 20
 }));
+};
+
+const handleColorClick = () => {
+  setShowColorPicker(prev => !prev);
 };
 
 const handleSelectShape = (shape) => {
@@ -57,13 +52,17 @@ icon: ( <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="blac
 name: 'Zaznacz obszar',
 type: 'select'
 },
-{ icon: '✏️', name: 'Ołówek', size: true, key: 'pencil' },
-{ icon: '🧽', name: 'Gumka', size: true, key: 'eraser' },
-{ icon: '🖌️', name: 'Pędzle', size: true, key: 'brush' },
+{ icon: '✏️', name: 'Ołówek', type: 'pencil' },
+{ icon: '🧽', name: 'Gumka', type: 'eraser' },
+{ icon: '🖌️', name: 'Pędzle', type: 'brush' },
 { icon: '🔺', name: 'Kształty', onClick: handleShapeClick },
 { icon: '📝', name: 'Tekst' },
 { icon: '😊', name: 'Emotki', onClick: handleEmojiClick },
-{ icon: '🎨', name: 'Kolory' },
+{ 
+  icon: ( <div className="color-tool-icon">🎨<div className="color-swatch-indicator" style={{ backgroundColor: color }}></div></div> ), 
+  name: 'Kolory', 
+  onClick: handleColorClick 
+},
 { icon: '🖼️', name: 'Gify' },
 { icon: '📎', name: 'Multimedia' },
 ];
@@ -82,23 +81,23 @@ const emojis = ['😀','😁','😂','🤣','😊','😍','😎','😢','😡','
 
 return (
 <div className={`toolbar toolbar-${position}`}> <div className="toolbar-section"> <h4>Narzędzia</h4>
-{tools.map((tool, index) => ( <div key={index} className="tool-item">
+{tools.map((toolItem, index) => ( <div key={index} className="tool-item">
 <button
-className="tool-btn"
-title={tool.name}
-onClick={tool.name === 'Kształty' ? handleShapeClick : tool.name === 'Emotki' ? handleEmojiClick : tool.onClick || null}
+className={`tool-btn ${tool === toolItem.type ? 'selected' : ''}`}
+title={toolItem.name}
+onClick={() => toolItem.type ? setTool(toolItem.type) : toolItem.onClick ? toolItem.onClick() : null}
 >
-{tool.icon} </button>
-        {tool.size && tool.key && (
+{toolItem.icon} </button>
+        {(toolItem.type === 'pencil' || toolItem.type === 'eraser' || toolItem.type === 'brush') && (
           <div className="tool-size">
             <input
               type="range"
               min="1"
-              max="10"
-              value={toolSizes[tool.key]}
-              onChange={(e) => handleSizeChange(tool.key, e.target.value)}
+              max="20"
+              value={size[toolItem.type]}
+              onChange={(e) => handleSizeChange(toolItem.type, e.target.value)}
             />
-            <span className="tool-size-value">{toolSizes[tool.key]}</span>
+            <span className="tool-size-value">{size[toolItem.type]}</span>
           </div>
         )}
       </div>
@@ -107,19 +106,6 @@ onClick={tool.name === 'Kształty' ? handleShapeClick : tool.name === 'Emotki' ?
     <div className="tool-item tool-undo-redo">
       <button className="tool-btn" title="Cofnij">↶</button>
       <button className="tool-btn" title="Ponów">↷</button>
-    </div>
-
-    <div className="toolbar-section">
-      <h4>Kolor</h4>
-      <div className="color-picker">
-        <input
-          type="color"
-          value={selectedColor}
-          onChange={(e) => setSelectedColor(e.target.value)}
-          title="Wybierz kolor"
-        />
-        <span className="selected-color">{selectedColor}</span>
-      </div>
     </div>
   </div>
 
