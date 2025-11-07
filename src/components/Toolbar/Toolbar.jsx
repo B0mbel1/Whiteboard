@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import './Toolbar.css';
+import PointerTrail from './PointerTrail.jsx';
+
 
 const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker }) => {
   const [showShapes, setShowShapes] = useState({ visible: false, x: 0, y: 0 });

@@ -3,6 +3,8 @@ import Toolbar from '../Toolbar/Toolbar';
 import Canvas from '../Canvas/Canvas';
 import Sidebar from '../Sidebar/Sidebar';
 import ColorPicker from '../Toolbar/ColorPicker'; // Import ColorPicker
+import PointerTrail from '../Toolbar/PointerTrail';
+
 import './Whiteboard.css';
 
 const Whiteboard = () => {
@@ -33,6 +35,8 @@ const Whiteboard = () => {
           showColorPicker={showColorPicker}
           setShowColorPicker={setShowColorPicker}
         />
+         {/* 🔴 Czerwony pointer trail */}
+        <PointerTrail active={tool === 'pointer'} />
         
         {/* Główny canvas */}
         <Canvas 
