@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import './Toolbar.css';
 import PointerTrail from './PointerTrail.jsx';
+import ToolRangeCircle from './ToolRangeCircle.jsx';
+
 
 const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker }) => {
   const [showShapes, setShowShapes] = useState({ visible: false, x: 0, y: 0 });
@@ -234,6 +236,8 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
       >
         <span className={`arrow ${collapsed ? 'arrow-right' : 'arrow-left'}`}>➤</span>
       </div>
+      <ToolRangeCircle tool={tool} size={size} />
+
     </>
   );
 };
