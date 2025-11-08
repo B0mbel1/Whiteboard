@@ -140,7 +140,10 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
             </div>
           ))}
         </div>
-
+        <div className="tool-item tool-undo-redo">
+          <button className="tool-btn" title="Cofnij">↶</button>
+          <button className="tool-btn" title="Ponów">↷</button>
+        </div>
         {/* Kolor i historia */}
         <div className="toolbar-section">
           <h4>Kolor</h4>
