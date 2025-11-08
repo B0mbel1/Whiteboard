@@ -2,23 +2,57 @@ import React, { useState, useRef, useEffect } from 'react';
 import './Canvas.css';
 
 const Canvas = ({ tool, color, size, setShowColorPicker }) => {
-  const [backgroundMode, setBackgroundMode] = useState('grid'); // 'white', 'grid', 'lines', 'black'
+  const [backgroundMode, setBackgroundMode] = useState('grid');
   const canvasRef = useRef(null);
+  const containerRef = useRef(null);
   const contextRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
 
-  useEffect(() => {
+  // Funkcja do aktualizacji rozmiaru canvas
+  const updateCanvasSize = () => {
     const canvas = canvasRef.current;
-    canvas.width = window.innerWidth * 0.7;
-    canvas.height = window.innerHeight * 0.95;
+    const container = containerRef.current;
+    
+    if (canvas && container) {
+      const rect = container.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+      
+      // Ponowne ustawienie kontekstu po zmianie rozmiaru
+      if (contextRef.current) {
+        contextRef.current.lineCap = 'round';
+        contextRef.current.strokeStyle = color;
+        contextRef.current.lineWidth = size;
+      }
+    }
+  };
 
-    const context = canvas.getContext('2d');
-    context.lineCap = 'round';
-    context.strokeStyle = color;
-    context.lineWidth = size;
-    contextRef.current = context;
+  useEffect(() => {
+    updateCanvasSize();
+    
+    const handleResize = () => {
+      updateCanvasSize();
+    };
+
+    window.addEventListener('resize', handleResize);
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
   }, []);
 
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const context = canvas.getContext('2d');
+      context.lineCap = 'round';
+      context.strokeStyle = color;
+      context.lineWidth = size;
+      contextRef.current = context;
+    }
+  }, []);
+
+  // Reszta useEffect pozostaje bez zmian
   useEffect(() => {
     if (contextRef.current) {
       contextRef.current.strokeStyle = color;
@@ -58,25 +92,25 @@ const Canvas = ({ tool, color, size, setShowColorPicker }) => {
       contextRef.current.globalCompositeOperation = 'source-over';
       contextRef.current.strokeStyle = color;
       contextRef.current.shadowBlur = 0;
-      contextRef.current.shadowColor = 'transparent'; // Reset shadow for pencil
+      contextRef.current.shadowColor = 'transparent';
       contextRef.current.lineTo(offsetX, offsetY);
       contextRef.current.stroke();
     } else if (tool === 'eraser') {
       contextRef.current.lineCap = 'round';
       contextRef.current.lineJoin = 'round';
-      contextRef.current.globalCompositeOperation = 'destination-out'; // Erase effect
-      contextRef.current.strokeStyle = 'rgba(0,0,0,1)'; // Any color with full opacity for destination-out
+      contextRef.current.globalCompositeOperation = 'destination-out';
+      contextRef.current.strokeStyle = 'rgba(0,0,0,1)';
       contextRef.current.shadowBlur = 0;
-      contextRef.current.shadowColor = 'transparent'; // Reset shadow for eraser
+      contextRef.current.shadowColor = 'transparent';
       contextRef.current.lineTo(offsetX, offsetY);
       contextRef.current.stroke();
     } else if (tool === 'brush') {
-      contextRef.current.lineCap = 'round'; // Changed to round for softer brush
-      contextRef.current.lineJoin = 'round'; // Changed to round for softer brush
+      contextRef.current.lineCap = 'round';
+      contextRef.current.lineJoin = 'round';
       contextRef.current.globalCompositeOperation = 'source-over';
       contextRef.current.strokeStyle = color;
-      contextRef.current.shadowBlur = 5; // Subtle blur for brush effect
-      contextRef.current.shadowColor = color; // Shadow matches brush color
+      contextRef.current.shadowBlur = 5;
+      contextRef.current.shadowColor = color;
       contextRef.current.lineTo(offsetX, offsetY);
       contextRef.current.stroke();
     }
@@ -101,12 +135,20 @@ const Canvas = ({ tool, color, size, setShowColorPicker }) => {
 
   return (
     <div className="canvas-container">
-      <div className={`canvas-area background-${backgroundMode}`}>
+      <div 
+        className={`canvas-area background-${backgroundMode}`}
+        ref={containerRef}
+      >
         <canvas
           onMouseDown={startDrawing}
           onMouseUp={stopDrawing}
           onMouseMove={draw}
           ref={canvasRef}
+          style={{
+            display: 'block', // Zapobiega białym marginesom wokół canvas
+            width: '100%',
+            height: '100%'
+          }}
         />
         <button 
           className="background-toggle"
