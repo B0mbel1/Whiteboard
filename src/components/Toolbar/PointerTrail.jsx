@@ -2,11 +2,9 @@ import React, { useEffect, useRef } from 'react';
 
 const PointerTrail = ({ active }) => {
   const canvasRef = useRef(null);
-  const pointsRef = useRef([]);
-  const lastPointRef = useRef(null);
+  const trailRef = useRef([]);
+  const clicksRef = useRef([]);
   const animationRef = useRef(null);
-  const lastMoveTimeRef = useRef(Date.now());
-  const clicksRef = useRef([]); // 🔴 tu przechowujemy kliknięcia do animacji
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -19,110 +17,81 @@ const PointerTrail = ({ active }) => {
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
-    const drawTrail = () => {
+    const draw = () => {
       if (!active) return;
 
+      const now = Date.now();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      const points = pointsRef.current;
-      const now = Date.now();
+      // 🔹 lekko przezroczysta czarna warstwa, żeby smuga była płynna
+      ctx.fillStyle = 'rgba(0,0,0,0.03)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // 🔹 Zanik śladu po bezruchu
-      if (now - lastMoveTimeRef.current > 150 && points.length > 0) {
-        points.shift();
-      }
+      // 🔹 ogon pointera (intensywnie czerwony)
+      for (let i = 0; i < trailRef.current.length; i++) {
+        const p = trailRef.current[i];
+        const age = (now - p.time) / 300;
+        if (age > 1) continue;
 
-      // 🔹 Rysowanie smugi
-      if (points.length >= 2) {
-        const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-        gradient.addColorStop(0, 'rgba(255,0,0,1)');
-        gradient.addColorStop(1, 'rgba(255,0,0,0.6)');
+        const alpha = 1 - age;
+        const radius = 5 + (1 - alpha) * 7.5; // zmniejszone o połowę
 
-        ctx.strokeStyle = gradient;
-        ctx.lineWidth = 4;
-        ctx.lineCap = 'round';
+        const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
+        gradient.addColorStop(0, `rgba(255,0,0,1)`);       // pełna czerwień
+        gradient.addColorStop(0.7, `rgba(200,0,0,1)`);     // ciemniejsza czerwień
+        gradient.addColorStop(1, `rgba(150,0,0,0.5)`);     // minimalne zanikanie
+        ctx.fillStyle = gradient;           // zanikanie
+
         ctx.beginPath();
-
-        for (let i = 1; i < points.length; i++) {
-          const p1 = points[i - 1];
-          const p2 = points[i];
-          ctx.moveTo(p1.x, p1.y);
-          ctx.lineTo(p2.x, p2.y);
-        }
-        ctx.stroke();
-
-        pointsRef.current = points.slice(-35);
+        ctx.fillStyle = gradient;
+        ctx.arc(p.x, p.y, radius, 0, 2 * Math.PI);
+        ctx.fill();
       }
 
-      // 🔴 Rysowanie animacji kliknięć ("wybuchów")
+      // 🔴 kliknięcia = czerwone okręgi
       for (let i = clicksRef.current.length - 1; i >= 0; i--) {
-        const click = clicksRef.current[i];
-        const elapsed = now - click.time;
-        const progress = elapsed / 500; // trwa ok. 0.5s
+        const c = clicksRef.current[i];
+        const elapsed = now - c.time;
+        const progress = elapsed / 500; // trwa 0.5s
 
         if (progress >= 1) {
-          // usuń kliknięcie po zakończeniu animacji
           clicksRef.current.splice(i, 1);
           continue;
         }
 
         const radius = 10 + progress * 60; // rosnący promień
-        const alpha = 1 - progress; // zanikający kolor
-
+        const alpha = 1 - progress;        // zanikanie
         ctx.beginPath();
-        ctx.arc(click.x, click.y, radius, 0, 2 * Math.PI);
-        ctx.fillStyle = `rgba(255, 0, 0, ${alpha})`;
-        ctx.fill();
+        ctx.arc(c.x, c.y, radius, 0, 2 * Math.PI);
+        ctx.strokeStyle = `rgba(255,0,0,1)`;  // pełna czerwień, mocna
+        ctx.lineWidth = 4;
+        ctx.stroke();
       }
 
-      animationRef.current = requestAnimationFrame(drawTrail);
+      // usuń stare punkty
+      trailRef.current = trailRef.current.filter((p) => now - p.time < 300);
+
+      animationRef.current = requestAnimationFrame(draw);
     };
-
-    if (active) {
-      animationRef.current = requestAnimationFrame(drawTrail);
-    } else {
-      // 🧹 wyłączanie wskaźnika
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      pointsRef.current = [];
-      clicksRef.current = [];
-      lastPointRef.current = null;
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
-    }
 
     const handleMouseMove = (e) => {
       if (!active) return;
-      const newPoint = { x: e.clientX, y: e.clientY };
-      const lastPoint = lastPointRef.current;
-
-      if (lastPoint) {
-        const dx = newPoint.x - lastPoint.x;
-        const dy = newPoint.y - lastPoint.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        const steps = Math.max(1, Math.floor(distance / 2));
-
-        for (let i = 1; i <= steps; i++) {
-          const x = lastPoint.x + (dx * i) / steps;
-          const y = lastPoint.y + (dy * i) / steps;
-          pointsRef.current.push({ x, y });
-        }
-      } else {
-        pointsRef.current.push(newPoint);
-      }
-
-      lastPointRef.current = newPoint;
-      lastMoveTimeRef.current = Date.now();
+      trailRef.current.push({ x: e.clientX, y: e.clientY, time: Date.now() });
     };
 
     const handleMouseDown = (e) => {
       if (!active) return;
-      clicksRef.current.push({
-        x: e.clientX,
-        y: e.clientY,
-        time: Date.now(),
-      });
+      clicksRef.current.push({ x: e.clientX, y: e.clientY, time: Date.now() });
     };
+
+    if (active) {
+      animationRef.current = requestAnimationFrame(draw);
+    } else {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      trailRef.current = [];
+      clicksRef.current = [];
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    }
 
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mousedown', handleMouseDown);
@@ -145,7 +114,8 @@ const PointerTrail = ({ active }) => {
         width: '100vw',
         height: '100vh',
         pointerEvents: 'none',
-        zIndex: 5000,
+        zIndex: 9999,
+        mixBlendMode: 'normal', // mocny czerwony
       }}
     />
   );
