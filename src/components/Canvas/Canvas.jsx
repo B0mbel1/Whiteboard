@@ -52,30 +52,28 @@ const Canvas = ({ tool, color, size, setShowColorPicker }) => {
     }
   }, []);
 
-  // Reszta useEffect pozostaje bez zmian
   useEffect(() => {
     if (contextRef.current) {
       contextRef.current.strokeStyle = color;
     }
   }, [color]);
 
- useEffect(() => {
-  if (contextRef.current) {
-    let newSize = size;
+  useEffect(() => {
+    if (contextRef.current) {
+      let newSize = size;
 
-    // 🖌️ Różne mnożniki dla różnych narzędzi
-    if (tool === 'brush') {
-      newSize = size * 2; // pędzel 2× grubszy
-    } else if (tool === 'pencil') {
-      newSize = size * 0.5; // ołówek 2× cieńszy
-    } else if (tool === 'eraser') {
-      newSize = size * 2; // gumka też 2× większa (jeśli chcesz)
+      // 🖌️ Różne mnożniki dla różnych narzędzi
+      if (tool === 'brush') {
+        newSize = size * 2; // pędzel 2× grubszy
+      } else if (tool === 'pencil') {
+        newSize = size * 0.5; // ołówek 2× cieńszy
+      } else if (tool === 'eraser') {
+        newSize = size * 2; // gumka też 2× większa
+      }
+
+      contextRef.current.lineWidth = newSize;
     }
-
-    contextRef.current.lineWidth = newSize;
-  }
-}, [size, tool]);
-
+  }, [size, tool]);
 
   const startDrawing = ({ nativeEvent }) => {
     if (setShowColorPicker) {
@@ -88,8 +86,18 @@ const Canvas = ({ tool, color, size, setShowColorPicker }) => {
   };
 
   const stopDrawing = () => {
-    contextRef.current.closePath();
-    setIsDrawing(false);
+    if (isDrawing) {
+      contextRef.current.closePath();
+      setIsDrawing(false);
+    }
+  };
+
+  // Funkcja do przerwania rysowania gdy mysz opuści canvas
+  const cancelDrawing = () => {
+    if (isDrawing) {
+      contextRef.current.closePath();
+      setIsDrawing(false);
+    }
   };
 
   const draw = ({ nativeEvent }) => {
@@ -155,9 +163,10 @@ const Canvas = ({ tool, color, size, setShowColorPicker }) => {
           onMouseDown={startDrawing}
           onMouseUp={stopDrawing}
           onMouseMove={draw}
+          onMouseLeave={cancelDrawing} 
           ref={canvasRef}
           style={{
-            display: 'block', // Zapobiega białym marginesom wokół canvas
+            display: 'block',
             width: '100%',
             height: '100%'
           }}
