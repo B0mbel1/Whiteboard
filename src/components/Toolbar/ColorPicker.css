@@ -1,0 +1,15 @@
+.color-picker-panel {
+  position: absolute;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 10px;
+  display: flex; /* Changed from grid */
+  flex-direction: column; /* Arrange items in a column */
+  gap: 10px; /* Spacing between SketchPicker and swatches */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  left: 100%;
+  top: 0;
+  margin-left: 10px;
+}
