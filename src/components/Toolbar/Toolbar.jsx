@@ -51,9 +51,9 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
     const canvas = document.querySelector('canvas');
     const canvasArea = document.querySelector('.canvas-area');
     const canvasContainer = document.querySelector('.canvas-container');
-    
+
     let cursorStyle = 'default';
-    
+
     switch (tool) {
       case 'pencil':
         cursorStyle = 'url("/cursors/pencil.png") 0 32, auto';
@@ -92,7 +92,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
     // Ustaw domyślny kursor dla paneli (górny i prawy)
     const topPanel = document.querySelector('.panel-top, .top-panel, .header, .top-bar');
     const rightPanel = document.querySelector('.panel-right, .right-panel, .sidebar-right');
-    
+
     if (topPanel) {
       topPanel.style.cursor = 'default';
     }
@@ -126,6 +126,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
     { icon: '🖌️', name: 'Pędzle', type: 'brush' },
     { icon: '🔺', name: 'Kształty', type: 'shape', onClick: handleShapeClick },
     { icon: '📝', name: 'Tekst', type: 'text' },
+    { icon: '📋', name: 'Notatki', type: 'notes' },
     { icon: '😊', name: 'Emotki', type: 'emoji', onClick: handleEmojiClick },
     { icon: '🖼️', name: 'Gify', type: 'gifs' },
     { icon: '📎', name: 'Multimedia', type: 'multi' },
@@ -154,10 +155,9 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
                 className={`tool-btn ${tool === toolItem.type ? 'selected' : ''}`}
                 title={toolItem.name}
                 onClick={(e) => {
-                  if (toolItem.type) setTool(toolItem.type);
-                  if (toolItem.onClick) toolItem.onClick(e);
+                  if (toolItem.type) setTool(toolItem.type); // ustaw tool
+                  if (toolItem.onClick) toolItem.onClick(e); // ← przekaż event!
                 }}
-                style={{ cursor: 'default' }}
               >
                 {toolItem.icon}
               </button>

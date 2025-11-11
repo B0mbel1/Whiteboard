@@ -13,13 +13,10 @@ const Sidebar = () => {
   const [cameraOn, setCameraOn] = useState(false); // Domyślnie wyłączona
 
   useEffect(() => {
-    // Pobranie strumienia z kamerki
     navigator.mediaDevices
       .getUserMedia({ video: true, audio: false })
       .then((mediaStream) => {
-        // Od razu wyłączamy track wideo
         mediaStream.getVideoTracks().forEach(track => track.enabled = false);
-
         setStream(mediaStream);
         if (videoRef.current) {
           videoRef.current.srcObject = mediaStream;
@@ -27,7 +24,6 @@ const Sidebar = () => {
       })
       .catch((err) => console.error("Nie udało się uruchomić kamerki:", err));
 
-    // Sprzątanie przy unmount
     return () => {
       if (stream) {
         stream.getTracks().forEach(track => track.stop());
@@ -84,12 +80,6 @@ const Sidebar = () => {
           <input type="text" placeholder="Napisz wiadomość..." />
           <button>➤</button>
         </div>
-      </div>
-
-      {/* Notki */}
-      <div className="notes-section">
-        <h4>Notatki</h4>
-        <textarea placeholder="Dodaj notatkę..." />
       </div>
     </div>
   );
