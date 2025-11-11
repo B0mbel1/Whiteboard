@@ -72,6 +72,9 @@ const Canvas = ({ tool, color, size, setShowColorPicker, setTool }) => {
   }, [color, size, tool]);
 
   const startDrawing = ({ nativeEvent }) => {
+    // Rysujemy tylko jeśli tool jest rysującym narzędziem
+    if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
+
     if (setShowColorPicker) setShowColorPicker(false);
     const { offsetX, offsetY } = nativeEvent;
     const ctx = contextRef.current;
@@ -79,10 +82,8 @@ const Canvas = ({ tool, color, size, setShowColorPicker, setTool }) => {
     ctx.moveTo(offsetX, offsetY);
     setIsDrawing(true);
 
-    // Rysujemy natychmiast punkt
-    if (tool === 'pencil' || tool === 'brush' || tool === 'eraser') {
-      draw({ nativeEvent });
-    }
+    // Natychmiast rysujemy punkt
+    draw({ nativeEvent });
   };
 
   const stopDrawing = () => {
