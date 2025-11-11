@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './Note.css';
 
-const Note = ({ id, x, y, onRemove, initialText = '' }) => {
+const Note = ({ id, x, y, onRemove, initialText = '', selectedNoteId, setSelectedNoteId }) => {
   const [text, setText] = useState(initialText);
   const [pos, setPos] = useState({ x, y });
   const [size, setSize] = useState({ width: 180, height: 120 });
@@ -11,6 +11,9 @@ const Note = ({ id, x, y, onRemove, initialText = '' }) => {
 
   // 🔹 Obsługa przeciągania notatki
   const handleMouseDown = (e) => {
+    // 🔹 zaznaczenie notatki po kliknięciu
+    setSelectedNoteId(id);
+
     if (e.target.classList.contains('note-header')) {
       isDragging.current = true;
       dragOffset.current = { x: e.clientX - pos.x, y: e.clientY - pos.y };
@@ -42,14 +45,14 @@ const Note = ({ id, x, y, onRemove, initialText = '' }) => {
   return (
     <div
       ref={noteRef}
-      className="note"
+      className={`note ${selectedNoteId === id ? 'selected-note' : ''}`} // 🔹 podświetlenie zaznaczonej
       style={{
         left: pos.x,
         top: pos.y,
         width: size.width,
         height: size.height,
       }}
-      onMouseDown={handleMouseDown}
+      onMouseDown={handleMouseDown} // 🔹 klik = zaznacz
     >
       <div className="note-header">
         🗒️

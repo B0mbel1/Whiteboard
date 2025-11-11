@@ -51,3 +51,7 @@
   cursor: se-resize;
   border-radius: 3px;
 }
+
+.selected-note {
+  outline: 2px solid red; /* czerwony obrys dla zaznaczonej notatki */
+}
