@@ -282,7 +282,10 @@
     padding: 10px;
     border-radius: 8px;
     width: 220px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    max-height: 400px;
+    /* <-- wysokość z przewijaniem */
+    overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -290,11 +293,13 @@
     animation: fadeIn 0.2s ease-in-out;
   }
 
-  .floating-gifs-popup input {
-    outline: none;
-  }
   .gif-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 6px;
+  }
+
+
+  .floating-gifs-popup input {
+    outline: none;
   }

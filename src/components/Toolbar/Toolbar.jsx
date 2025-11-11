@@ -20,9 +20,13 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
   const [gifs, setGifs] = useState([]); // lista gifów do wyświetlenia
   const searchTimeoutRef = useRef(null);
 
+  const [gifOffset, setGifOffset] = useState(0); // nowy offset
+  const [hasMoreGifs, setHasMoreGifs] = useState(true); // czy są jeszcze kolejne GIFy
+  const gifCache = useRef({});
+
 
   const API_KEY = 'M4VhQEYu5Hhtl9LU5g4Z3tuaPpQ5PY3C'; // wstaw tutaj swój Giphy API Key
-
+  const GIF_LIMIT = 24; // np. 24 GIFy na stronę
 
   const handleSizeChange = (toolKey, value) => {
     setSize(prev => ({ ...prev, [toolKey]: parseInt(value, 10) }));
@@ -46,17 +50,35 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
     }));
   };
 
-  const fetchGifs = async (query = '') => {
+  const fetchGifs = async (query = '', offset = 0, append = false) => {
+    const cacheKey = `${query}_${offset}`;
+    if (gifCache.current[cacheKey]) {
+      if (append) {
+        setGifs(prev => [...prev, ...gifCache.current[cacheKey]]);
+      } else {
+        setGifs(gifCache.current[cacheKey]);
+      }
+      return;
+    }
+
     try {
       const url = query
-        ? `https://api.giphy.com/v1/gifs/search?api_key=${API_KEY}&q=${encodeURIComponent(query)}&limit=12`
-        : `https://api.giphy.com/v1/gifs/trending?api_key=${API_KEY}&limit=12`;
+        ? `https://api.giphy.com/v1/gifs/search?api_key=${API_KEY}&q=${encodeURIComponent(query)}&limit=${GIF_LIMIT}&offset=${offset}`
+        : `https://api.giphy.com/v1/gifs/trending?api_key=${API_KEY}&limit=${GIF_LIMIT}&offset=${offset}`;
 
       const res = await fetch(url);
       const data = await res.json();
+      const urls = data.data.map(gif => gif.images.fixed_width.url);
 
-      console.log('Giphy API response:', data); // debug
-      setGifs(data.data.map(gif => gif.images.fixed_width.url));
+      gifCache.current[cacheKey] = urls; // zapis do cache
+
+      if (append) {
+        setGifs(prev => [...prev, ...urls]);
+      } else {
+        setGifs(urls);
+      }
+
+      setHasMoreGifs(data.pagination.total_count > offset + GIF_LIMIT);
     } catch (err) {
       console.error('Błąd pobierania GIFów:', err);
     }
@@ -66,13 +88,14 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
     const value = e.target.value;
     setGifQuery(value);
 
-    // clear poprzedni timer
+    // reset poprzedniego timera
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
 
-    // ustaw nowy timer na szybki debounce (np. 200ms)
+    // szybki debounce
     searchTimeoutRef.current = setTimeout(() => {
       fetchGifs(value.trim());
-    }, 200);
+      setGifOffset(0); // reset offset przy nowym wyszukiwaniu
+    }, 100); // 100ms zamiast 200-300
   };
 
   useEffect(() => {
@@ -91,6 +114,18 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
 
     return () => clearTimeout(timer);
   }, [showGifs.visible, gifQuery]);
+
+  const handleGifScroll = (e) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.target;
+    if (scrollTop + clientHeight >= scrollHeight - 10) { // blisko dołu
+      if (hasMoreGifs) {
+        const newOffset = gifOffset + GIF_LIMIT;
+        fetchGifs(gifQuery.trim(), newOffset, true);
+        setGifOffset(newOffset);
+      }
+    }
+  };
+
   //===================================EMOJI============================
   const handleEmojiClick = (e) => {
     const rect = e.target.getBoundingClientRect();
@@ -348,6 +383,8 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
           <div
             className="floating-gifs-popup"
             style={{ top: `${showGifs.y}px`, left: `${showGifs.x}px` }}
+            onScroll={handleGifScroll} // <-- dodane
+
           >
             <input
               type="text"
