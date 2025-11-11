@@ -2,20 +2,19 @@ import React, { useState } from 'react';
 import Toolbar from '../Toolbar/Toolbar';
 import Canvas from '../Canvas/Canvas';
 import Sidebar from '../Sidebar/Sidebar';
-import ColorPicker from '../Toolbar/ColorPicker'; // Import ColorPicker
+import ColorPicker from '../Toolbar/ColorPicker'; 
 import PointerTrail from '../Toolbar/PointerTrail';
 
 import './Whiteboard.css';
 
 const Whiteboard = () => {
-  const [tool, setTool] = useState('pencil');
+  const [tool, setTool] = useState('cursor'); // globalny stan narzędzia
   const [color, setColor] = useState('#000000');
   const [size, setSize] = useState({ pencil: 3, eraser: 10, brush: 5 });
   const [showColorPicker, setShowColorPicker] = useState(false);
 
   return (
     <div className="whiteboard">
-      {/* Fullscreen */}
       <div className="whiteboard-header">
         <button className="fullscreen-btn">⛶ Fullscreen</button>
         <div className='save-btn'>Zapisz💾</div>
@@ -23,30 +22,27 @@ const Whiteboard = () => {
       </div>
 
       <div className="whiteboard-main">
-        {/* Toolbar po lewej */}
         <Toolbar 
           position="left"
           tool={tool}
-          setTool={setTool}
+          setTool={setTool} // ← przekazujemy setter
           color={color}
           setColor={setColor}
           size={size}
           setSize={setSize}
-          showColorPicker={showColorPicker}
           setShowColorPicker={setShowColorPicker}
         />
-         {/* 🔴 Czerwony pointer trail */}
+
         <PointerTrail active={tool === 'pointer'} />
-        
-        {/* Główny canvas */}
+
         <Canvas 
           tool={tool}
+          setTool={setTool} // ← Canvas może zmienić tool po dodaniu notatki
           color={color}
-          size={size[tool]}
+          size={size}
           setShowColorPicker={setShowColorPicker}
         />
-        
-        {/* Sidebar po prawej */}
+
         <Sidebar />
 
         {showColorPicker && (
