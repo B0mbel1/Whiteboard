@@ -65,6 +65,13 @@ const Canvas = ({ tool, color, size, setShowColorPicker, setTool }) => {
     if (tool === 'pencil') {
       toolSize = Math.max(1, toolSize - 2); // zmniejszamy o 2, min 1
     }
+    if (tool === 'brush') {
+      toolSize += 10;
+    }
+    // Gumka większa o 5 jednostek
+    if (tool === 'eraser') {
+      toolSize += 30;
+    }
 
     ctx.lineWidth = toolSize;
 
@@ -81,9 +88,32 @@ const Canvas = ({ tool, color, size, setShowColorPicker, setTool }) => {
   const startDrawing = ({ nativeEvent }) => {
     if (setShowColorPicker) setShowColorPicker(false);
     const { offsetX, offsetY } = nativeEvent;
-    contextRef.current.beginPath();
-    contextRef.current.moveTo(offsetX, offsetY);
+    const ctx = contextRef.current;
+    ctx.beginPath();
+    ctx.moveTo(offsetX, offsetY);
+
     setIsDrawing(true);
+
+    // Natychmiast rysujemy jeden punkt, żeby kliknięcie nie było "puste"
+    if (tool === 'pencil' || tool === 'brush' || tool === 'eraser') {
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      if (tool === 'eraser') {
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.strokeStyle = 'rgba(0,0,0,1)';
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = 'transparent';
+      } else {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = color;
+        ctx.shadowBlur = tool === 'brush' ? 5 : 0;
+        ctx.shadowColor = tool === 'brush' ? color : 'transparent';
+      }
+
+      // Rysujemy "punkt" jako bardzo krótką linię do samego siebie
+      ctx.lineTo(offsetX, offsetY);
+      ctx.stroke();
+    }
   };
 
   const stopDrawing = () => {
@@ -143,23 +173,23 @@ const Canvas = ({ tool, color, size, setShowColorPicker, setTool }) => {
     return backgroundModes.find(mode => mode.id === backgroundMode)?.icon;
   };
 
-const handleCanvasClick = (e) => {
-  if (tool === 'notes') {
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+  const handleCanvasClick = (e) => {
+    if (tool === 'notes') {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
 
-    // Dodajemy nową notatkę
-    const newNote = { id: Date.now(), x, y };
+      // Dodajemy nową notatkę
+      const newNote = { id: Date.now(), x, y };
 
-    setNotes(prev => [...prev, newNote]);
+      setNotes(prev => [...prev, newNote]);
 
-    // Po postawieniu notatki wracamy do kursora
-    if (typeof setTool === 'function') {
-      setTimeout(() => setTool('cursor'), 0);
+      // Po postawieniu notatki wracamy do kursora
+      if (typeof setTool === 'function') {
+        setTimeout(() => setTool('cursor'), 0);
+      }
     }
-  }
-};
+  };
 
   const removeNote = (id) => {
     setNotes(prev => prev.filter(n => n.id !== id));
