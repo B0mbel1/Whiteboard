@@ -196,8 +196,14 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
               }}
               onMouseUp={() => {
                 if (tempColor !== selectedColor) {
-                  setRecentColors(prev => [selectedColor, ...prev.filter(c => c !== selectedColor)].slice(0, 3));
+                  // Ustawiamy wybrany kolor jako aktualny
                   setSelectedColor(tempColor);
+
+                  // Aktualizujemy listę ostatnich kolorów
+                  setRecentColors(prev => {
+                    const newList = [tempColor, ...prev.filter(c => c !== tempColor)];
+                    return newList.slice(0, 3); // ograniczamy do 3 ostatnich
+                  });
                 }
               }}
               style={{ cursor: 'default' }}
@@ -216,10 +222,16 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
                   title={`Kliknij, aby użyć ${clr}`}
                   style={{ backgroundColor: clr, cursor: 'default' }}
                   onClick={() => {
+                    // Ustawiamy kolor kliknięty w historii
                     setSelectedColor(clr);
                     setColor(clr);
                     setTempColor(clr);
-                    setRecentColors(prev => [clr, ...prev.filter(c => c !== clr)].slice(0, 3));
+
+                    // Przesuwamy kolor na początek historii
+                    setRecentColors(prev => {
+                      const newList = [clr, ...prev.filter(c => c !== clr)];
+                      return newList.slice(0, 3);
+                    });
                   }}
                 />
               ))}
