@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './Toolbar.css';
 import PointerTrail from './PointerTrail.jsx';
 import ToolRangeCircle from './ToolRangeCircle.jsx';
@@ -14,6 +14,16 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
   const [recentColors, setRecentColors] = useState([]);
   const [tempColor, setTempColor] = useState(selectedColor);
 
+  const [showGifs, setShowGifs] = useState({ visible: false, x: 0, y: 0 });
+  const [gifQuery, setGifQuery] = useState('');
+
+  const [gifs, setGifs] = useState([]); // lista gifów do wyświetlenia
+  const searchTimeoutRef = useRef(null);
+
+
+  const API_KEY = 'M4VhQEYu5Hhtl9LU5g4Z3tuaPpQ5PY3C'; // wstaw tutaj swój Giphy API Key
+
+
   const handleSizeChange = (toolKey, value) => {
     setSize(prev => ({ ...prev, [toolKey]: parseInt(value, 10) }));
   };
@@ -26,7 +36,62 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
       y: rect.top - 20
     }));
   };
+  //=====================================GIFY============================
+  const handleGifClick = (e) => {
+    const rect = e.target.getBoundingClientRect();
+    setShowGifs(prev => ({
+      visible: !prev.visible,
+      x: rect.right + 10,
+      y: rect.top - 20
+    }));
+  };
 
+  const fetchGifs = async (query = '') => {
+    try {
+      const url = query
+        ? `https://api.giphy.com/v1/gifs/search?api_key=${API_KEY}&q=${encodeURIComponent(query)}&limit=12`
+        : `https://api.giphy.com/v1/gifs/trending?api_key=${API_KEY}&limit=12`;
+
+      const res = await fetch(url);
+      const data = await res.json();
+
+      console.log('Giphy API response:', data); // debug
+      setGifs(data.data.map(gif => gif.images.fixed_width.url));
+    } catch (err) {
+      console.error('Błąd pobierania GIFów:', err);
+    }
+  };
+
+  const handleGifQueryChange = (e) => {
+    const value = e.target.value;
+    setGifQuery(value);
+
+    // clear poprzedni timer
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+
+    // ustaw nowy timer na szybki debounce (np. 200ms)
+    searchTimeoutRef.current = setTimeout(() => {
+      fetchGifs(value.trim());
+    }, 200);
+  };
+
+  useEffect(() => {
+    if (!showGifs.visible) return;
+
+    // natychmiastowy fetch przy otwarciu popupu (trending GIFy)
+    if (gifQuery.trim() === '') {
+      fetchGifs();
+      return;
+    }
+
+    // debounce przy wpisywaniu
+    const timer = setTimeout(() => {
+      fetchGifs(gifQuery.trim());
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [showGifs.visible, gifQuery]);
+  //===================================EMOJI============================
   const handleEmojiClick = (e) => {
     const rect = e.target.getBoundingClientRect();
     setShowEmojis(prev => ({
@@ -109,6 +174,8 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
     };
   }, [tool]);
 
+
+
   const tools = [
     { icon: '🖱️', name: 'Kursor', type: 'cursor' },
     { icon: '☝️', name: 'Pointer', type: 'pointer' },
@@ -128,7 +195,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
     { icon: '📝', name: 'Tekst', type: 'text' },
     { icon: '📋', name: 'Notatki', type: 'notes' },
     { icon: '😊', name: 'Emotki', type: 'emoji', onClick: handleEmojiClick },
-    { icon: '🖼️', name: 'Gify', type: 'gifs' },
+    { icon: '🖼️', name: 'Gify', type: 'gifs', onClick: handleGifClick },
     { icon: '📎', name: 'Multimedia', type: 'multi' },
   ];
 
@@ -277,6 +344,52 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
             ))}
           </div>
         )}
+        {showGifs.visible && (
+          <div
+            className="floating-gifs-popup"
+            style={{ top: `${showGifs.y}px`, left: `${showGifs.x}px` }}
+          >
+            <input
+              type="text"
+              placeholder="Szukaj gifów..."
+              value={gifQuery}
+              onChange={handleGifQueryChange} // <-- nowa funkcja
+              style={{
+                width: '200px',
+                padding: '6px 8px',
+                borderRadius: '6px',
+                border: '1px solid #ccc',
+                marginBottom: '10px'
+              }}
+            />
+            <div className="gif-results">
+              {gifs.length === 0 ? (
+                <p>Brak GIFów 😢</p>
+              ) : (
+                <div className="gif-grid">
+                  {gifs.map((url, i) => (
+                    <img
+                      key={i}
+                      src={url}
+                      alt="gif"
+                      style={{
+                        width: '60px',
+                        height: '60px',
+                        objectFit: 'cover',
+                        borderRadius: '6px',
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => console.log('Wybrano GIF:', url)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+
+
       </div>
 
       <div
