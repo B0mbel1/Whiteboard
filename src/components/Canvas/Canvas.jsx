@@ -10,6 +10,9 @@ const Canvas = ({ tool, color, size, setShowColorPicker, setTool }) => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [notes, setNotes] = useState([]);
 
+  // 🔹 Nowe: zaznaczona notatka
+  const [selectedNoteId, setSelectedNoteId] = useState(null);
+
   // Funkcja do bezpiecznego zmiany rozmiaru canvas bez utraty zawartości
   const updateCanvasSize = () => {
     const canvas = canvasRef.current;
@@ -72,7 +75,6 @@ const Canvas = ({ tool, color, size, setShowColorPicker, setTool }) => {
   }, [color, size, tool]);
 
   const startDrawing = ({ nativeEvent }) => {
-    // Rysujemy tylko jeśli tool jest rysującym narzędziem
     if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
 
     if (setShowColorPicker) setShowColorPicker(false);
@@ -81,8 +83,6 @@ const Canvas = ({ tool, color, size, setShowColorPicker, setTool }) => {
     ctx.beginPath();
     ctx.moveTo(offsetX, offsetY);
     setIsDrawing(true);
-
-    // Natychmiast rysujemy punkt
     draw({ nativeEvent });
   };
 
@@ -125,12 +125,26 @@ const Canvas = ({ tool, color, size, setShowColorPicker, setTool }) => {
     const y = e.clientY - rect.top;
 
     setNotes(prev => [...prev, { id: Date.now(), x, y }]);
-
-    // Wróć do kursora po dodaniu notatki
     if (setTool) setTimeout(() => setTool('cursor'), 0);
   };
 
-  const removeNote = (id) => setNotes(prev => prev.filter(n => n.id !== id));
+  // 🔹 Nowa funkcja removeNote z obsługą zaznaczenia
+  const removeNote = (id) => {
+    setNotes(prev => prev.filter(n => n.id !== id));
+    if (selectedNoteId === id) setSelectedNoteId(null);
+  };
+
+  // 🔹 Obsługa Backspace/Delete dla zaznaczonej notatki
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (!selectedNoteId) return;
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        removeNote(selectedNoteId);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedNoteId]);
 
   const backgroundModes = [
     { id: 'white', name: 'Białe tło', icon: '🌕' },
@@ -148,18 +162,17 @@ const Canvas = ({ tool, color, size, setShowColorPicker, setTool }) => {
   const getCurrentBackgroundIcon = () =>
     backgroundModes.find(mode => mode.id === backgroundMode)?.icon;
 
-
   const handleMouseLeave = () => {
     if (tool === 'pointer') {
       const canvas = canvasRef.current;
-      if (canvas) canvas.style.cursor = 'default'; // zwykły kursor
+      if (canvas) canvas.style.cursor = 'default';
     }
   };
 
   const handleMouseEnter = () => {
     if (tool === 'pointer') {
       const canvas = canvasRef.current;
-      if (canvas) canvas.style.cursor = 'pointer'; // przywróć kursor pointer
+      if (canvas) canvas.style.cursor = 'pointer';
     }
   };
 
@@ -178,7 +191,15 @@ const Canvas = ({ tool, color, size, setShowColorPicker, setTool }) => {
           style={{ display: 'block', width: '100%', height: '100%' }}
         />
         {notes.map(note => (
-          <Note key={note.id} id={note.id} x={note.x} y={note.y} onRemove={removeNote} />
+          <Note
+            key={note.id}
+            id={note.id}
+            x={note.x}
+            y={note.y}
+            onRemove={removeNote}
+            selectedNoteId={selectedNoteId} // 🔹 przekaż zaznaczenie
+            setSelectedNoteId={setSelectedNoteId} // 🔹 funkcja do zaznaczania
+          />
         ))}
         <button
           className="background-toggle"
