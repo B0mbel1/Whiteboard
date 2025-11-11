@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import './Canvas.css';
 import Note from './Note';
 
-const Canvas = ({ tool, setTool, color, size, setShowColorPicker }) => {
+const Canvas = ({ tool, color, size, setShowColorPicker, setTool }) => {
   const [backgroundMode, setBackgroundMode] = useState('grid');
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -10,6 +10,7 @@ const Canvas = ({ tool, setTool, color, size, setShowColorPicker }) => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [notes, setNotes] = useState([]);
 
+  // Aktualizacja rozmiaru canvas
   const updateCanvasSize = () => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
@@ -22,15 +23,16 @@ const Canvas = ({ tool, setTool, color, size, setShowColorPicker }) => {
       if (contextRef.current) {
         contextRef.current.lineCap = 'round';
         contextRef.current.strokeStyle = color;
-        contextRef.current.lineWidth = size[tool] || 2;
+        contextRef.current.lineWidth = size;
       }
     }
   };
 
   useEffect(() => {
     updateCanvasSize();
-    window.addEventListener('resize', updateCanvasSize);
-    return () => window.removeEventListener('resize', updateCanvasSize);
+    const handleResize = () => updateCanvasSize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   useEffect(() => {
@@ -39,35 +41,49 @@ const Canvas = ({ tool, setTool, color, size, setShowColorPicker }) => {
       const context = canvas.getContext('2d');
       context.lineCap = 'round';
       context.strokeStyle = color;
-      context.lineWidth = size[tool] || 2;
+      context.lineWidth = size;
       contextRef.current = context;
     }
   }, []);
 
+  // Aktualizacja koloru
   useEffect(() => {
     if (contextRef.current) {
       contextRef.current.strokeStyle = color;
     }
   }, [color]);
 
+  // Aktualizacja grubości i globalCompositeOperation
   useEffect(() => {
-    if (contextRef.current) {
-      let newSize = size[tool] || 2;
-      if (tool === 'brush') newSize *= 2;
-      if (tool === 'pencil') newSize *= 0.5;
-      if (tool === 'eraser') newSize *= 2;
-      contextRef.current.lineWidth = newSize;
+    if (!contextRef.current) return;
+    const ctx = contextRef.current;
+
+    // Pobieramy grubość z obiektu size
+    let toolSize = size[tool] || 3; // domyślna wartość jeśli brak
+
+    // Ołówek trochę cieńszy niż pędzel
+    if (tool === 'pencil') {
+      toolSize = Math.max(1, toolSize - 2); // zmniejszamy o 2, min 1
     }
-  }, [size, tool]);
+
+    ctx.lineWidth = toolSize;
+
+    // ustawienie trybu rysowania
+    if (tool === 'eraser') {
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.strokeStyle = 'rgba(0,0,0,1)';
+    } else {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = color;
+    }
+  }, [size, tool, color]);
 
   const startDrawing = ({ nativeEvent }) => {
     if (setShowColorPicker) setShowColorPicker(false);
-    if (tool === 'pencil' || tool === 'brush' || tool === 'eraser') {
-      const { offsetX, offsetY } = nativeEvent;
-      contextRef.current.beginPath();
-      contextRef.current.moveTo(offsetX, offsetY);
-      setIsDrawing(true);
-    }
+    const { offsetX, offsetY } = nativeEvent;
+    contextRef.current.beginPath();
+    contextRef.current.moveTo(offsetX, offsetY);
+    setIsDrawing(true);
   };
 
   const stopDrawing = () => {
@@ -87,41 +103,66 @@ const Canvas = ({ tool, setTool, color, size, setShowColorPicker }) => {
   const draw = ({ nativeEvent }) => {
     if (!isDrawing) return;
     const { offsetX, offsetY } = nativeEvent;
+    const ctx = contextRef.current;
 
-    if (tool === 'pencil' || tool === 'brush' || tool === 'eraser') {
-      contextRef.current.lineTo(offsetX, offsetY);
-      contextRef.current.stroke();
+    if (tool === 'pencil' || tool === 'brush') {
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = color;
+      ctx.shadowBlur = tool === 'brush' ? 5 : 0;
+      ctx.shadowColor = tool === 'brush' ? color : 'transparent';
+      ctx.lineTo(offsetX, offsetY);
+      ctx.stroke();
+    } else if (tool === 'eraser') {
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.strokeStyle = 'rgba(0,0,0,1)';
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
+      ctx.lineTo(offsetX, offsetY);
+      ctx.stroke();
     }
-  };
-
-  const handleCanvasClick = (e) => {
-    if (tool === 'notes') {
-      const rect = canvasRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-
-      // dodaj notatkę
-      setNotes(prev => [...prev, { id: Date.now(), x, y }]);
-
-      // automatycznie zmień tool na kursor
-      setTool('cursor');
-    }
-  };
-
-  const removeNote = (id) => {
-    setNotes(prev => prev.filter(n => n.id !== id));
   };
 
   const backgroundModes = [
-    { id: 'white', icon: '🌕' },
-    { id: 'grid', icon: '🏁' },
-    { id: 'lines', icon: '📐' },
-    { id: 'black', icon: '🌑' }
+    { id: 'white', name: 'Białe tło', icon: '🌕' },
+    { id: 'grid', name: 'Kratka', icon: '🏁' },
+    { id: 'lines', name: 'Siatka linii', icon: '📐' },
+    { id: 'black', name: 'Czarne tło', icon: '🌑' }
   ];
 
   const toggleBackground = () => {
-    const currentIndex = backgroundModes.findIndex(m => m.id === backgroundMode);
-    setBackgroundMode(backgroundModes[(currentIndex + 1) % backgroundModes.length].id);
+    const currentIndex = backgroundModes.findIndex(mode => mode.id === backgroundMode);
+    const nextIndex = (currentIndex + 1) % backgroundModes.length;
+    setBackgroundMode(backgroundModes[nextIndex].id);
+  };
+
+  const getCurrentBackgroundIcon = () => {
+    return backgroundModes.find(mode => mode.id === backgroundMode)?.icon;
+  };
+
+const handleCanvasClick = (e) => {
+  if (tool === 'notes') {
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    // Dodajemy nową notatkę
+    const newNote = { id: Date.now(), x, y };
+
+    setNotes(prev => [...prev, newNote]);
+
+    // Po postawieniu notatki wracamy do kursora
+    if (typeof setTool === 'function') {
+      setTimeout(() => setTool('cursor'), 0);
+    }
+  }
+};
+
+  const removeNote = (id) => {
+    setNotes(prev => prev.filter(n => n.id !== id));
   };
 
   return (
@@ -132,18 +173,28 @@ const Canvas = ({ tool, setTool, color, size, setShowColorPicker }) => {
         onClick={handleCanvasClick}
       >
         <canvas
-          ref={canvasRef}
           onMouseDown={startDrawing}
           onMouseUp={stopDrawing}
           onMouseMove={draw}
           onMouseLeave={cancelDrawing}
+          ref={canvasRef}
           style={{ display: 'block', width: '100%', height: '100%' }}
         />
         {notes.map(note => (
-          <Note key={note.id} id={note.id} x={note.x} y={note.y} onRemove={removeNote} />
+          <Note
+            key={note.id}
+            id={note.id}
+            x={note.x}
+            y={note.y}
+            onRemove={removeNote}
+          />
         ))}
-        <button className="background-toggle" onClick={toggleBackground}>
-          {backgroundModes.find(m => m.id === backgroundMode)?.icon}
+        <button
+          className="background-toggle"
+          onClick={toggleBackground}
+          title={`Tło: ${backgroundModes.find(mode => mode.id === backgroundMode)?.name}`}
+        >
+          {getCurrentBackgroundIcon()}
         </button>
       </div>
     </div>
