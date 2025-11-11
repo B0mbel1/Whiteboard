@@ -148,6 +148,21 @@ const Canvas = ({ tool, color, size, setShowColorPicker, setTool }) => {
   const getCurrentBackgroundIcon = () =>
     backgroundModes.find(mode => mode.id === backgroundMode)?.icon;
 
+
+  const handleMouseLeave = () => {
+    if (tool === 'pointer') {
+      const canvas = canvasRef.current;
+      if (canvas) canvas.style.cursor = 'default'; // zwykły kursor
+    }
+  };
+
+  const handleMouseEnter = () => {
+    if (tool === 'pointer') {
+      const canvas = canvasRef.current;
+      if (canvas) canvas.style.cursor = 'pointer'; // przywróć kursor pointer
+    }
+  };
+
   return (
     <div className="canvas-container" ref={containerRef}>
       <div
