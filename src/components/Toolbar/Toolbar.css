@@ -275,31 +275,62 @@
     }
   }
 
-  .floating-gifs-popup {
-    position: fixed;
-    background: white;
-    border: 1px solid #ccc;
-    padding: 10px;
-    border-radius: 8px;
-    width: 220px;
-    max-height: 400px;
-    /* <-- wysokość z przewijaniem */
-    overflow-y: auto;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    z-index: 9999;
-    animation: fadeIn 0.2s ease-in-out;
-  }
-
-  .gif-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 6px;
-  }
-
 
   .floating-gifs-popup input {
     outline: none;
+  }
+
+  /* Popup GIFów */
+  /* Popup GIFów */
+  .floating-gifs-popup {
+    position: fixed;
+    width: 360px;
+    max-height: 500px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    padding: 12px 0;
+    /* tylko góra i dół, bez paddingu po bokach */
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    /* aby elementy były wyśrodkowane */
+  }
+
+  /* Pasek wyszukiwania */
+  .floating-gifs-popup input[type="text"] {
+    width: 90%;
+    /* teraz input rozciąga się prawie do boków popupu */
+    margin-bottom: 8px;
+    /* odstęp od GIFów */
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    box-sizing: border-box;
+    font-size: 14px;
+  }
+
+  /* Grid GIFów */
+  .gif-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+  }
+
+  .gif-grid img {
+    width: 100%;
+    /* wypełnia kolumnę */
+    aspect-ratio: 1;
+    /* kwadratowy GIF */
+    object-fit: cover;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+  }
+
+  .gif-grid img:hover {
+    transform: scale(1.05);
   }

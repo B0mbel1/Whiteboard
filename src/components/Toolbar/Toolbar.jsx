@@ -25,7 +25,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
   const gifCache = useRef({});
 
 
-  const API_KEY = 'M4VhQEYu5Hhtl9LU5g4Z3tuaPpQ5PY3C'; // wstaw tutaj swój Giphy API Key
+  const API_KEY = 'WJnPjdfsVgD5j5MmtTnWeI8Y05htecbA'; // wstaw tutaj swój Giphy API Key
   const GIF_LIMIT = 24; // np. 24 GIFy na stronę
 
   const handleSizeChange = (toolKey, value) => {
@@ -410,13 +410,11 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
                       src={url}
                       alt="gif"
                       style={{
-                        width: '60px',
-                        height: '60px',
                         objectFit: 'cover',
-                        borderRadius: '6px',
+                        borderRadius: '8px',
                         cursor: 'pointer'
                       }}
-                      onClick={() => console.log('Wybrano GIF:', url)}
+                      onClick = {() => console.log('Wybrano GIF:', url)}
                     />
                   ))}
                 </div>
