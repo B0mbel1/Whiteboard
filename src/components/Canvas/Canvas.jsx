@@ -196,6 +196,7 @@ const Canvas = ({
 
   // 🔹 Updated mouse down: handle notes + drawing
   const handleMouseDown = (e) => {
+    if (tool === 'cursor' || tool === 'pointer') return;
     if (tool === 'notes') {
       const rect = canvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;

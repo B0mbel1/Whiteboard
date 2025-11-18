@@ -564,8 +564,8 @@ const Toolbar = ({
       >
         <span className={`arrow ${collapsed ? 'arrow-right' : 'arrow-left'}`}>➤</span>
       </div>
+      <PointerTrail active={tool === 'pointer'} />
       <ToolRangeCircle tool={tool} size={size} />
-      {/* opcjonalne info o współpracownikach */}
       <div className="collaborators-indicator" style={{ position: 'absolute', bottom: 8, left: 12, fontSize: 12 }}>
         👥 {collaborators.length} online
       </div>
