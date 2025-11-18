@@ -50,8 +50,8 @@ const Canvas = ({
 
   const getToolSize = () => {
     const baseSize = size?.[tool] ?? 3;
-    if (tool === 'pencil') return Math.max(1, baseSize - 2);
-    if (tool === 'brush') return baseSize + 10;
+    if (tool === 'pencil') return Math.max(1, baseSize + 2);
+    if (tool === 'brush') return baseSize + 5;
     if (tool === 'eraser') return baseSize + 30;
     return baseSize;
   };
@@ -196,7 +196,7 @@ const Canvas = ({
 
   // 🔹 Updated mouse down: handle notes + drawing
   const handleMouseDown = (e) => {
-    if (tool === 'cursor' || tool === 'pointer') return;
+    if (tool === 'cursor' || tool === 'pointer' || tool === 'select') return;
     if (tool === 'notes') {
       const rect = canvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
