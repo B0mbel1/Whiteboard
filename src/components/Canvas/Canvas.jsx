@@ -18,45 +18,32 @@ const Canvas = ({
   const [notes, setNotes] = useState([]);
   const [selectedNoteId, setSelectedNoteId] = useState(null);
   const [remoteCursors, setRemoteCursors] = useState(new Map());
+  const [drawings, setDrawings] = useState([]); // wszystkie narysowane elementy
 
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const contextRef = useRef(null);
-  const [isDrawing, setIsDrawing] = useState(false);
+  const isDrawingRef = useRef(false);
   const currentDrawingRef = useRef(null);
 
   const safeSetTool = typeof setTool === 'function' ? setTool : () => { };
 
-  // 🔹 Resize canvas and preserve content
-  const updateCanvasSize = () => {
-    const canvas = canvasRef.current;
-    const container = containerRef.current;
-    const ctx = contextRef.current;
-    if (!canvas || !container || !ctx) return;
+  const backgroundModes = [
+    { id: 'white', name: 'Białe tło', icon: '🌕' },
+    { id: 'grid', name: 'Kratka', icon: '🏁' },
+    { id: 'lines', name: 'Siatka linii', icon: '📐' },
+    { id: 'black', name: 'Czarne tło', icon: '🌑' },
+  ];
 
-    const rect = container.getBoundingClientRect();
-    if (canvas.width === rect.width && canvas.height === rect.height) return;
-
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    canvas.width = rect.width;
-    canvas.height = rect.height;
-    ctx.putImageData(imageData, 0, 0);
-
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = color;
-    ctx.lineWidth = getToolSize();
-  };
-
-  const getToolSize = () => {
-    const baseSize = size?.[tool] ?? 3;
-    if (tool === 'pencil') return Math.max(1, baseSize + 2);
-    if (tool === 'brush') return baseSize + 5;
-    if (tool === 'eraser') return baseSize + 30;
+  const getToolSize = (toolParam = tool) => {
+    const baseSize = size?.[toolParam] ?? 3;
+    if (toolParam === 'pencil') return Math.max(1, baseSize + 2);
+    if (toolParam === 'brush') return baseSize + 5;
+    if (toolParam === 'eraser') return baseSize + 30;
     return baseSize;
   };
 
-  // 🔹 Setup canvas context
+  // 🔹 Inicjalizacja canvas
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -68,20 +55,85 @@ const Canvas = ({
     ctx.strokeStyle = color;
     ctx.lineWidth = getToolSize();
 
-    updateCanvasSize();
-    window.addEventListener('resize', updateCanvasSize);
-    return () => window.removeEventListener('resize', updateCanvasSize);
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    return () => window.removeEventListener('resize', resizeCanvas);
   }, []);
 
+  // 🔹 Aktualizacja toola i koloru
   useEffect(() => {
     const ctx = contextRef.current;
     if (!ctx) return;
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     ctx.strokeStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : color;
     ctx.lineWidth = getToolSize();
     ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
   }, [color, size, tool]);
 
-  // 🔹 Notes selection & removal
+  // 🔹 Resize canvas i odtworzenie rysunków
+  const resizeCanvas = () => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    const ctx = contextRef.current;
+    if (!canvas || !container || !ctx) return;
+
+    const rect = container.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+
+    redrawAll(ctx, canvas.width, canvas.height);
+  };
+
+  const drawBackground = (ctx, width, height) => {
+    ctx.clearRect(0, 0, width, height);
+
+    // tło podstawowe
+    if (backgroundMode === 'white' || backgroundMode === 'lines') {
+      ctx.fillStyle = 'white';
+    } else if (backgroundMode === 'black') {
+      ctx.fillStyle = 'black';
+    } else {
+      ctx.fillStyle = 'transparent';
+    }
+    ctx.fillRect(0, 0, width, height);
+
+    // grid i linie
+    const step = 25;
+    if (backgroundMode === 'grid') {
+      ctx.strokeStyle = '#ddd';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < width; x += step) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      }
+      for (let y = 0; y < height; y += step) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+    } else if (backgroundMode === 'lines') {
+      ctx.strokeStyle = '#eee';
+      ctx.lineWidth = 1;
+      for (let y = 0; y < height; y += step) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+    }
+  };
+
+  const redrawAll = (ctx, width, height) => {
+    drawBackground(ctx, width, height);
+    drawings.forEach(drawRemote);
+  };
+
+  // 🔹 Notes handling
   const removeNote = (id) => {
     setNotes(prev => prev.filter(n => n.id !== id));
     if (selectedNoteId === id) setSelectedNoteId(null);
@@ -90,50 +142,24 @@ const Canvas = ({
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (!selectedNoteId) return;
-      if (e.key === 'Backspace' || e.key === 'Delete') {
-        removeNote(selectedNoteId);
-      }
+      if (e.key === 'Backspace' || e.key === 'Delete') removeNote(selectedNoteId);
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedNoteId]);
 
-  const backgroundModes = [
-    { id: 'white', name: 'Białe tło', icon: '🌕' },
-    { id: 'grid', name: 'Kratka', icon: '🏁' },
-    { id: 'lines', name: 'Siatka linii', icon: '📐' },
-    { id: 'black', name: 'Czarne tło', icon: '🌑' },
-  ];
-
   const toggleBackground = () => {
-    const currentIndex = backgroundModes.findIndex(mode => mode.id === backgroundMode);
+    const currentIndex = backgroundModes.findIndex(m => m.id === backgroundMode);
     const nextIndex = (currentIndex + 1) % backgroundModes.length;
     setBackgroundMode(backgroundModes[nextIndex].id);
-    setTimeout(clearCanvas, 100);
+    setTimeout(resizeCanvas, 50); // odśwież canvas
   };
 
   const getCurrentBackgroundIcon = () =>
-    backgroundModes.find(mode => mode.id === backgroundMode)?.icon;
-
-  const clearCanvas = () => {
-    const ctx = contextRef.current;
-    const canvas = canvasRef.current;
-    if (!ctx || !canvas) return;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    if (backgroundMode === 'white') {
-      ctx.fillStyle = 'white';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    } else if (backgroundMode === 'black') {
-      ctx.fillStyle = 'black';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
-  };
+    backgroundModes.find(m => m.id === backgroundMode)?.icon;
 
   const getCanvasCoordinates = (clientX, clientY) => {
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
+    const rect = canvasRef.current.getBoundingClientRect();
     return { x: clientX - rect.left, y: clientY - rect.top };
   };
 
@@ -142,38 +168,35 @@ const Canvas = ({
     if (setShowColorPicker) setShowColorPicker(false);
     const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
 
-    contextRef.current.beginPath();
-    contextRef.current.moveTo(x, y);
-    setIsDrawing(true);
-
-    currentDrawingRef.current = { tool, color, size, points: [{ x, y }] };
+    const ctx = contextRef.current;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    isDrawingRef.current = true;
+    currentDrawingRef.current = { tool, color, size: getToolSize(), points: [{ x, y }] };
   };
 
   const stopDrawing = () => {
-    if (!isDrawing) return;
-    contextRef.current.closePath();
-    setIsDrawing(false);
+    if (!isDrawingRef.current) return;
+    const ctx = contextRef.current;
+    ctx.closePath();
+    isDrawingRef.current = false;
 
-    if (currentDrawingRef.current && socket && whiteboardId) {
-      socket.emit('drawing', { whiteboardId, ...currentDrawingRef.current });
+    if (currentDrawingRef.current) {
+      // zapis lokalny
+      setDrawings(prev => [...prev, currentDrawingRef.current]);
+      // wysłanie na socket
+      if (socket && whiteboardId) socket.emit('drawing', { whiteboardId, ...currentDrawingRef.current });
+      if (onDrawing) onDrawing(currentDrawingRef.current);
     }
-
-    if (currentDrawingRef.current && onDrawing) {
-      onDrawing(currentDrawingRef.current);
-    }
-
     currentDrawingRef.current = null;
   };
 
   const draw = ({ nativeEvent }) => {
-    if (!isDrawing || !contextRef.current) return;
+    if (!isDrawingRef.current || !contextRef.current) return;
     const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
 
-    if (currentDrawingRef.current) currentDrawingRef.current.points.push({ x, y });
-
+    currentDrawingRef.current?.points.push({ x, y });
     const ctx = contextRef.current;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
 
     if (tool === 'eraser') {
       ctx.globalCompositeOperation = 'destination-out';
@@ -194,39 +217,31 @@ const Canvas = ({
     ctx.stroke();
   };
 
-  // 🔹 Updated mouse down: handle notes + drawing
   const handleMouseDown = (e) => {
-    if (tool === 'cursor' || tool === 'pointer' || tool === 'select') return;
+    if (['cursor', 'pointer', 'select'].includes(tool)) return;
     if (tool === 'notes') {
-      const rect = canvasRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-
+      const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
       setNotes(prev => [...prev, { id: Date.now(), x, y, text: '' }]);
-
-      // używamy safeSetTool zamiast setTool
       safeSetTool('cursor');
-
       e.stopPropagation();
       return;
     }
-
     startDrawing(e);
   };
 
   const handleMouseMove = (e) => {
     if (tool !== 'notes') draw(e);
-    if (onCursorMove) {
-      const pos = getCanvasCoordinates(e.clientX, e.clientY);
-      onCursorMove(pos);
-    }
+    if (onCursorMove) onCursorMove(getCanvasCoordinates(e.clientX, e.clientY));
   };
 
-  // 🔹 Socket.io: remote drawings & cursors
+  // 🔹 Socket.io
   useEffect(() => {
     if (!socket) return;
 
-    const handleRemoteDrawing = (data) => drawRemote(data);
+    const handleRemoteDrawing = (data) => {
+      drawRemote(data);
+      setDrawings(prev => [...prev, data]); // zapis wszystkich rysunków
+    };
     const handleRemoteCursorMove = (data) => {
       if (data.userId !== socket.id) {
         setRemoteCursors(prev => {
@@ -237,17 +252,18 @@ const Canvas = ({
       }
     };
     const handleWhiteboardState = (data) => {
-      clearCanvas();
-      data.drawingData.forEach(drawRemote);
+      setDrawings(data.drawingData || []);
       const cursorsMap = new Map();
-      data.users.filter(u => u.id !== socket.id).forEach(u => cursorsMap.set(u.id, { userId: u.id, position: u.position, user: u, lastUpdate: Date.now() }));
+      data.users.filter(u => u.id !== socket.id)
+        .forEach(u => cursorsMap.set(u.id, { userId: u.id, position: u.position, user: u, lastUpdate: Date.now() }));
       setRemoteCursors(cursorsMap);
+      resizeCanvas();
     };
     const handleUsersUpdated = (data) => {
       setRemoteCursors(prev => {
         const newMap = new Map();
         for (const [userId, cursor] of prev) {
-          if (data.users.some(user => user.id === userId)) newMap.set(userId, cursor);
+          if (data.users.some(u => u.id === userId)) newMap.set(userId, cursor);
         }
         return newMap;
       });
@@ -295,7 +311,7 @@ const Canvas = ({
     ctx.restore();
   };
 
-  // 🔹 Clean up stale cursors
+  // 🔹 Cleanup stale cursors
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
@@ -313,7 +329,7 @@ const Canvas = ({
   const remoteCursorsArray = Array.from(remoteCursors.values());
 
   return (
-    <div className="canvas-container" ref={containerRef}>
+    <div className="canvas-container" ref={containerRef} style={{ flex: 1 }}>
       <div className={`canvas-area background-${backgroundMode}`}>
         <canvas
           ref={canvasRef}
@@ -324,7 +340,6 @@ const Canvas = ({
           style={{ cursor: tool === 'eraser' ? 'crosshair' : 'default', width: '100%', height: '100%', display: 'block' }}
         />
 
-        {/* Render remote cursors */}
         {remoteCursorsArray.map(cursor => cursor.position && (
           <div key={cursor.userId} className="remote-cursor" style={{
             position: 'absolute',
@@ -361,7 +376,6 @@ const Canvas = ({
           </div>
         ))}
 
-        {/* Notes */}
         {notes.map(note => (
           <Note
             key={note.id}
@@ -374,8 +388,7 @@ const Canvas = ({
           />
         ))}
 
-        {/* Background toggle */}
-        <button className="background-toggle" onClick={toggleBackground} title={`Tło: ${backgroundModes.find(mode => mode.id === backgroundMode)?.name}`}>
+        <button className="background-toggle" onClick={toggleBackground} title={`Tło: ${backgroundModes.find(m => m.id === backgroundMode)?.name}`}>
           {getCurrentBackgroundIcon()}
         </button>
       </div>
