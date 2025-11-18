@@ -3,7 +3,19 @@ import './Toolbar.css';
 import PointerTrail from './PointerTrail.jsx';
 import ToolRangeCircle from './ToolRangeCircle.jsx';
 
-const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker }) => {
+const Toolbar = ({
+  position,
+  tool,
+  setTool,
+  color,
+  setColor,
+  size,
+  setSize,
+  setShowColorPicker,
+  socket,           // <-- socket.io socket (socketRef.current z Whiteboard)
+  whiteboardId,     // <-- id pokoju/whiteboarda
+  currentUser       // <-- obiekt usera { id, name, color }
+}) => {
   const [showShapes, setShowShapes] = useState({ visible: false, x: 0, y: 0 });
   const [showEmojis, setShowEmojis] = useState({ visible: false, x: 0, y: 0 });
   const [selectedShape, setSelectedShape] = useState(null);
@@ -24,12 +36,24 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
   const [hasMoreGifs, setHasMoreGifs] = useState(true); // czy są jeszcze kolejne GIFy
   const gifCache = useRef({});
 
+  // sieciowo: lista współpracowników (przykładowe użycie)
+  const [collaborators, setCollaborators] = useState([]);
 
   const API_KEY = 'WJnPjdfsVgD5j5MmtTnWeI8Y05htecbA'; // wstaw tutaj swój Giphy API Key
   const GIF_LIMIT = 24; // np. 24 GIFy na stronę
 
   const handleSizeChange = (toolKey, value) => {
     setSize(prev => ({ ...prev, [toolKey]: parseInt(value, 10) }));
+
+    // emitujemy zmianę rozmiaru narzędzia do serwera
+    if (socket && whiteboardId) {
+      socket.emit('tool-size-change', {
+        whiteboardId,
+        userId: currentUser?.id,
+        tool: toolKey,
+        size: parseInt(value, 10)
+      });
+    }
   };
 
   const handleShapeClick = (e) => {
@@ -40,6 +64,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
       y: rect.top - 20
     }));
   };
+
   //=====================================GIFY============================
   const handleGifClick = (e) => {
     const rect = e.target.getBoundingClientRect();
@@ -139,11 +164,29 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
   const handleSelectShape = (shape) => {
     setSelectedShape(shape);
     setShowShapes({ visible: false, x: 0, y: 0 });
+
+    // emitujemy wybranie kształtu
+    if (socket && whiteboardId) {
+      socket.emit('shape-selected', {
+        whiteboardId,
+        userId: currentUser?.id,
+        shape
+      });
+    }
   };
 
   const handleSelectEmoji = (emoji) => {
     setSelectedEmoji(emoji);
     setShowEmojis({ visible: false, x: 0, y: 0 });
+
+    // emitujemy wybranie emotki
+    if (socket && whiteboardId) {
+      socket.emit('emoji-selected', {
+        whiteboardId,
+        userId: currentUser?.id,
+        emoji
+      });
+    }
   };
 
   // 🖌️ Zmiana kursora tylko dla canvas
@@ -209,7 +252,65 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
     };
   }, [tool]);
 
+  // --- SIEĆ: emitujemy zmianę tool kiedy 'tool' (prop) się zmieni
+  useEffect(() => {
+    if (!socket || !whiteboardId) return;
 
+    socket.emit('tool-change', {
+      whiteboardId,
+      userId: currentUser?.id,
+      tool
+    });
+  }, [tool, socket, whiteboardId, currentUser]);
+
+  // --- SIEĆ: emitujemy zmianę koloru gdy tempColor się zmieni
+  useEffect(() => {
+    if (!socket || !whiteboardId) return;
+    // send color update (debounce small)
+    const t = setTimeout(() => {
+      socket.emit('color-change', {
+        whiteboardId,
+        userId: currentUser?.id,
+        color: tempColor
+      });
+    }, 50);
+    return () => clearTimeout(t);
+  }, [tempColor, socket, whiteboardId, currentUser]);
+
+  // Nasłuchiwanie zdarzeń od serwera — aktualizacja listy współpracowników i logi
+  useEffect(() => {
+    if (!socket) return;
+
+    const onCollaborators = (data) => {
+      if (data && Array.isArray(data.collaborators)) {
+        setCollaborators(data.collaborators);
+      }
+    };
+
+    const onRemoteToolChange = (payload) => {
+      // Przykładowo: można tu pokazać mały indicator, albo tylko logować
+      console.log('Remote tool change:', payload);
+    };
+
+    const onRemoteColorChange = (payload) => {
+      console.log('Remote color change:', payload);
+    };
+
+    socket.on('collaborators', onCollaborators);
+    socket.on('remote-tool-change', onRemoteToolChange);
+    socket.on('remote-color-change', onRemoteColorChange);
+
+    // Poproś o aktualną listę współpracowników przy mount
+    if (whiteboardId) {
+      socket.emit('request-collaborators', { whiteboardId });
+    }
+
+    return () => {
+      socket.off('collaborators', onCollaborators);
+      socket.off('remote-tool-change', onRemoteToolChange);
+      socket.off('remote-color-change', onRemoteColorChange);
+    };
+  }, [socket, whiteboardId]);
 
   const tools = [
     { icon: '🖱️', name: 'Kursor', type: 'cursor' },
@@ -257,7 +358,17 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
                 className={`tool-btn ${tool === toolItem.type ? 'selected' : ''}`}
                 title={toolItem.name}
                 onClick={(e) => {
-                  if (toolItem.type) setTool(toolItem.type); // ustaw tool
+                  if (toolItem.type) {
+                    setTool(toolItem.type); // ustaw tool
+                    // emit zmiany tool natychmiast
+                    if (socket && whiteboardId) {
+                      socket.emit('tool-change', {
+                        whiteboardId,
+                        userId: currentUser?.id,
+                        tool: toolItem.type
+                      });
+                    }
+                  }
                   if (toolItem.onClick) toolItem.onClick(e); // ← przekaż event!
                 }}
               >
@@ -295,6 +406,15 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
                 const newColor = e.target.value;
                 setTempColor(newColor);
                 setColor(newColor);
+
+                // emit zmiany koloru natychmiast
+                if (socket && whiteboardId) {
+                  socket.emit('color-change', {
+                    whiteboardId,
+                    userId: currentUser?.id,
+                    color: newColor
+                  });
+                }
               }}
               onMouseUp={() => {
                 if (tempColor !== selectedColor) {
@@ -334,6 +454,15 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
                       const newList = [clr, ...prev.filter(c => c !== clr)];
                       return newList.slice(0, 3);
                     });
+
+                    // emit change
+                    if (socket && whiteboardId) {
+                      socket.emit('color-change', {
+                        whiteboardId,
+                        userId: currentUser?.id,
+                        color: clr
+                      });
+                    }
                   }}
                 />
               ))}
@@ -414,7 +543,17 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
                         borderRadius: '8px',
                         cursor: 'pointer'
                       }}
-                      onClick = {() => console.log('Wybrano GIF:', url)}
+                      onClick={() => {
+                        console.log('Wybrano GIF:', url);
+                        // emit wyboru GIFa
+                        if (socket && whiteboardId) {
+                          socket.emit('gif-selected', {
+                            whiteboardId,
+                            userId: currentUser?.id,
+                            url
+                          });
+                        }
+                      }}
                     />
                   ))}
                 </div>
@@ -436,6 +575,10 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
         <span className={`arrow ${collapsed ? 'arrow-right' : 'arrow-left'}`}>➤</span>
       </div>
       <ToolRangeCircle tool={tool} size={size} />
+      {/* opcjonalne info o współpracownikach */}
+      <div className="collaborators-indicator" style={{ position: 'absolute', bottom: 8, left: 12, fontSize: 12 }}>
+        👥 {collaborators.length} online
+      </div>
     </>
   );
 };

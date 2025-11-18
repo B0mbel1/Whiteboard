@@ -1,0 +1,242 @@
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const path = require('path');
+
+const app = express();
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: {
+    origin: "http://localhost:3000",
+    methods: ["GET", "POST"],
+    credentials: true
+  }
+});
+
+// Add express middleware to parse JSON
+app.use(express.json());
+
+// Add CORS middleware for Express routes
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', 'http://localhost:3000');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  next();
+});
+
+// Store whiteboards and users
+const whiteboards = new Map();
+// Track which users have joined which whiteboards to prevent duplicates
+const userJoinTracker = new Map();
+
+// Simple test route
+app.get('/', (req, res) => {
+  res.json({ message: 'Whiteboard server is running!' });
+});
+
+// Create whiteboard endpoint
+app.get('/api/create-whiteboard', (req, res) => {
+  try {
+    const whiteboardId = generateId();
+    whiteboards.set(whiteboardId, {
+      users: new Map(),
+      drawingData: []
+    });
+    console.log(`📝 Created new whiteboard: ${whiteboardId}`);
+    res.json({ 
+      success: true,
+      whiteboardId: whiteboardId 
+    });
+  } catch (error) {
+    console.error('Error creating whiteboard:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to create whiteboard' 
+    });
+  }
+});
+
+// Check if whiteboard exists
+app.get('/api/whiteboard/:id', (req, res) => {
+  const whiteboardId = req.params.id;
+  const exists = whiteboards.has(whiteboardId);
+  res.json({ exists });
+});
+
+// Helper function to log whiteboard state
+function logWhiteboardState(whiteboardId) {
+  const whiteboard = whiteboards.get(whiteboardId);
+  if (whiteboard) {
+    console.log(`📊 Whiteboard ${whiteboardId} state:`);
+    console.log(`   Users: ${Array.from(whiteboard.users.values()).map(u => `${u.name} (${u.id})`).join(', ')}`);
+    console.log(`   Drawings: ${whiteboard.drawingData.length}`);
+  }
+}
+
+io.on("connection", (socket) => {
+  console.log("✅ User connected:", socket.id);
+
+  // Track if this socket has already joined a whiteboard
+  let hasJoinedWhiteboard = false;
+
+  // Join a specific whiteboard room
+  socket.on("join-whiteboard", (data) => {
+    const { whiteboardId, user } = data;
+
+    // Prevent multiple joins from the same socket
+    if (hasJoinedWhiteboard) {
+      console.log(`⚠️ Socket ${socket.id} already joined a whiteboard, ignoring duplicate join`);
+      return;
+    }
+
+    console.log(`👤 User ${user.name} trying to join: ${whiteboardId}`);
+
+    // Create whiteboard if it doesn't exist (for direct URL access)
+    if (!whiteboards.has(whiteboardId)) {
+      whiteboards.set(whiteboardId, {
+        users: new Map(),
+        drawingData: []
+      });
+      console.log(`📝 Created whiteboard on join: ${whiteboardId}`);
+    }
+
+    const whiteboard = whiteboards.get(whiteboardId);
+
+    // Check if user already exists in this whiteboard
+    if (whiteboard.users.has(socket.id)) {
+      console.log(`⚠️ User ${socket.id} already in whiteboard, removing old entry`);
+      whiteboard.users.delete(socket.id);
+    }
+
+    // Add user to whiteboard with socket ID as key
+    whiteboard.users.set(socket.id, {
+      id: socket.id,
+      ...user,
+      position: { x: 0, y: 0 }
+    });
+
+    // Mark this socket as having joined a whiteboard
+    hasJoinedWhiteboard = true;
+
+    // Join socket room
+    socket.join(whiteboardId);
+
+    console.log(`👤 User ${user.name} joined whiteboard: ${whiteboardId}`);
+    logWhiteboardState(whiteboardId);
+
+    // Send current users and ALL drawing data to the new user
+    socket.emit("whiteboard-data", {
+      users: Array.from(whiteboard.users.values()),
+      drawingData: whiteboard.drawingData
+    });
+
+    // Notify other users in the room about the new user
+    socket.to(whiteboardId).emit("user-joined", {
+      user: { id: socket.id, ...user },
+      users: Array.from(whiteboard.users.values())
+    });
+  });
+
+  // Handle drawing events
+  socket.on("drawing", (data) => {
+    const { whiteboardId, tool, points, color, size } = data;
+    const whiteboard = whiteboards.get(whiteboardId);
+
+    if (whiteboard) {
+      // Store drawing data (limit to last 1000 drawings to prevent memory issues)
+      whiteboard.drawingData.push({
+        tool,
+        points,
+        color,
+        size,
+        userId: socket.id,
+        timestamp: Date.now()
+      });
+
+      // Keep only last 1000 drawings
+      if (whiteboard.drawingData.length > 1000) {
+        whiteboard.drawingData = whiteboard.drawingData.slice(-1000);
+      }
+
+      // Broadcast to other users in the room
+      socket.to(whiteboardId).emit("drawing", {
+        tool,
+        points,
+        color,
+        size,
+        userId: socket.id
+      });
+    }
+  });
+
+  // Handle cursor movement
+  socket.on("cursor-move", (data) => {
+    const { whiteboardId, position } = data;
+    const whiteboard = whiteboards.get(whiteboardId);
+
+    if (whiteboard && whiteboard.users.has(socket.id)) {
+      // Update user position
+      whiteboard.users.get(socket.id).position = position;
+
+      // Broadcast to other users
+      socket.to(whiteboardId).emit("cursor-move", {
+        userId: socket.id,
+        position,
+        user: whiteboard.users.get(socket.id)
+      });
+    }
+  });
+
+  // Handle chat messages
+  socket.on("chat-message", (data) => {
+    const { whiteboardId, message } = data;
+    console.log(`💬 Chat message in ${whiteboardId} from ${socket.id}:`, message.text);
+
+    // Broadcast to all users including sender (for immediate feedback)
+    io.to(whiteboardId).emit("chat-message", message);
+  });
+
+  // Handle user disconnection
+  socket.on("disconnect", () => {
+    console.log("❌ User disconnected:", socket.id);
+
+    // Find and remove user from all whiteboards
+    for (const [whiteboardId, whiteboard] of whiteboards.entries()) {
+      if (whiteboard.users.has(socket.id)) {
+        const user = whiteboard.users.get(socket.id);
+        whiteboard.users.delete(socket.id);
+
+        // Notify other users
+        socket.to(whiteboardId).emit("user-left", {
+          userId: socket.id,
+          users: Array.from(whiteboard.users.values())
+        });
+
+        console.log(`❌ User ${user.name} left whiteboard: ${whiteboardId}`);
+        logWhiteboardState(whiteboardId);
+
+        // Clean up empty whiteboards after 1 hour (you can adjust this)
+        if (whiteboard.users.size === 0) {
+          setTimeout(() => {
+            if (whiteboard.users.size === 0) {
+              whiteboards.delete(whiteboardId);
+              console.log(`🧹 Cleaned up empty whiteboard: ${whiteboardId}`);
+            }
+          }, 3600000); // 1 hour
+        }
+        break;
+      }
+    }
+  });
+});
+
+function generateId() {
+  return Math.random().toString(36).substring(2, 8) + Math.random().toString(36).substring(2, 8);
+}
+
+const PORT = process.env.PORT || 3001;
+server.listen(PORT, () => {
+  console.log(`✅ Server running on: http://localhost:${PORT}`);
+});
