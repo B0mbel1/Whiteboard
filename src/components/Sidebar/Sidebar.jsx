@@ -143,12 +143,6 @@ const Sidebar = ({ whiteboardId, socket, currentUser }) => {
           <button onClick={sendMessage}>➤</button>
         </div>
       </div>
-
-      {/* Notki */}
-      <div className="notes-section">
-        <h4>Notatki</h4>
-        <textarea placeholder="Dodaj notatkę..." />
-      </div>
     </div>
   );
 };

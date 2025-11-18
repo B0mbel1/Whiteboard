@@ -57,7 +57,7 @@ const Toolbar = ({
   };
 
   const handleShapeClick = (e) => {
-    const rect = e.target.getBoundingClientRect();
+    const rect = e.currentTarget.getBoundingClientRect();
     setShowShapes(prev => ({
       visible: !prev.visible,
       x: rect.right + 10,
@@ -327,12 +327,12 @@ const Toolbar = ({
     { icon: '✏️', name: 'Ołówek', type: 'pencil' },
     { icon: '🧽', name: 'Gumka', type: 'eraser' },
     { icon: '🖌️', name: 'Pędzle', type: 'brush' },
-    { icon: '🔺', name: 'Kształty', type: 'shape', onClick: handleShapeClick },
-    { icon: '📝', name: 'Tekst', type: 'text' },
+    { icon: '🔺', name: 'Kształty', type: null, onClick: handleShapeClick, isPopup: true },
+    { icon: '📝', name: 'Tekst', type: null, isPopup: true },
     { icon: '📋', name: 'Notatki', type: 'notes' },
-    { icon: '😊', name: 'Emotki', type: 'emoji', onClick: handleEmojiClick },
-    { icon: '🖼️', name: 'Gify', type: 'gifs', onClick: handleGifClick },
-    { icon: '📎', name: 'Multimedia', type: 'multi' },
+    { icon: '😊', name: 'Emotki', type: null, onClick: handleEmojiClick, isPopup: true },
+    { icon: '🖼️', name: 'Gify', type: null, onClick: handleGifClick, isPopup: true },
+    { icon: '📎', name: 'Multimedia', type: null, isPopup: true },
   ];
 
   const shapes = [
@@ -358,18 +358,8 @@ const Toolbar = ({
                 className={`tool-btn ${tool === toolItem.type ? 'selected' : ''}`}
                 title={toolItem.name}
                 onClick={(e) => {
-                  if (toolItem.type) {
-                    setTool(toolItem.type); // ustaw tool
-                    // emit zmiany tool natychmiast
-                    if (socket && whiteboardId) {
-                      socket.emit('tool-change', {
-                        whiteboardId,
-                        userId: currentUser?.id,
-                        tool: toolItem.type
-                      });
-                    }
-                  }
-                  if (toolItem.onClick) toolItem.onClick(e); // ← przekaż event!
+                  if (toolItem.type) setTool(toolItem.type); // prosto ustawiamy tool
+                  if (toolItem.onClick) toolItem.onClick(e); // dodatkowy callback np. popup
                 }}
               >
                 {toolItem.icon}

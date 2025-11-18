@@ -2,11 +2,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import './Canvas.css';
 import Note from './Note';
 
-const Canvas = ({ 
-  tool, 
-  color, 
-  size, 
-  setShowColorPicker, 
+const Canvas = ({
+  tool,
+  color,
+  size,
+  setShowColorPicker,
   setTool,
   whiteboardId,
   socket,
@@ -24,6 +24,8 @@ const Canvas = ({
   const contextRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const currentDrawingRef = useRef(null);
+
+  const safeSetTool = typeof setTool === 'function' ? setTool : () => { };
 
   // 🔹 Resize canvas and preserve content
   const updateCanvasSize = () => {
@@ -47,11 +49,11 @@ const Canvas = ({
   };
 
   const getToolSize = () => {
-    let toolSize = size[tool] || 3;
-    if (tool === 'pencil') toolSize = Math.max(1, toolSize - 2);
-    if (tool === 'brush') toolSize += 10;
-    if (tool === 'eraser') toolSize += 30;
-    return toolSize;
+    const baseSize = size?.[tool] ?? 3;
+    if (tool === 'pencil') return Math.max(1, baseSize - 2);
+    if (tool === 'brush') return baseSize + 10;
+    if (tool === 'eraser') return baseSize + 30;
+    return baseSize;
   };
 
   // 🔹 Setup canvas context
@@ -71,7 +73,6 @@ const Canvas = ({
     return () => window.removeEventListener('resize', updateCanvasSize);
   }, []);
 
-  // 🔹 Update drawing style on tool/color/size change
   useEffect(() => {
     const ctx = contextRef.current;
     if (!ctx) return;
@@ -80,7 +81,7 @@ const Canvas = ({
     ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
   }, [color, size, tool]);
 
-  // 🔹 Handle notes selection & removal
+  // 🔹 Notes selection & removal
   const removeNote = (id) => {
     setNotes(prev => prev.filter(n => n.id !== id));
     if (selectedNoteId === id) setSelectedNoteId(null);
@@ -130,7 +131,6 @@ const Canvas = ({
     }
   };
 
-  // 🔹 Canvas coordinates
   const getCanvasCoordinates = (clientX, clientY) => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
@@ -154,7 +154,6 @@ const Canvas = ({
     contextRef.current.closePath();
     setIsDrawing(false);
 
-    // Emit drawing to server
     if (currentDrawingRef.current && socket && whiteboardId) {
       socket.emit('drawing', { whiteboardId, ...currentDrawingRef.current });
     }
@@ -195,28 +194,34 @@ const Canvas = ({
     ctx.stroke();
   };
 
-  const handleCanvasClick = (e) => {
-    if (tool !== 'notes') return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    setNotes(prev => [...prev, { id: Date.now(), x, y }]);
-    if (setTool) setTimeout(() => setTool('cursor'), 0);
+  // 🔹 Updated mouse down: handle notes + drawing
+  const handleMouseDown = (e) => {
+    if (tool === 'notes') {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      setNotes(prev => [...prev, { id: Date.now(), x, y, text: '' }]);
+
+      // używamy safeSetTool zamiast setTool
+      safeSetTool('cursor');
+
+      e.stopPropagation();
+      return;
+    }
+
+    startDrawing(e);
   };
 
   const handleMouseMove = (e) => {
-    const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
-    if (onCursorMove) onCursorMove({ x, y });
-
-    if (isDrawing) draw(e);
-
-    // Emit cursor move to server
-    if (socket && whiteboardId && currentUser) {
-      socket.emit('cursor-move', { whiteboardId, position: { x, y }, user: currentUser });
+    if (tool !== 'notes') draw(e);
+    if (onCursorMove) {
+      const pos = getCanvasCoordinates(e.clientX, e.clientY);
+      onCursorMove(pos);
     }
   };
 
-  // 🔹 Socket.io: handle remote drawings & cursors
+  // 🔹 Socket.io: remote drawings & cursors
   useEffect(() => {
     if (!socket) return;
 
@@ -308,10 +313,10 @@ const Canvas = ({
 
   return (
     <div className="canvas-container" ref={containerRef}>
-      <div className={`canvas-area background-${backgroundMode}`} onClick={handleCanvasClick}>
+      <div className={`canvas-area background-${backgroundMode}`}>
         <canvas
           ref={canvasRef}
-          onMouseDown={startDrawing}
+          onMouseDown={handleMouseDown}
           onMouseUp={stopDrawing}
           onMouseMove={handleMouseMove}
           onMouseLeave={stopDrawing}
