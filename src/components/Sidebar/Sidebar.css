@@ -18,7 +18,7 @@
   border-radius: 5px;
 }
 
-.users-list, .chat-section, .notes-section {
+.users-list, .chat-section {
   padding: 10px;
   border-bottom: 1px solid #bdc3c7;
   flex: 1;
@@ -110,8 +110,23 @@
   cursor: pointer;
 }
 
-.notes-section textarea {
+.camera-video {
   width: 100%;
-  height: 100px;
-  resize: vertical;
+  border-radius: 5px;
+  background: #000;
+  margin-bottom: 5px;
+}
+
+.camera-toggle-btn {
+  width: 100%;
+  padding: 5px;
+  background: #2c3e50;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.camera-toggle-btn:hover {
+  background: #34495e;
 }

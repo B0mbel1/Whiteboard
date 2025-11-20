@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './Canvas.css';
+import Note from './Note';
 
 const Canvas = ({ 
   tool, 
@@ -180,6 +181,70 @@ const Canvas = ({
     };
   };
 
+  // 🔹 Nowe: zaznaczona notatka
+  const [selectedNoteId, setSelectedNoteId] = useState(null);
+
+  // Funkcja do bezpiecznego zmiany rozmiaru canvas bez utraty zawartości
+  const updateCanvasSize = () => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    const ctx = contextRef.current;
+    if (!canvas || !container || !ctx) return;
+
+    const rect = container.getBoundingClientRect();
+    if (canvas.width === rect.width && canvas.height === rect.height) return;
+
+    // Zapisujemy aktualną zawartość
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+
+    // Przywracamy zawartość
+    ctx.putImageData(imageData, 0, 0);
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = color;
+    const toolSize = getToolSize();
+    ctx.lineWidth = toolSize;
+  };
+
+  const getToolSize = () => {
+    let toolSize = size[tool] || 3;
+    if (tool === 'pencil') toolSize = Math.max(1, toolSize - 2);
+    if (tool === 'brush') toolSize += 10;
+    if (tool === 'eraser') toolSize += 30;
+    return toolSize;
+  };
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    contextRef.current = ctx;
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = getToolSize();
+
+    updateCanvasSize();
+    window.addEventListener('resize', updateCanvasSize);
+    return () => window.removeEventListener('resize', updateCanvasSize);
+  }, []);
+
+  // Aktualizacja koloru i grubości
+  useEffect(() => {
+    const ctx = contextRef.current;
+    if (!ctx) return;
+
+    ctx.strokeStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : color;
+    ctx.lineWidth = getToolSize();
+    ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
+  }, [color, size, tool]);
+
   const startDrawing = ({ nativeEvent }) => {
     if (setShowColorPicker) {
       setShowColorPicker(false);
@@ -243,6 +308,36 @@ const Canvas = ({
     contextRef.current.stroke();
   };
 
+  const handleCanvasClick = (e) => {
+    if (tool !== 'notes') return;
+
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    setNotes(prev => [...prev, { id: Date.now(), x, y }]);
+    if (setTool) setTimeout(() => setTool('cursor'), 0);
+  };
+
+  // 🔹 Nowa funkcja removeNote z obsługą zaznaczenia
+  const removeNote = (id) => {
+    setNotes(prev => prev.filter(n => n.id !== id));
+    if (selectedNoteId === id) setSelectedNoteId(null);
+  };
+
+  // 🔹 Obsługa Backspace/Delete dla zaznaczonej notatki
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (!selectedNoteId) return;
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        removeNote(selectedNoteId);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedNoteId]);
+
+
   const handleMouseMove = (e) => {
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
     
@@ -260,7 +355,7 @@ const Canvas = ({
     { id: 'white', name: 'Białe tło', icon: '🌕' },
     { id: 'grid', name: 'Kratka', icon: '🏁' },
     { id: 'lines', name: 'Siatka linii', icon: '📐' },
-    { id: 'black', name: 'Czarne tło', icon: '🌑' }
+    { id: 'black', name: 'Czarne tło', icon: '🌑' },
   ];
 
   const toggleBackground = () => {
@@ -274,8 +369,21 @@ const Canvas = ({
     }, 100);
   };
 
-  const getCurrentBackgroundIcon = () => {
-    return backgroundModes.find(mode => mode.id === backgroundMode)?.icon;
+  const getCurrentBackgroundIcon = () =>
+    backgroundModes.find(mode => mode.id === backgroundMode)?.icon;
+
+  const handleMouseLeave = () => {
+    if (tool === 'pointer') {
+      const canvas = canvasRef.current;
+      if (canvas) canvas.style.cursor = 'default';
+    }
+  };
+
+  const handleMouseEnter = () => {
+    if (tool === 'pointer') {
+      const canvas = canvasRef.current;
+      if (canvas) canvas.style.cursor = 'pointer';
+    }
   };
 
   // Clean up old cursors periodically
@@ -301,8 +409,10 @@ const Canvas = ({
   const remoteCursorsArray = Array.from(remoteCursors.values());
 
   return (
-    <div className="canvas-container">
-      <div className={`canvas-area background-${backgroundMode}`}>
+    <div className="canvas-container" ref={containerRef}>
+      <div className={`canvas-area background-${backgroundMode}`}
+      onClick={handleCanvasClick}
+      >
         <canvas
           ref={canvasRef}
           onMouseDown={startDrawing}
@@ -316,8 +426,17 @@ const Canvas = ({
             display: 'block'
           }}
         />
-        
-        {/* Render ONLY other users' cursors */}
+        {notes.map(note => (
+          <Note
+            key={note.id}
+            id={note.id}
+            x={note.x}
+            y={note.y}
+            onRemove={removeNote}
+            selectedNoteId={selectedNoteId} // 🔹 przekaż zaznaczenie
+            setSelectedNoteId={setSelectedNoteId} // 🔹 funkcja do zaznaczania
+          />))}
+
         {remoteCursorsArray.map((cursor) => (
           cursor.position && (
             <div
@@ -360,6 +479,7 @@ const Canvas = ({
               </div>
             </div>
           )
+          
         ))}
         
         <button 
