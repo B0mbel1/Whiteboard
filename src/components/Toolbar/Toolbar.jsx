@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './Toolbar.css';
 import PointerTrail from './PointerTrail.jsx';
 import ToolRangeCircle from './ToolRangeCircle.jsx';
@@ -14,9 +14,23 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
   const [recentColors, setRecentColors] = useState([]);
   const [tempColor, setTempColor] = useState(selectedColor);
 
-const handleSizeChange = (toolKey, value) => {
-  setSize(prev => ({ ...prev, [toolKey]: parseInt(value, 10) }));
-};
+
+  const [showGifs, setShowGifs] = useState({ visible: false, x: 0, y: 0 });
+  const [gifQuery, setGifQuery] = useState('');
+
+  const [gifs, setGifs] = useState([]); // lista gifów do wyświetlenia
+  const searchTimeoutRef = useRef(null);
+  const [gifOffset, setGifOffset] = useState(0); // nowy offset
+  const [hasMoreGifs, setHasMoreGifs] = useState(true); // czy są jeszcze kolejne GIFy
+  const gifCache = useRef({});
+
+  const API_KEY = 'XpMqI44Eo56UVR4wh8kFgFdGtR71nNRb';
+  const GIF_LIMIT = 24; // np. 24 GIFy na stronę
+
+
+  const handleSizeChange = (toolKey, value) => {
+    setSize(prev => ({ ...prev, [toolKey]: parseInt(value, 10) }));
+  };
 
   const handleShapeClick = (e) => {
     const rect = e.target.getBoundingClientRect();
@@ -27,18 +41,102 @@ const handleSizeChange = (toolKey, value) => {
     }));
   };
 
-const handleEmojiClick = (e) => {
-const rect = e.target.getBoundingClientRect();
-setShowEmojis(prev => ({
-visible: !prev.visible,
-x: rect.right + 10,
-y: rect.top - 20
-}));
-};
+  const handleEmojiClick = (e) => {
+    const rect = e.target.getBoundingClientRect();
+    setShowEmojis(prev => ({
+      visible: !prev.visible,
+      x: rect.right + 10,
+      y: rect.top - 20
+    }));
+  };
 
-const handleColorClick = () => {
-  setShowColorPicker(prev => !prev);
-};
+
+  const handleGifClick = (e) => {
+    const rect = e.target.getBoundingClientRect();
+    setShowGifs(prev => ({
+      visible: !prev.visible,
+      x: rect.right + 10,
+      y: rect.top - 20
+    }));
+  };
+
+  const fetchGifs = async (query = '', offset = 0, append = false) => {
+    const cacheKey = `${query}_${offset}`;
+    if (gifCache.current[cacheKey]) {
+      if (append) {
+        setGifs(prev => [...prev, ...gifCache.current[cacheKey]]);
+      } else {
+        setGifs(gifCache.current[cacheKey]);
+      }
+      return;
+    }
+    try {
+      const url = query
+        ? `https://api.giphy.com/v1/gifs/search?api_key=${API_KEY}&q=${encodeURIComponent(query)}&limit=${GIF_LIMIT}&offset=${offset}`
+        : `https://api.giphy.com/v1/gifs/trending?api_key=${API_KEY}&limit=${GIF_LIMIT}&offset=${offset}`;
+
+      const res = await fetch(url);
+      const data = await res.json();
+      const urls = data.data.map(gif => gif.images.fixed_width.url);
+
+      gifCache.current[cacheKey] = urls; // zapis do cache
+      if (append) {
+        setGifs(prev => [...prev, ...urls]);
+      } else {
+        setGifs(urls);
+      }
+
+      setHasMoreGifs(data.pagination.total_count > offset + GIF_LIMIT);
+    } catch (err) {
+      console.error('Błąd pobierania GIFów:', err);
+    }
+  };
+
+  const handleGifQueryChange = (e) => {
+    const value = e.target.value;
+    setGifQuery(value);
+
+    // clear poprzedni timer
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+
+    // ustaw nowy timer na szybki debounce (np. 200ms)
+    searchTimeoutRef.current = setTimeout(() => {
+      fetchGifs(value.trim());
+      setGifOffset(0); // reset offset przy nowym wyszukiwaniu
+    }, 100);
+  };
+
+  useEffect(() => {
+    if (!showGifs.visible) return;
+
+    // natychmiastowy fetch przy otwarciu popupu (trending GIFy)
+    if (gifQuery.trim() === '') {
+      fetchGifs();
+      return;
+    }
+
+    // debounce przy wpisywaniu
+    const timer = setTimeout(() => {
+      fetchGifs(gifQuery.trim());
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [showGifs.visible, gifQuery]);
+
+  const handleGifScroll = (e) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.target;
+    if (scrollTop + clientHeight >= scrollHeight - 10) { // blisko dołu
+      if (hasMoreGifs) {
+        const newOffset = gifOffset + GIF_LIMIT;
+        fetchGifs(gifQuery.trim(), newOffset, true);
+        setGifOffset(newOffset);
+      }
+    }
+  };
+
+  const handleColorClick = () => {
+    setShowColorPicker(prev => !prev);
+  };
 
   const handleSelectShape = (shape) => {
     setSelectedShape(shape);
@@ -132,7 +230,7 @@ const handleColorClick = () => {
     { icon: '📝', name: 'Tekst', type: 'text' },
     { icon: '📋', name: 'Notatki', type: 'notes' },
     { icon: '😊', name: 'Emotki', type: 'emoji', onClick: handleEmojiClick },
-    { icon: '🖼️', name: 'Gify', type: 'gifs' },
+    { icon: '🖼️', name: 'Gify', type: 'gifs', onClick: handleGifClick },
     { icon: '📎', name: 'Multimedia', type: 'multi' },
   ];
 
@@ -279,6 +377,50 @@ const handleColorClick = () => {
                 {emoji}
               </button>
             ))}
+          </div>
+        )}
+        {showGifs.visible && (
+          <div
+            className="floating-gifs-popup"
+            style={{ top: `${showGifs.y}px`, left: `${showGifs.x}px` }}
+            onScroll={handleGifScroll} // <-- dodane
+          >
+            <input
+              type="text"
+              placeholder="Szukaj gifów..."
+              value={gifQuery}
+              onChange={handleGifQueryChange} // <-- nowa funkcja
+              style={{
+                width: '200px',
+                padding: '6px 8px',
+                borderRadius: '6px',
+                border: '1px solid #ccc',
+                marginBottom: '10px'
+              }}
+            />
+            <div className="gif-results">
+              {gifs.length === 0 ? (
+                <p>Brak GIFów 😢</p>
+              ) : (
+                <div className="gif-grid">
+                  {gifs.map((url, i) => (
+                    <img
+                      key={i}
+                      src={url}
+                      alt="gif"
+                      style={{
+                        width: '60px',
+                        height: '60px',
+                        objectFit: 'cover',
+                        borderRadius: '6px',
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => console.log('Wybrano GIF:', url)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

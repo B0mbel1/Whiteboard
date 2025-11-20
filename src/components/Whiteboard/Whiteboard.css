@@ -11,25 +11,30 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-shrink: 0; /* Zapobiega kurczeniu się nagłówka */
+  flex-shrink: 0;
+  /* Zapobiega kurczeniu się nagłówka */
 }
 
 .whiteboard-main {
   flex: 1;
   display: flex;
   overflow: hidden;
-  min-height: 0; /* Ważne dla poprawnego flexbox */
-  position: relative; /* Add this */
+  min-height: 0;
+  /* Ważne dla poprawnego flexbox */
+  position: relative;
+  /* Add this */
 }
 
 .color-picker-wrapper {
   position: absolute;
-  left: 150px; /* Toolbar width + margin */
+  left: 150px;
+  /* Toolbar width + margin */
   top: 10px;
   z-index: 1000;
 }
 
-.fullscreen-btn, .file-menu {
+.fullscreen-btn,
+.file-menu {
   padding: 5px 10px;
   background: #34495e;
   border: none;
@@ -38,7 +43,8 @@
   cursor: pointer;
 }
 
-.fullscreen-btn, .file-menu {
+.fullscreen-btn,
+.file-menu {
   padding: 5px 10px;
   background: #34495e;
   border: none;
@@ -55,4 +61,3 @@
   border-radius: 3px;
   cursor: pointer;
 }
-
