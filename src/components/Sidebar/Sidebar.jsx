@@ -1,50 +1,22 @@
-import React, { useRef, useEffect, useState } from 'react';
-import { io } from 'socket.io-client';
+import React, { useState, useRef, useEffect } from 'react';
 import './Sidebar.css';
 
-const Sidebar = () => {
+const Sidebar = ({ whiteboardId, socket, currentUser }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [users, setUsers] = useState([]);
-  const [stream, setStream] = useState(null);
-  const [cameraOn, setCameraOn] = useState(false); // Domyślnie wyłączona
-  const videoRef = useRef(null);
-  const socket = useRef(null);
+
   const messagesEndRef = useRef(null);
 
-  const [currentUser] = useState(() => ({
-    name: 'User' + Math.floor(Math.random() * 1000),
-    color: `hsl(${Math.random() * 360}, 80%, 60%)`
-  }));
+  const videoRef = useRef(null);
+  const [stream, setStream] = useState(null);
+  const [cameraOn, setCameraOn] = useState(false); // Domyślnie wyłączona
 
-  // 🔹 Inicjalizacja socket.io i pobranie listy użytkowników
   useEffect(() => {
-    socket.current = io('http://localhost:3001');
-
-    socket.current.emit('join', currentUser);
-
-    socket.current.on('users', (userList) => {
-      setUsers(userList);
-    });
-
-    socket.current.on('chat-message', (msg) => {
-      setMessages((prev) => [...prev, msg]);
-    });
-
-    return () => {
-      socket.current.disconnect();
-    };
-  }, [currentUser]);
-
-  // 🔹 Obsługa kamery
- useEffect(() => {
-    // Pobranie strumienia z kamerki
     navigator.mediaDevices
       .getUserMedia({ video: true, audio: false })
       .then((mediaStream) => {
-        // Od razu wyłączamy track wideo
         mediaStream.getVideoTracks().forEach(track => track.enabled = false);
-
         setStream(mediaStream);
         if (videoRef.current) {
           videoRef.current.srcObject = mediaStream;
@@ -52,7 +24,6 @@ const Sidebar = () => {
       })
       .catch((err) => console.error("Nie udało się uruchomić kamerki:", err));
 
-    // Sprzątanie przy unmount
     return () => {
       if (stream) {
         stream.getTracks().forEach(track => track.stop());
@@ -60,20 +31,6 @@ const Sidebar = () => {
     };
   }, []);
 
-  // 🔹 Auto scroll do najnowszej wiadomości
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  // 🔹 Wysyłanie wiadomości
-  const sendMessage = () => {
-    if (!input.trim()) return;
-    const message = { user: currentUser.name, text: input };
-    socket.current.emit('chat-message', message);
-    setInput('');
-  };
-
-  // 🔹 Włączanie/wyłączanie kamery
   const toggleCamera = () => {
     if (stream) {
       stream.getVideoTracks().forEach(track => {
@@ -83,43 +40,109 @@ const Sidebar = () => {
     }
   };
 
+  useEffect(() => {
+    if (!socket) return;
+
+    console.log("🔧 Setting up sidebar listeners");
+
+    // Listen for initial whiteboard data
+    const handleWhiteboardData = (data) => {
+      console.log("👥 Received initial users:", data.users);
+      setUsers(data.users);
+    };
+
+    // Listen for user joined - only update if it's not current user
+    const handleUserJoined = (data) => {
+      console.log("👤 User joined:", data.user);
+      setUsers(prev => {
+        // Filter out any existing instance of this user and add the new one
+        const filtered = prev.filter(user => user.id !== data.user.id);
+        return [...filtered, data.user];
+      });
+    };
+
+    // Listen for user left
+    const handleUserLeft = (data) => {
+      console.log("👤 User left:", data.userId);
+      setUsers(data.users);
+    };
+
+    // Listen for messages
+    const handleChatMessage = (msg) => {
+      setMessages(prev => [...prev, msg]);
+    };
+
+    // Set up listeners
+    socket.on('whiteboard-data', handleWhiteboardData);
+    socket.on('user-joined', handleUserJoined);
+    socket.on('user-left', handleUserLeft);
+    socket.on('chat-message', handleChatMessage);
+
+    return () => {
+      socket.off('whiteboard-data', handleWhiteboardData);
+      socket.off('user-joined', handleUserJoined);
+      socket.off('user-left', handleUserLeft);
+      socket.off('chat-message', handleChatMessage);
+    };
+  }, [socket]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const sendMessage = () => {
+    if (!input.trim() || !socket || !whiteboardId) return;
+    
+    const message = { 
+      user: currentUser.name, 
+      text: input,
+      color: currentUser.color,
+      timestamp: Date.now()
+    };
+    
+    socket.emit('chat-message', {
+      whiteboardId,
+      message
+    });
+    
+    setInput('');
+  };
 
   return (
     <div className="sidebar">
-      {/* Kamera użytkownika */}
       <div className="user-camera">
-        <video ref={videoRef} autoPlay playsInline className="camera-video" />
+        <video 
+          ref={videoRef} 
+          autoPlay 
+          playsInline 
+          className="camera-video"
+        />
         <button className="camera-toggle-btn" onClick={toggleCamera}>
           {cameraOn ? 'Wyłącz kamerę' : 'Włącz kamerę'}
         </button>
       </div>
 
-      {/* Lista użytkowników */}
       <div className="users-list">
         <h4>Online ({users.length})</h4>
         {users.map((user, index) => (
-          <div key={index} className="user-item">
-            <span
-              className="user-color"
-              style={{ backgroundColor: user.color }}
-            />
-            <span className="user-name">{user.name}</span>
+          <div key={user.id || `user-${index}`} className="user-item">
+            <span className="user-color" style={{ backgroundColor: user.color }} />
+            <span className="user-name">
+              {user.name} {user.id === currentUser.id ? '(You)' : ''}
+            </span>
           </div>
         ))}
       </div>
 
-      {/* Chat */}
       <div className="chat-section">
         <h4>Chat</h4>
         <div className="chat-messages">
           {messages.map((msg, i) => {
             const isMine = msg.user === currentUser.name;
-            const userColor =
-              users.find((u) => u.name === msg.user)?.color || '#fff';
             return (
               <div key={i} className={`message-bubble ${isMine ? 'mine' : ''}`}>
                 <div className="bubble-content">
-                  <span className="message-user" style={{ color: userColor }}>
+                  <span className="message-user" style={{ color: msg.color || '#fff' }}>
                     {msg.user}
                   </span>
                   <div className="message-text">{msg.text}</div>
@@ -140,12 +163,6 @@ const Sidebar = () => {
           />
           <button onClick={sendMessage}>➤</button>
         </div>
-      </div>
-
-      {/* Notatki */}
-      <div className="notes-section">
-        <h4>Notatki</h4>
-        <textarea placeholder="Dodaj notatkę..." />
       </div>
     </div>
   );

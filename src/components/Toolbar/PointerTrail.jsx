@@ -8,6 +8,7 @@ const PointerTrail = ({ active }) => {
 
   useEffect(() => {
     const canvas = canvasRef.current;
+    if (!canvas) return;
     const ctx = canvas.getContext('2d');
 
     const resizeCanvas = () => {
@@ -17,33 +18,31 @@ const PointerTrail = ({ active }) => {
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
+    const mainCanvas = document.querySelector('.canvas-area');
+    if (!mainCanvas) return;
+
     const draw = () => {
       if (!active) return;
 
       const now = Date.now();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // 🔹 lekko przezroczysta czarna warstwa, żeby smuga była płynna
-      ctx.fillStyle = 'rgba(0,0,0,0.03)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // 🔹 ogon pointera (intensywnie czerwony)
+      // 🔹 smuga pointera
       for (let i = 0; i < trailRef.current.length; i++) {
         const p = trailRef.current[i];
         const age = (now - p.time) / 300;
         if (age > 1) continue;
 
         const alpha = 1 - age;
-        const radius = 5 + (1 - alpha) * 7.5; // zmniejszone o połowę
+        const radius = 5 + (1 - alpha) * 7.5;
 
         const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
-        gradient.addColorStop(0, `rgba(255,0,0,1)`);       // pełna czerwień
-        gradient.addColorStop(0.7, `rgba(200,0,0,1)`);     // ciemniejsza czerwień
-        gradient.addColorStop(1, `rgba(150,0,0,0.5)`);     // minimalne zanikanie
-        ctx.fillStyle = gradient;           // zanikanie
+        gradient.addColorStop(0, `rgba(255,0,0,1)`);
+        gradient.addColorStop(0.7, `rgba(200,0,0,1)`);
+        gradient.addColorStop(1, `rgba(150,0,0,0.5)`);
+        ctx.fillStyle = gradient;
 
         ctx.beginPath();
-        ctx.fillStyle = gradient;
         ctx.arc(p.x, p.y, radius, 0, 2 * Math.PI);
         ctx.fill();
       }
@@ -60,15 +59,15 @@ const PointerTrail = ({ active }) => {
         }
 
         const radius = 10 + progress * 60; // rosnący promień
-        const alpha = 1 - progress;        // zanikanie
+        const alpha = 1 - progress;
         ctx.beginPath();
         ctx.arc(c.x, c.y, radius, 0, 2 * Math.PI);
-        ctx.strokeStyle = `rgba(255,0,0,1)`;  // pełna czerwień, mocna
+        ctx.strokeStyle = `rgba(255,0,0,${alpha})`;
         ctx.lineWidth = 4;
         ctx.stroke();
       }
 
-      // usuń stare punkty
+      // usuń stare punkty smugi
       trailRef.current = trailRef.current.filter((p) => now - p.time < 300);
 
       animationRef.current = requestAnimationFrame(draw);
@@ -76,29 +75,38 @@ const PointerTrail = ({ active }) => {
 
     const handleMouseMove = (e) => {
       if (!active) return;
-      trailRef.current.push({ x: e.clientX, y: e.clientY, time: Date.now() });
+      const rect = mainCanvas.getBoundingClientRect();
+      if (
+        e.clientX >= rect.left &&
+        e.clientX <= rect.right &&
+        e.clientY >= rect.top &&
+        e.clientY <= rect.bottom
+      ) {
+        trailRef.current.push({ x: e.clientX, y: e.clientY, time: Date.now() });
+      }
     };
 
     const handleMouseDown = (e) => {
       if (!active) return;
-      clicksRef.current.push({ x: e.clientX, y: e.clientY, time: Date.now() });
+      const rect = mainCanvas.getBoundingClientRect();
+      if (
+        e.clientX >= rect.left &&
+        e.clientX <= rect.right &&
+        e.clientY >= rect.top &&
+        e.clientY <= rect.bottom
+      ) {
+        clicksRef.current.push({ x: e.clientX, y: e.clientY, time: Date.now() });
+      }
     };
 
-    if (active) {
-      animationRef.current = requestAnimationFrame(draw);
-    } else {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      trailRef.current = [];
-      clicksRef.current = [];
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    }
+    mainCanvas.addEventListener('mousemove', handleMouseMove);
+    mainCanvas.addEventListener('mousedown', handleMouseDown);
 
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mousedown', handleMouseDown);
+    if (active) animationRef.current = requestAnimationFrame(draw);
 
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mousedown', handleMouseDown);
+      mainCanvas.removeEventListener('mousemove', handleMouseMove);
+      mainCanvas.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('resize', resizeCanvas);
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
@@ -115,7 +123,7 @@ const PointerTrail = ({ active }) => {
         height: '100vh',
         pointerEvents: 'none',
         zIndex: 9999,
-        mixBlendMode: 'normal', // mocny czerwony
+        mixBlendMode: 'normal',
       }}
     />
   );
