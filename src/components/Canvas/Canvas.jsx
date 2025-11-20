@@ -9,6 +9,7 @@ const Canvas = ({
   setShowColorPicker, 
   whiteboardId, 
   socket, 
+  setTool,
   currentUser,
   onDrawing,
   onCursorMove 
@@ -16,9 +17,11 @@ const Canvas = ({
   const [backgroundMode, setBackgroundMode] = useState('grid');
   const [remoteCursors, setRemoteCursors] = useState(new Map());
   const canvasRef = useRef(null);
+  const containerRef = useRef(null);
   const contextRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const currentDrawingRef = useRef(null);
+  const [notes, setNotes] = useState([]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
