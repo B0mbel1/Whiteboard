@@ -14,8 +14,8 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
   const [recentColors, setRecentColors] = useState([]);
   const [tempColor, setTempColor] = useState(selectedColor);
 
-const handleSizeChange = (tool, value) => {
-  setSize(prev => ({ ...prev, [tool]: parseInt(value, 10) }));
+const handleSizeChange = (toolKey, value) => {
+  setSize(prev => ({ ...prev, [toolKey]: parseInt(value, 10) }));
 };
 
   const handleShapeClick = (e) => {

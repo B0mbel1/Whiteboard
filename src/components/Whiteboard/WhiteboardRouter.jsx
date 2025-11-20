@@ -4,6 +4,7 @@ import { io } from 'socket.io-client';
 import Toolbar from '../Toolbar/Toolbar';
 import Canvas from '../Canvas/Canvas';
 import Sidebar from '../Sidebar/Sidebar';
+import PointerTrail from '../Toolbar/PointerTrail';
 import ColorPicker from '../Toolbar/ColorPicker';
 import './Whiteboard.css';
 
@@ -182,6 +183,8 @@ const WhiteboardRouter = () => {
           showColorPicker={showColorPicker}
           setShowColorPicker={setShowColorPicker}
         />
+
+          <PointerTrail active={tool === 'pointer'} />
         
         <Canvas 
           tool={tool}

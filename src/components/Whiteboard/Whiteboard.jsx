@@ -10,7 +10,7 @@ import PointerTrail from '../Toolbar/PointerTrail';
 import './Whiteboard.css';
 
 const Whiteboard = () => {
-  const [tool, setTool] = useState('pencil');
+  const [tool, setTool] = useState('cursor');
   const [color, setColor] = useState('#000000');
   const [size, setSize] = useState({ pencil: 3, eraser: 10, brush: 5 });
   const [showColorPicker, setShowColorPicker] = useState(false);

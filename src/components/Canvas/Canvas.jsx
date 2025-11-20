@@ -213,13 +213,18 @@ const Canvas = ({
     ctx.lineWidth = toolSize;
   };
 
-  const getToolSize = () => {
-    let toolSize = size[tool] || 3;
-    if (tool === 'pencil') toolSize = Math.max(1, toolSize - 2);
-    if (tool === 'brush') toolSize += 10;
-    if (tool === 'eraser') toolSize += 30;
-    return toolSize;
-  };
+const getToolSize = () => {
+  const base = (typeof size === "object" && size?.[tool]) 
+    ? size[tool] 
+    : (typeof size === "number" ? size : 3);
+
+  if (tool === 'pencil') return Math.max(1, base - 2);
+  if (tool === 'brush') return base + 10;
+  if (tool === 'eraser') return base + 30;
+
+  return base;
+};
+
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -249,6 +254,8 @@ const Canvas = ({
   }, [color, size, tool]);
 
   const startDrawing = ({ nativeEvent }) => {
+      // ❗ Nie rysujemy, gdy tool NIE jest rysujący
+  if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
     if (setShowColorPicker) {
       setShowColorPicker(false);
     }
@@ -269,6 +276,12 @@ const Canvas = ({
 
   const stopDrawing = () => {
     if (!isDrawing) return;
+
+      // ❗ zablokuj NIE-rysujące tool’e
+  if (!['pencil', 'brush', 'eraser'].includes(tool)) {
+    setIsDrawing(false);
+    return;
+  }
     
     contextRef.current.closePath();
     setIsDrawing(false);
@@ -282,6 +295,9 @@ const Canvas = ({
 
   const draw = ({ nativeEvent }) => {
     if (!isDrawing || !contextRef.current) return;
+
+  // ❗ zablokuj jeśli tool nie rysuje
+  if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
     
     const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
     
