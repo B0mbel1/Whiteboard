@@ -254,6 +254,8 @@ const Canvas = ({
   }, [color, size, tool]);
 
   const startDrawing = ({ nativeEvent }) => {
+    if (nativeEvent.button !== 0) return;
+
     // ❗ Nie rysujemy, gdy tool NIE jest rysujący
     if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
 
