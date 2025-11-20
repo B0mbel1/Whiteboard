@@ -2,17 +2,17 @@ import React, { useState, useRef, useEffect } from 'react';
 import './Canvas.css';
 import Note from './Note';
 
-const Canvas = ({ 
-  tool, 
-  color, 
-  size, 
-  setShowColorPicker, 
-  whiteboardId, 
-  socket, 
+const Canvas = ({
+  tool,
+  color,
+  size,
+  setShowColorPicker,
+  whiteboardId,
+  socket,
   setTool,
   currentUser,
   onDrawing,
-  onCursorMove 
+  onCursorMove
 }) => {
   const [backgroundMode, setBackgroundMode] = useState('grid');
   const [remoteCursors, setRemoteCursors] = useState(new Map());
@@ -67,17 +67,17 @@ const Canvas = ({
       // Handle initial whiteboard state - REDRAW EVERYTHING
       const handleWhiteboardState = (data) => {
         console.log("🎨 Redrawing", data.drawingData.length, "existing drawings");
-        
+
         // Clear canvas first
         clearCanvas();
-        
+
         // Redraw ALL existing drawings with a small delay to ensure canvas is ready
         setTimeout(() => {
           data.drawingData.forEach(drawing => {
             drawRemote(drawing);
           });
         }, 100);
-        
+
         // Initialize cursors for OTHER users only
         const otherUsers = data.users.filter(user => user.id !== socket.id);
         const cursorsMap = new Map();
@@ -128,7 +128,7 @@ const Canvas = ({
     if (!context || !canvas) return;
 
     context.clearRect(0, 0, canvas.width, canvas.height);
-    
+
     if (backgroundMode === 'white') {
       context.fillStyle = 'white';
       context.fillRect(0, 0, canvas.width, canvas.height);
@@ -143,14 +143,14 @@ const Canvas = ({
     if (!context || !data.points || data.points.length === 0) return;
 
     context.save();
-    
+
     if (data.tool === 'pencil' || data.tool === 'brush') {
       context.globalCompositeOperation = 'source-over';
       context.strokeStyle = data.color;
       context.lineWidth = data.size;
       context.lineCap = 'round';
       context.lineJoin = 'round';
-      
+
       if (data.tool === 'brush') {
         context.shadowBlur = 5;
         context.shadowColor = data.color;
@@ -166,11 +166,11 @@ const Canvas = ({
 
     context.beginPath();
     context.moveTo(data.points[0].x, data.points[0].y);
-    
+
     for (let i = 1; i < data.points.length; i++) {
       context.lineTo(data.points[i].x, data.points[i].y);
     }
-    
+
     context.stroke();
     context.restore();
   };
@@ -213,17 +213,17 @@ const Canvas = ({
     ctx.lineWidth = toolSize;
   };
 
-const getToolSize = () => {
-  const base = (typeof size === "object" && size?.[tool]) 
-    ? size[tool] 
-    : (typeof size === "number" ? size : 3);
+  const getToolSize = () => {
+    const base = (typeof size === "object" && size?.[tool])
+      ? size[tool]
+      : (typeof size === "number" ? size : 3);
 
-  if (tool === 'pencil') return Math.max(1, base - 2);
-  if (tool === 'brush') return base + 10;
-  if (tool === 'eraser') return base + 30;
+    if (tool === 'pencil') return Math.max(1, base - 2);
+    if (tool === 'brush') return base + 10;
+    if (tool === 'eraser') return base + 30;
 
-  return base;
-};
+    return base;
+  };
 
 
   useEffect(() => {
@@ -254,53 +254,51 @@ const getToolSize = () => {
   }, [color, size, tool]);
 
   const startDrawing = ({ nativeEvent }) => {
-      // ❗ Nie rysujemy, gdy tool NIE jest rysujący
-  if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
-    if (setShowColorPicker) {
-      setShowColorPicker(false);
-    }
-    
-    const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
-    
-    contextRef.current.beginPath();
-    contextRef.current.moveTo(x, y);
+    // ❗ Nie rysujemy, gdy tool NIE jest rysujący
+    if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
+
+    if (setShowColorPicker) setShowColorPicker(false);
+    const { offsetX, offsetY } = nativeEvent;
+    const ctx = contextRef.current;
+    ctx.beginPath();
+    ctx.arc(offsetX, offsetY, ctx.lineWidth / 2, 0, Math.PI * 2);
+    ctx.fillStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : color;
+    ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
+    ctx.fill();
+
+    // rozpocznij rysowanie jak zwykle
+    ctx.beginPath();
+    ctx.moveTo(offsetX, offsetY);
     setIsDrawing(true);
-    
-    currentDrawingRef.current = {
-      tool,
-      color,
-      size,
-      points: [{ x, y }]
-    };
   };
 
   const stopDrawing = () => {
     if (!isDrawing) return;
 
-      // ❗ zablokuj NIE-rysujące tool’e
-  if (!['pencil', 'brush', 'eraser'].includes(tool)) {
-    setIsDrawing(false);
-    return;
-  }
-    
+    // ❗ zablokuj NIE-rysujące tool’e
+    if (!['pencil', 'brush', 'eraser'].includes(tool)) {
+      setIsDrawing(false);
+      return;
+    }
+
     contextRef.current.closePath();
     setIsDrawing(false);
-    
+
     if (currentDrawingRef.current && onDrawing) {
       onDrawing(currentDrawingRef.current);
     }
-    
+
     currentDrawingRef.current = null;
   };
 
   const draw = ({ nativeEvent }) => {
     if (!isDrawing || !contextRef.current) return;
 
-  // ❗ zablokuj jeśli tool nie rysuje
-  if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
-    
+    // ❗ zablokuj jeśli tool nie rysuje
+    if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
+
     const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
-    
+
     if (currentDrawingRef.current) {
       currentDrawingRef.current.points.push({ x, y });
     }
@@ -359,7 +357,7 @@ const getToolSize = () => {
 
   const handleMouseMove = (e) => {
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
-    
+
     // Send cursor position continuously
     if (onCursorMove) {
       onCursorMove({ x, y });
@@ -381,7 +379,7 @@ const getToolSize = () => {
     const currentIndex = backgroundModes.findIndex(mode => mode.id === backgroundMode);
     const nextIndex = (currentIndex + 1) % backgroundModes.length;
     setBackgroundMode(backgroundModes[nextIndex].id);
-    
+
     // Clear and redraw canvas with new background
     setTimeout(() => {
       clearCanvas();
@@ -430,7 +428,7 @@ const getToolSize = () => {
   return (
     <div className="canvas-container" ref={containerRef}>
       <div className={`canvas-area background-${backgroundMode}`}
-      onClick={handleCanvasClick}
+        onClick={handleCanvasClick}
       >
         <canvas
           ref={canvasRef}
@@ -498,10 +496,10 @@ const getToolSize = () => {
               </div>
             </div>
           )
-          
+
         ))}
-        
-        <button 
+
+        <button
           className="background-toggle"
           onClick={toggleBackground}
           title={`Tło: ${backgroundModes.find(mode => mode.id === backgroundMode)?.name}`}
