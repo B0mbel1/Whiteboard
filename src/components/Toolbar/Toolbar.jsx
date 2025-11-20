@@ -14,9 +14,9 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
   const [recentColors, setRecentColors] = useState([]);
   const [tempColor, setTempColor] = useState(selectedColor);
 
-  const handleSizeChange = (toolKey, value) => {
-    setSize(prev => ({ ...prev, [toolKey]: parseInt(value, 10) }));
-  };
+const handleSizeChange = (toolKey, value) => {
+  setSize(prev => ({ ...prev, [toolKey]: parseInt(value, 10) }));
+};
 
   const handleShapeClick = (e) => {
     const rect = e.target.getBoundingClientRect();
@@ -27,14 +27,18 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
     }));
   };
 
-  const handleEmojiClick = (e) => {
-    const rect = e.target.getBoundingClientRect();
-    setShowEmojis(prev => ({
-      visible: !prev.visible,
-      x: rect.right + 10,
-      y: rect.top - 20
-    }));
-  };
+const handleEmojiClick = (e) => {
+const rect = e.target.getBoundingClientRect();
+setShowEmojis(prev => ({
+visible: !prev.visible,
+x: rect.right + 10,
+y: rect.top - 20
+}));
+};
+
+const handleColorClick = () => {
+  setShowColorPicker(prev => !prev);
+};
 
   const handleSelectShape = (shape) => {
     setSelectedShape(shape);

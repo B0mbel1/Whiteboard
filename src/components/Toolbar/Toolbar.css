@@ -78,7 +78,10 @@
   color: #555;
 }
 
-/* 🔹 Sekcja koloru */
+.color-btn.selected {
+  border-color: #333;
+}
+
 .color-tool-icon {
   display: flex;
   align-items: center;
@@ -93,7 +96,6 @@
   border-radius: 3px;
 }
 
-/* Cofnij / Ponów */
 .tool-undo-redo {
   display: flex;
   gap: 5px;
