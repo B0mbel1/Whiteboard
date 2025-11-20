@@ -84,15 +84,15 @@ io.on("connection", (socket) => {
   // Join a specific whiteboard room
   socket.on("join-whiteboard", (data) => {
     const { whiteboardId, user } = data;
-
+    
     // Prevent multiple joins from the same socket
     if (hasJoinedWhiteboard) {
       console.log(`⚠️ Socket ${socket.id} already joined a whiteboard, ignoring duplicate join`);
       return;
     }
-
+    
     console.log(`👤 User ${user.name} trying to join: ${whiteboardId}`);
-
+    
     // Create whiteboard if it doesn't exist (for direct URL access)
     if (!whiteboards.has(whiteboardId)) {
       whiteboards.set(whiteboardId, {
@@ -101,37 +101,37 @@ io.on("connection", (socket) => {
       });
       console.log(`📝 Created whiteboard on join: ${whiteboardId}`);
     }
-
+    
     const whiteboard = whiteboards.get(whiteboardId);
-
+    
     // Check if user already exists in this whiteboard
     if (whiteboard.users.has(socket.id)) {
       console.log(`⚠️ User ${socket.id} already in whiteboard, removing old entry`);
       whiteboard.users.delete(socket.id);
     }
-
+    
     // Add user to whiteboard with socket ID as key
     whiteboard.users.set(socket.id, {
       id: socket.id,
       ...user,
       position: { x: 0, y: 0 }
     });
-
+    
     // Mark this socket as having joined a whiteboard
     hasJoinedWhiteboard = true;
-
+    
     // Join socket room
     socket.join(whiteboardId);
-
+    
     console.log(`👤 User ${user.name} joined whiteboard: ${whiteboardId}`);
     logWhiteboardState(whiteboardId);
-
+    
     // Send current users and ALL drawing data to the new user
     socket.emit("whiteboard-data", {
       users: Array.from(whiteboard.users.values()),
       drawingData: whiteboard.drawingData
     });
-
+    
     // Notify other users in the room about the new user
     socket.to(whiteboardId).emit("user-joined", {
       user: { id: socket.id, ...user },
@@ -143,7 +143,7 @@ io.on("connection", (socket) => {
   socket.on("drawing", (data) => {
     const { whiteboardId, tool, points, color, size } = data;
     const whiteboard = whiteboards.get(whiteboardId);
-
+    
     if (whiteboard) {
       // Store drawing data (limit to last 1000 drawings to prevent memory issues)
       whiteboard.drawingData.push({
@@ -154,12 +154,12 @@ io.on("connection", (socket) => {
         userId: socket.id,
         timestamp: Date.now()
       });
-
+      
       // Keep only last 1000 drawings
       if (whiteboard.drawingData.length > 1000) {
         whiteboard.drawingData = whiteboard.drawingData.slice(-1000);
       }
-
+      
       // Broadcast to other users in the room
       socket.to(whiteboardId).emit("drawing", {
         tool,
@@ -175,11 +175,11 @@ io.on("connection", (socket) => {
   socket.on("cursor-move", (data) => {
     const { whiteboardId, position } = data;
     const whiteboard = whiteboards.get(whiteboardId);
-
+    
     if (whiteboard && whiteboard.users.has(socket.id)) {
       // Update user position
       whiteboard.users.get(socket.id).position = position;
-
+      
       // Broadcast to other users
       socket.to(whiteboardId).emit("cursor-move", {
         userId: socket.id,
@@ -193,7 +193,7 @@ io.on("connection", (socket) => {
   socket.on("chat-message", (data) => {
     const { whiteboardId, message } = data;
     console.log(`💬 Chat message in ${whiteboardId} from ${socket.id}:`, message.text);
-
+    
     // Broadcast to all users including sender (for immediate feedback)
     io.to(whiteboardId).emit("chat-message", message);
   });
@@ -201,22 +201,22 @@ io.on("connection", (socket) => {
   // Handle user disconnection
   socket.on("disconnect", () => {
     console.log("❌ User disconnected:", socket.id);
-
+    
     // Find and remove user from all whiteboards
     for (const [whiteboardId, whiteboard] of whiteboards.entries()) {
       if (whiteboard.users.has(socket.id)) {
         const user = whiteboard.users.get(socket.id);
         whiteboard.users.delete(socket.id);
-
+        
         // Notify other users
         socket.to(whiteboardId).emit("user-left", {
           userId: socket.id,
           users: Array.from(whiteboard.users.values())
         });
-
+        
         console.log(`❌ User ${user.name} left whiteboard: ${whiteboardId}`);
         logWhiteboardState(whiteboardId);
-
+        
         // Clean up empty whiteboards after 1 hour (you can adjust this)
         if (whiteboard.users.size === 0) {
           setTimeout(() => {

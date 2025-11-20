@@ -4,6 +4,7 @@ import { io } from 'socket.io-client';
 import Toolbar from '../Toolbar/Toolbar';
 import Canvas from '../Canvas/Canvas';
 import Sidebar from '../Sidebar/Sidebar';
+import PointerTrail from '../Toolbar/PointerTrail';
 import ColorPicker from '../Toolbar/ColorPicker';
 import './Whiteboard.css';
 
@@ -15,22 +16,22 @@ const WhiteboardRouter = () => {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [socket, setSocket] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-
+  
   const [currentUser] = useState(() => {
     // Generate a more unique user ID
     const userId = 'user_' + Math.random().toString(36).substring(2, 15);
     const userName = 'User' + Math.floor(Math.random() * 1000);
     const userColor = `hsl(${Math.random() * 360}, 80%, 60%)`;
-
+    
     console.log("👤 Generated user:", { id: userId, name: userName, color: userColor });
-
+    
     return {
       id: userId,
       name: userName,
       color: userColor
     };
   });
-
+  
   const socketRef = useRef(null);
   const hasJoinedRef = useRef(false); // Track if we've already joined
 
@@ -51,13 +52,13 @@ const WhiteboardRouter = () => {
   const initializeSocket = (whiteboardId) => {
     setIsLoading(true);
     hasJoinedRef.current = false;
-
+    
     // Initialize socket connection
     const newSocket = io('http://localhost:3001', {
       timeout: 10000,
       transports: ['websocket', 'polling']
     });
-
+    
     socketRef.current = newSocket;
     setSocket(newSocket);
 
@@ -67,7 +68,7 @@ const WhiteboardRouter = () => {
     // Set up connection success handler - JOIN ONLY AFTER CONNECTION
     newSocket.on('connect', () => {
       console.log("✅ Connected to server");
-
+      
       // Join the whiteboard only once after connection is established
       if (!hasJoinedRef.current) {
         hasJoinedRef.current = true;
@@ -77,7 +78,7 @@ const WhiteboardRouter = () => {
         });
         console.log("📤 Sent join-whiteboard event");
       }
-
+      
       setIsLoading(false);
     });
 
@@ -183,6 +184,8 @@ const WhiteboardRouter = () => {
           setShowColorPicker={setShowColorPicker}
         />
 
+          <PointerTrail active={tool === 'pointer'} />
+        
         <Canvas 
           tool={tool}
           color={color}
@@ -194,7 +197,7 @@ const WhiteboardRouter = () => {
           onDrawing={handleDrawing}
           onCursorMove={handleCursorMove}
         />
-
+        
         <Sidebar 
           whiteboardId={whiteboardId}
           socket={socketRef.current}

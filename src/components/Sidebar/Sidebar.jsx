@@ -1,63 +1,78 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import './Sidebar.css';
 
 const Sidebar = ({ whiteboardId, socket, currentUser }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [users, setUsers] = useState([]);
+
   const messagesEndRef = useRef(null);
 
   const videoRef = useRef(null);
   const [stream, setStream] = useState(null);
-  const [cameraOn, setCameraOn] = useState(false);
+  const [cameraOn, setCameraOn] = useState(false); // Domyślnie wyłączona
 
-  // Kamera użytkownika
   useEffect(() => {
-    navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-      .then(mediaStream => {
-        mediaStream.getVideoTracks().forEach(track => track.enabled = false); // start off
+    navigator.mediaDevices
+      .getUserMedia({ video: true, audio: false })
+      .then((mediaStream) => {
+        mediaStream.getVideoTracks().forEach(track => track.enabled = false);
         setStream(mediaStream);
-        if (videoRef.current) videoRef.current.srcObject = mediaStream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = mediaStream;
+        }
       })
-      .catch(err => console.error("Nie udało się uruchomić kamerki:", err));
+      .catch((err) => console.error("Nie udało się uruchomić kamerki:", err));
 
     return () => {
-      if (stream) stream.getTracks().forEach(track => track.stop());
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
     };
   }, []);
 
   const toggleCamera = () => {
-    if (!stream) return;
-    stream.getVideoTracks().forEach(track => track.enabled = !track.enabled);
-    setCameraOn(prev => !prev);
+    if (stream) {
+      stream.getVideoTracks().forEach(track => {
+        track.enabled = !track.enabled;
+      });
+      setCameraOn(prev => !prev);
+    }
   };
 
-  // Socket.io: ustawienie listenerów
   useEffect(() => {
-    if (!socket || !whiteboardId || !currentUser) return;
+    if (!socket) return;
 
-    // Dołącz do whiteboard
-    socket.emit('join-whiteboard', { whiteboardId, user: currentUser });
+    console.log("🔧 Setting up sidebar listeners");
 
+    // Listen for initial whiteboard data
     const handleWhiteboardData = (data) => {
+      console.log("👥 Received initial users:", data.users);
       setUsers(data.users);
     };
 
+    // Listen for user joined - only update if it's not current user
     const handleUserJoined = (data) => {
+      console.log("👤 User joined:", data.user);
       setUsers(prev => {
-        const filtered = prev.filter(u => u.id !== data.user.id);
+        // Filter out any existing instance of this user and add the new one
+        const filtered = prev.filter(user => user.id !== data.user.id);
         return [...filtered, data.user];
       });
     };
 
+    // Listen for user left
     const handleUserLeft = (data) => {
+      console.log("👤 User left:", data.userId);
       setUsers(data.users);
     };
 
+    // Listen for messages
     const handleChatMessage = (msg) => {
       setMessages(prev => [...prev, msg]);
     };
 
+    // Set up listeners
     socket.on('whiteboard-data', handleWhiteboardData);
     socket.on('user-joined', handleUserJoined);
     socket.on('user-left', handleUserLeft);
@@ -69,42 +84,48 @@ const Sidebar = ({ whiteboardId, socket, currentUser }) => {
       socket.off('user-left', handleUserLeft);
       socket.off('chat-message', handleChatMessage);
     };
-  }, [socket, whiteboardId, currentUser]);
+  }, [socket]);
 
-  // Auto-scroll chat
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const sendMessage = () => {
     if (!input.trim() || !socket || !whiteboardId) return;
-
-    const message = {
-      user: currentUser.name,
+    
+    const message = { 
+      user: currentUser.name, 
       text: input,
       color: currentUser.color,
       timestamp: Date.now()
     };
-
-    socket.emit('chat-message', { whiteboardId, message });
+    
+    socket.emit('chat-message', {
+      whiteboardId,
+      message
+    });
+    
     setInput('');
   };
 
   return (
     <div className="sidebar">
-      {/* Kamera */}
       <div className="user-camera">
-        <video ref={videoRef} autoPlay playsInline className="camera-video" />
+        <video 
+          ref={videoRef} 
+          autoPlay 
+          playsInline 
+          className="camera-video"
+        />
         <button className="camera-toggle-btn" onClick={toggleCamera}>
           {cameraOn ? 'Wyłącz kamerę' : 'Włącz kamerę'}
         </button>
       </div>
 
-      {/* Lista użytkowników */}
       <div className="users-list">
         <h4>Online ({users.length})</h4>
-        {users.map((user, i) => (
-          <div key={user.id || i} className="user-item">
+        {users.map((user, index) => (
+          <div key={user.id || `user-${index}`} className="user-item">
             <span className="user-color" style={{ backgroundColor: user.color }} />
             <span className="user-name">
               {user.name} {user.id === currentUser.id ? '(You)' : ''}
@@ -113,7 +134,6 @@ const Sidebar = ({ whiteboardId, socket, currentUser }) => {
         ))}
       </div>
 
-      {/* Chat */}
       <div className="chat-section">
         <h4>Chat</h4>
         <div className="chat-messages">
@@ -132,16 +152,22 @@ const Sidebar = ({ whiteboardId, socket, currentUser }) => {
           })}
           <div ref={messagesEndRef} />
         </div>
+
         <div className="chat-input">
           <input
             type="text"
             placeholder="Napisz wiadomość..."
             value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && sendMessage()}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
           />
           <button onClick={sendMessage}>➤</button>
         </div>
+      </div>
+
+      <div className="notes-section">
+        <h4>Notatki</h4>
+        <textarea placeholder="Dodaj notatkę..." />
       </div>
     </div>
   );

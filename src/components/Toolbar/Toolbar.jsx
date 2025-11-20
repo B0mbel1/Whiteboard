@@ -1,21 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import './Toolbar.css';
 import PointerTrail from './PointerTrail.jsx';
 import ToolRangeCircle from './ToolRangeCircle.jsx';
 
-const Toolbar = ({
-  position,
-  tool,
-  setTool,
-  color,
-  setColor,
-  size,
-  setSize,
-  setShowColorPicker,
-  socket,           // <-- socket.io socket (socketRef.current z Whiteboard)
-  whiteboardId,     // <-- id pokoju/whiteboarda
-  currentUser       // <-- obiekt usera { id, name, color }
-}) => {
+const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker }) => {
   const [showShapes, setShowShapes] = useState({ visible: false, x: 0, y: 0 });
   const [showEmojis, setShowEmojis] = useState({ visible: false, x: 0, y: 0 });
   const [selectedShape, setSelectedShape] = useState(null);
@@ -26,38 +14,12 @@ const Toolbar = ({
   const [recentColors, setRecentColors] = useState([]);
   const [tempColor, setTempColor] = useState(selectedColor);
 
-  const [showGifs, setShowGifs] = useState({ visible: false, x: 0, y: 0 });
-  const [gifQuery, setGifQuery] = useState('');
-
-  const [gifs, setGifs] = useState([]); // lista gifów do wyświetlenia
-  const searchTimeoutRef = useRef(null);
-
-  const [gifOffset, setGifOffset] = useState(0); // nowy offset
-  const [hasMoreGifs, setHasMoreGifs] = useState(true); // czy są jeszcze kolejne GIFy
-  const gifCache = useRef({});
-
-  // sieciowo: lista współpracowników (przykładowe użycie)
-  const [collaborators, setCollaborators] = useState([]);
-
-  const API_KEY = 'WJnPjdfsVgD5j5MmtTnWeI8Y05htecbA'; // wstaw tutaj swój Giphy API Key
-  const GIF_LIMIT = 24; // np. 24 GIFy na stronę
-
-  const handleSizeChange = (toolKey, value) => {
-    setSize(prev => ({ ...prev, [toolKey]: parseInt(value, 10) }));
-
-    // emitujemy zmianę rozmiaru narzędzia do serwera
-    if (socket && whiteboardId) {
-      socket.emit('tool-size-change', {
-        whiteboardId,
-        userId: currentUser?.id,
-        tool: toolKey,
-        size: parseInt(value, 10)
-      });
-    }
-  };
+const handleSizeChange = (toolKey, value) => {
+  setSize(prev => ({ ...prev, [toolKey]: parseInt(value, 10) }));
+};
 
   const handleShapeClick = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
+    const rect = e.target.getBoundingClientRect();
     setShowShapes(prev => ({
       visible: !prev.visible,
       x: rect.right + 10,
@@ -65,128 +27,27 @@ const Toolbar = ({
     }));
   };
 
-  //=====================================GIFY============================
-  const handleGifClick = (e) => {
-    const rect = e.target.getBoundingClientRect();
-    setShowGifs(prev => ({
-      visible: !prev.visible,
-      x: rect.right + 10,
-      y: rect.top - 20
-    }));
-  };
+const handleEmojiClick = (e) => {
+const rect = e.target.getBoundingClientRect();
+setShowEmojis(prev => ({
+visible: !prev.visible,
+x: rect.right + 10,
+y: rect.top - 20
+}));
+};
 
-  const fetchGifs = async (query = '', offset = 0, append = false) => {
-    const cacheKey = `${query}_${offset}`;
-    if (gifCache.current[cacheKey]) {
-      if (append) {
-        setGifs(prev => [...prev, ...gifCache.current[cacheKey]]);
-      } else {
-        setGifs(gifCache.current[cacheKey]);
-      }
-      return;
-    }
-
-    try {
-      const url = query
-        ? `https://api.giphy.com/v1/gifs/search?api_key=${API_KEY}&q=${encodeURIComponent(query)}&limit=${GIF_LIMIT}&offset=${offset}`
-        : `https://api.giphy.com/v1/gifs/trending?api_key=${API_KEY}&limit=${GIF_LIMIT}&offset=${offset}`;
-
-      const res = await fetch(url);
-      const data = await res.json();
-      const urls = data.data.map(gif => gif.images.fixed_width.url);
-
-      gifCache.current[cacheKey] = urls; // zapis do cache
-
-      if (append) {
-        setGifs(prev => [...prev, ...urls]);
-      } else {
-        setGifs(urls);
-      }
-
-      setHasMoreGifs(data.pagination.total_count > offset + GIF_LIMIT);
-    } catch (err) {
-      console.error('Błąd pobierania GIFów:', err);
-    }
-  };
-
-  const handleGifQueryChange = (e) => {
-    const value = e.target.value;
-    setGifQuery(value);
-
-    // reset poprzedniego timera
-    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-
-    // szybki debounce
-    searchTimeoutRef.current = setTimeout(() => {
-      fetchGifs(value.trim());
-      setGifOffset(0); // reset offset przy nowym wyszukiwaniu
-    }, 100); // 100ms zamiast 200-300
-  };
-
-  useEffect(() => {
-    if (!showGifs.visible) return;
-
-    // natychmiastowy fetch przy otwarciu popupu (trending GIFy)
-    if (gifQuery.trim() === '') {
-      fetchGifs();
-      return;
-    }
-
-    // debounce przy wpisywaniu
-    const timer = setTimeout(() => {
-      fetchGifs(gifQuery.trim());
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [showGifs.visible, gifQuery]);
-
-  const handleGifScroll = (e) => {
-    const { scrollTop, scrollHeight, clientHeight } = e.target;
-    if (scrollTop + clientHeight >= scrollHeight - 10) { // blisko dołu
-      if (hasMoreGifs) {
-        const newOffset = gifOffset + GIF_LIMIT;
-        fetchGifs(gifQuery.trim(), newOffset, true);
-        setGifOffset(newOffset);
-      }
-    }
-  };
-
-  //===================================EMOJI============================
-  const handleEmojiClick = (e) => {
-    const rect = e.target.getBoundingClientRect();
-    setShowEmojis(prev => ({
-      visible: !prev.visible,
-      x: rect.right + 10,
-      y: rect.top - 20
-    }));
-  };
+const handleColorClick = () => {
+  setShowColorPicker(prev => !prev);
+};
 
   const handleSelectShape = (shape) => {
     setSelectedShape(shape);
     setShowShapes({ visible: false, x: 0, y: 0 });
-
-    // emitujemy wybranie kształtu
-    if (socket && whiteboardId) {
-      socket.emit('shape-selected', {
-        whiteboardId,
-        userId: currentUser?.id,
-        shape
-      });
-    }
   };
 
   const handleSelectEmoji = (emoji) => {
     setSelectedEmoji(emoji);
     setShowEmojis({ visible: false, x: 0, y: 0 });
-
-    // emitujemy wybranie emotki
-    if (socket && whiteboardId) {
-      socket.emit('emoji-selected', {
-        whiteboardId,
-        userId: currentUser?.id,
-        emoji
-      });
-    }
   };
 
   // 🖌️ Zmiana kursora tylko dla canvas
@@ -252,66 +113,6 @@ const Toolbar = ({
     };
   }, [tool]);
 
-  // --- SIEĆ: emitujemy zmianę tool kiedy 'tool' (prop) się zmieni
-  useEffect(() => {
-    if (!socket || !whiteboardId) return;
-
-    socket.emit('tool-change', {
-      whiteboardId,
-      userId: currentUser?.id,
-      tool
-    });
-  }, [tool, socket, whiteboardId, currentUser]);
-
-  // --- SIEĆ: emitujemy zmianę koloru gdy tempColor się zmieni
-  useEffect(() => {
-    if (!socket || !whiteboardId) return;
-    // send color update (debounce small)
-    const t = setTimeout(() => {
-      socket.emit('color-change', {
-        whiteboardId,
-        userId: currentUser?.id,
-        color: tempColor
-      });
-    }, 50);
-    return () => clearTimeout(t);
-  }, [tempColor, socket, whiteboardId, currentUser]);
-
-  // Nasłuchiwanie zdarzeń od serwera — aktualizacja listy współpracowników i logi
-  useEffect(() => {
-    if (!socket) return;
-
-    const onCollaborators = (data) => {
-      if (data && Array.isArray(data.collaborators)) {
-        setCollaborators(data.collaborators);
-      }
-    };
-
-    const onRemoteToolChange = (payload) => {
-      // Przykładowo: można tu pokazać mały indicator, albo tylko logować
-      console.log('Remote tool change:', payload);
-    };
-
-    const onRemoteColorChange = (payload) => {
-      console.log('Remote color change:', payload);
-    };
-
-    socket.on('collaborators', onCollaborators);
-    socket.on('remote-tool-change', onRemoteToolChange);
-    socket.on('remote-color-change', onRemoteColorChange);
-
-    // Poproś o aktualną listę współpracowników przy mount
-    if (whiteboardId) {
-      socket.emit('request-collaborators', { whiteboardId });
-    }
-
-    return () => {
-      socket.off('collaborators', onCollaborators);
-      socket.off('remote-tool-change', onRemoteToolChange);
-      socket.off('remote-color-change', onRemoteColorChange);
-    };
-  }, [socket, whiteboardId]);
-
   const tools = [
     { icon: '🖱️', name: 'Kursor', type: 'cursor' },
     { icon: '☝️', name: 'Pointer', type: 'pointer' },
@@ -327,12 +128,12 @@ const Toolbar = ({
     { icon: '✏️', name: 'Ołówek', type: 'pencil' },
     { icon: '🧽', name: 'Gumka', type: 'eraser' },
     { icon: '🖌️', name: 'Pędzle', type: 'brush' },
-    { icon: '🔺', name: 'Kształty', type: null, onClick: handleShapeClick, isPopup: true },
-    { icon: '📝', name: 'Tekst', type: null, isPopup: true },
+    { icon: '🔺', name: 'Kształty', type: 'shape', onClick: handleShapeClick },
+    { icon: '📝', name: 'Tekst', type: 'text' },
     { icon: '📋', name: 'Notatki', type: 'notes' },
-    { icon: '😊', name: 'Emotki', type: null, onClick: handleEmojiClick, isPopup: true },
-    { icon: '🖼️', name: 'Gify', type: null, onClick: handleGifClick, isPopup: true },
-    { icon: '📎', name: 'Multimedia', type: null, isPopup: true },
+    { icon: '😊', name: 'Emotki', type: 'emoji', onClick: handleEmojiClick },
+    { icon: '🖼️', name: 'Gify', type: 'gifs' },
+    { icon: '📎', name: 'Multimedia', type: 'multi' },
   ];
 
   const shapes = [
@@ -358,8 +159,8 @@ const Toolbar = ({
                 className={`tool-btn ${tool === toolItem.type ? 'selected' : ''}`}
                 title={toolItem.name}
                 onClick={(e) => {
-                  if (toolItem.type) setTool(toolItem.type); // prosto ustawiamy tool
-                  if (toolItem.onClick) toolItem.onClick(e); // dodatkowy callback np. popup
+                  if (toolItem.type) setTool(toolItem.type); // ustaw tool
+                  if (toolItem.onClick) toolItem.onClick(e); // ← przekaż event!
                 }}
               >
                 {toolItem.icon}
@@ -396,15 +197,6 @@ const Toolbar = ({
                 const newColor = e.target.value;
                 setTempColor(newColor);
                 setColor(newColor);
-
-                // emit zmiany koloru natychmiast
-                if (socket && whiteboardId) {
-                  socket.emit('color-change', {
-                    whiteboardId,
-                    userId: currentUser?.id,
-                    color: newColor
-                  });
-                }
               }}
               onMouseUp={() => {
                 if (tempColor !== selectedColor) {
@@ -444,15 +236,6 @@ const Toolbar = ({
                       const newList = [clr, ...prev.filter(c => c !== clr)];
                       return newList.slice(0, 3);
                     });
-
-                    // emit change
-                    if (socket && whiteboardId) {
-                      socket.emit('color-change', {
-                        whiteboardId,
-                        userId: currentUser?.id,
-                        color: clr
-                      });
-                    }
                   }}
                 />
               ))}
@@ -498,62 +281,6 @@ const Toolbar = ({
             ))}
           </div>
         )}
-        {showGifs.visible && (
-          <div
-            className="floating-gifs-popup"
-            style={{ top: `${showGifs.y}px`, left: `${showGifs.x}px` }}
-            onScroll={handleGifScroll} // <-- dodane
-
-          >
-            <input
-              type="text"
-              placeholder="Szukaj gifów..."
-              value={gifQuery}
-              onChange={handleGifQueryChange} // <-- nowa funkcja
-              style={{
-                width: '200px',
-                padding: '6px 8px',
-                borderRadius: '6px',
-                border: '1px solid #ccc',
-                marginBottom: '10px'
-              }}
-            />
-            <div className="gif-results">
-              {gifs.length === 0 ? (
-                <p>Brak GIFów 😢</p>
-              ) : (
-                <div className="gif-grid">
-                  {gifs.map((url, i) => (
-                    <img
-                      key={i}
-                      src={url}
-                      alt="gif"
-                      style={{
-                        objectFit: 'cover',
-                        borderRadius: '8px',
-                        cursor: 'pointer'
-                      }}
-                      onClick={() => {
-                        console.log('Wybrano GIF:', url);
-                        // emit wyboru GIFa
-                        if (socket && whiteboardId) {
-                          socket.emit('gif-selected', {
-                            whiteboardId,
-                            userId: currentUser?.id,
-                            url
-                          });
-                        }
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-
-
       </div>
 
       <div
@@ -564,11 +291,7 @@ const Toolbar = ({
       >
         <span className={`arrow ${collapsed ? 'arrow-right' : 'arrow-left'}`}>➤</span>
       </div>
-      <PointerTrail active={tool === 'pointer'} />
       <ToolRangeCircle tool={tool} size={size} />
-      <div className="collaborators-indicator" style={{ position: 'absolute', bottom: 8, left: 12, fontSize: 12 }}>
-        👥 {collaborators.length} online
-      </div>
     </>
   );
 };

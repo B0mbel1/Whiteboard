@@ -1,31 +1,33 @@
-/* Główny pasek narzędzi */
 .toolbar {
   position: fixed;
   top: 52px;
+  /* 🔹 usuwa odstęp od góry */
   left: 0;
   width: 130px;
-  height: calc(100% - 52px);
   background: #ecf0f1;
   padding: 10px;
   overflow-y: auto;
   transition: all 0.3s ease;
   box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
   border-right: 1px solid #ccc;
+  top: 52px;
+  height: calc(100% - 52px);
   scrollbar-width: none;
   z-index: 9999;
 }
 
 .toolbar::-webkit-scrollbar {
   display: none;
+  /* Chrome, Safari */
 }
 
-/* Zwinięty toolbar */
+/* 🔹 Zwinięty toolbar – całkowicie znika z widoku */
 .toolbar.collapsed {
   transform: translateX(-120px);
   opacity: 0.3;
 }
 
-/* Sekcje i nagłówki */
+/* Sekcje i tytuły */
 .toolbar-section {
   margin-bottom: 20px;
 }
@@ -59,7 +61,6 @@
   color: white;
 }
 
-/* Rozmiar narzędzi */
 .tool-size {
   margin-top: 5px;
   width: 100%;
@@ -75,6 +76,143 @@
   text-align: center;
   display: block;
   color: #555;
+}
+
+.color-btn.selected {
+  border-color: #333;
+}
+
+.color-tool-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.color-swatch-indicator {
+  width: 16px;
+  height: 16px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+}
+
+.tool-undo-redo {
+  display: flex;
+  gap: 5px;
+}
+
+/* Popupy */
+.floating-shapes-popup,
+.floating-emojis-popup {
+  position: fixed;
+  border-radius: 8px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+  z-index: 9999;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+/* Kształty */
+.floating-shapes-popup {
+  background: white;
+  border: 1px solid #ccc;
+  grid-template-columns: repeat(2, 1fr);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.shape-btn {
+  background: #f4f4f4;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 20px;
+  padding: 8px;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.shape-btn:hover {
+  background: #3498db;
+  color: white;
+  transform: scale(1.1);
+}
+
+.shape-btn.selected {
+  background: #2ecc71;
+  color: white;
+}
+
+/* Emotki */
+.floating-emojis-popup {
+  background: #2c3e50;
+  border: 2px solid #34495e;
+  grid-template-columns: repeat(5, 1fr);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+.emoji-btn {
+  background: #3b4b5a;
+  border: none;
+  border-radius: 6px;
+  font-size: 22px;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 5px;
+}
+
+.emoji-btn:hover {
+  background: #4e637a;
+  transform: scale(1.1);
+}
+
+.emoji-btn.selected {
+  background: #1abc9c;
+  transform: scale(1.15);
+}
+
+/* 🔽 Strzałka chowająca toolbar */
+.collapse-toggle.small {
+  position: fixed;
+  top: 50%;
+  left: 122px;
+  /* na krawędzi toolbaru */
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  background: #3498db;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: bold;
+  transition: all 0.25s ease;
+  z-index: 10000;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+}
+
+.toolbar.collapsed+.collapse-toggle.small {
+  left: 8px;
+}
+
+.collapse-toggle.small:hover {
+  background: #2980b9;
+  transform: translateY(-50%) scale(1.1);
+}
+
+.arrow {
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+
+.arrow-left {
+  transform: rotate(180deg);
+}
+
+.arrow-right {
+  transform: rotate(0deg);
 }
 
 /* Kolor */
@@ -96,13 +234,6 @@
 .selected-color {
   font-size: 10px;
   color: #555;
-}
-
-.color-swatch-indicator {
-  width: 16px;
-  height: 16px;
-  border: 1px solid #ccc;
-  border-radius: 3px;
 }
 
 /* Historia kolorów */
@@ -134,176 +265,12 @@
   color: #888;
 }
 
-/* Cofnij / Ponów */
-.tool-undo-redo {
-  display: flex;
-  gap: 5px;
-}
-
-/* Popupy kształtów i emotek */
-.floating-shapes-popup,
-.floating-emojis-popup {
-  position: fixed;
-  border-radius: 8px;
-  padding: 10px;
-  display: grid;
-  gap: 8px;
-  z-index: 9999;
-  animation: fadeIn 0.2s ease-in-out;
-}
-
-.floating-shapes-popup {
-  background: white;
-  border: 1px solid #ccc;
-  grid-template-columns: repeat(2, 1fr);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.shape-btn {
-  background: #f4f4f4;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 20px;
-  padding: 8px;
-  transition: background 0.2s, transform 0.1s;
-}
-
-.shape-btn:hover {
-  background: #3498db;
-  color: white;
-  transform: scale(1.1);
-}
-
-.shape-btn.selected {
-  background: #2ecc71;
-  color: white;
-}
-
-.floating-emojis-popup {
-  background: #2c3e50;
-  border: 2px solid #34495e;
-  grid-template-columns: repeat(5, 1fr);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-}
-
-.emoji-btn {
-  background: #3b4b5a;
-  border: none;
-  border-radius: 6px;
-  font-size: 22px;
-  cursor: pointer;
-  transition: all 0.2s;
-  padding: 5px;
-}
-
-.emoji-btn:hover {
-  background: #4e637a;
-  transform: scale(1.1);
-}
-
-.emoji-btn.selected {
-  background: #1abc9c;
-  transform: scale(1.15);
-}
-
-/* GIFy */
-.floating-gifs-popup {
-  position: fixed;
-  width: 360px;
-  max-height: 500px;
-  overflow-y: auto;
-  background: #fff;
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  padding: 12px 0;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  z-index: 10000;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.floating-gifs-popup input[type="text"] {
-  width: 90%;
-  margin-bottom: 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  border: 1px solid #ccc;
-  box-sizing: border-box;
-  font-size: 14px;
-  outline: none;
-}
-
-.gif-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 4px;
-}
-
-.gif-grid img {
-  width: 100%;
-  aspect-ratio: 1;
-  object-fit: cover;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: transform 0.2s ease;
-}
-
-.gif-grid img:hover {
-  transform: scale(1.05);
-}
-
-/* Strzałka chowająca toolbar */
-.collapse-toggle.small {
-  position: fixed;
-  top: 50%;
-  left: 122px;
-  transform: translateY(-50%);
-  width: 26px;
-  height: 26px;
-  background: #3498db;
-  color: white;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: bold;
-  transition: all 0.25s ease;
-  z-index: 10000;
-  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
-}
-
-.toolbar.collapsed + .collapse-toggle.small {
-  left: 8px;
-}
-
-.collapse-toggle.small:hover {
-  background: #2980b9;
-  transform: translateY(-50%) scale(1.1);
-}
-
-.arrow {
-  display: inline-block;
-  transition: transform 0.2s ease;
-}
-
-.arrow-left {
-  transform: rotate(180deg);
-}
-
-.arrow-right {
-  transform: rotate(0deg);
-}
-
-/* Animacje popupów */
 @keyframes fadeIn {
   from {
     opacity: 0;
     transform: scale(0.9);
   }
+
   to {
     opacity: 1;
     transform: scale(1);

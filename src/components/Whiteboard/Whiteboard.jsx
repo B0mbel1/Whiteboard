@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
-
 import Toolbar from '../Toolbar/Toolbar';
 import Canvas from '../Canvas/Canvas';
 import Sidebar from '../Sidebar/Sidebar';
-import ColorPicker from '../Toolbar/ColorPicker';
+import ColorPicker from '../Toolbar/ColorPicker'; 
 import PointerTrail from '../Toolbar/PointerTrail';
 
 import './Whiteboard.css';
@@ -13,97 +12,207 @@ import './Whiteboard.css';
 const Whiteboard = () => {
   const [tool, setTool] = useState('cursor');
   const [color, setColor] = useState('#000000');
-  const [size, setSize] = useState({ pencil: 3, eraser: 10, brush: 5, notes: 0 });
+  const [size, setSize] = useState({ pencil: 3, eraser: 10, brush: 5 });
   const [showColorPicker, setShowColorPicker] = useState(false);
-
   const [socket, setSocket] = useState(null);
   const [whiteboardId, setWhiteboardId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-
+  
+  const [currentUser] = useState(() => {
+    // Generate a more unique user ID
+    const userId = 'user_' + Math.random().toString(36).substring(2, 15);
+    const userName = 'User' + Math.floor(Math.random() * 1000);
+    const userColor = `hsl(${Math.random() * 360}, 80%, 60%)`;
+    
+    console.log("👤 Generated user:", { id: userId, name: userName, color: userColor });
+    
+    return {
+      id: userId,
+      name: userName,
+      color: userColor
+    };
+  });
+  
   const socketRef = useRef(null);
-  const hasJoinedRef = useRef(false);
+  const hasJoinedRef = useRef(false); // Track if we've already joined
   const navigate = useNavigate();
 
-  const [currentUser] = useState(() => {
-    const id = 'user_' + Math.random().toString(36).substring(2, 15);
-    const name = 'User' + Math.floor(Math.random() * 1000);
-    const color = `hsl(${Math.random() * 360}, 80%, 60%)`;
-    return { id, name, color };
-  });
-
   useEffect(() => {
+    // Auto-create whiteboard when component mounts (main route)
     createNewWhiteboard();
   }, []);
 
   const createNewWhiteboard = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch('http://localhost:3001/api/create-whiteboard');
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error);
-      setWhiteboardId(data.whiteboardId);
-      navigate(`/${data.whiteboardId}`, { replace: true });
-      initializeSocket(data.whiteboardId);
-    } catch (err) {
-      setError(err.message);
+      setError(null);
+      console.log("📝 Creating new whiteboard...");
+      
+      const response = await fetch('http://localhost:3001/api/create-whiteboard');
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to create whiteboard');
+      }
+      
+      const newWhiteboardId = data.whiteboardId;
+      
+      console.log("🎯 New whiteboard ID:", newWhiteboardId);
+      
+      // Update URL to show the whiteboard ID
+      navigate(`/${newWhiteboardId}`, { replace: true });
+      setWhiteboardId(newWhiteboardId);
+      
+      // Initialize socket and join whiteboard
+      initializeSocket(newWhiteboardId);
+      
+    } catch (error) {
+      console.error('Error creating whiteboard:', error);
+      setError(error.message);
     } finally {
       setIsLoading(false);
     }
   };
 
   const initializeSocket = (whiteboardId) => {
-    hasJoinedRef.current = false;
-    const newSocket = io('http://localhost:3001', {
-      transports: ['websocket', 'polling']
-    });
-    socketRef.current = newSocket;
-    setSocket(newSocket);
+    try {
+      // Reset join tracking
+      hasJoinedRef.current = false;
+      
+      // Initialize socket connection
+      const newSocket = io('http://localhost:3001', {
+        timeout: 10000,
+        transports: ['websocket', 'polling']
+      });
+      
+      socketRef.current = newSocket;
+      setSocket(newSocket);
 
-    newSocket.on('connect', () => {
-      if (!hasJoinedRef.current) {
-        hasJoinedRef.current = true;
-        newSocket.emit('join-whiteboard', { whiteboardId, user: currentUser });
-      }
-    });
+      console.log("🔌 Socket initialized for whiteboard:", whiteboardId);
+      console.log("👤 Current user:", currentUser);
 
-    newSocket.on('connect_error', () => {
-      setError('Cannot connect to server.');
-    });
+      // Set up connection handlers
+      newSocket.on('connect', () => {
+        console.log("✅ Socket connected successfully");
+        
+        // Join the whiteboard only once after connection is established
+        if (!hasJoinedRef.current) {
+          hasJoinedRef.current = true;
+          newSocket.emit('join-whiteboard', {
+            whiteboardId: whiteboardId,
+            user: currentUser
+          });
+        }
+      });
+
+      newSocket.on('connect_error', (error) => {
+        console.error("❌ Socket connection error:", error);
+        setError('Failed to connect to server. Please check if the server is running.');
+      });
+
+    } catch (error) {
+      console.error("❌ Error initializing socket:", error);
+      setError('Failed to initialize connection.');
+    }
   };
 
   const handleDrawing = (drawingData) => {
     if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('drawing', { whiteboardId, ...drawingData });
+      socketRef.current.emit('drawing', {
+        whiteboardId,
+        ...drawingData
+      });
     }
   };
 
-  const handleCursorMove = (pos) => {
+  const handleCursorMove = (position) => {
     if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('cursor-move', { whiteboardId, position: pos });
+      socketRef.current.emit('cursor-move', {
+        whiteboardId,
+        position
+      });
     }
   };
 
   const copyInviteLink = async () => {
-    const link = `${window.location.origin}/${whiteboardId}`;
-    await navigator.clipboard.writeText(link);
-    alert('Link copied!');
+    if (whiteboardId) {
+      const link = `${window.location.origin}/${whiteboardId}`;
+      try {
+        await navigator.clipboard.writeText(link);
+        alert('✅ Invite link copied to clipboard! Share it with others to collaborate!');
+      } catch (err) {
+        console.error('Failed to copy:', err);
+        // Fallback for browsers that don't support clipboard API
+        const textArea = document.createElement('textarea');
+        textArea.value = link;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        alert('✅ Invite link copied to clipboard! Share it with others to collaborate!');
+      }
+    }
+  };
+
+  const retryConnection = () => {
+    setError(null);
+    createNewWhiteboard();
   };
 
   if (error) {
     return (
-      <div className="error-screen">
-        <h2>Error</h2>
-        <p>{error}</p>
-        <button onClick={createNewWhiteboard}>Retry</button>
+      <div style={{ 
+        height: '100vh', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        background: '#f0f0f0',
+        flexDirection: 'column',
+        gap: '20px',
+        padding: '20px',
+        textAlign: 'center'
+      }}>
+        <h2 style={{ color: '#e74c3c' }}>Error</h2>
+        <div style={{ color: '#666', marginBottom: '10px' }}>{error}</div>
+        <div style={{ color: '#999', fontSize: '14px', marginBottom: '20px' }}>
+          Make sure the server is running on http://localhost:3001
+        </div>
+        <button 
+          onClick={retryConnection}
+          style={{
+            padding: '10px 20px',
+            background: '#3498db',
+            color: 'white',
+            border: 'none',
+            borderRadius: '5px',
+            cursor: 'pointer'
+          }}
+        >
+          Try Again
+        </button>
       </div>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="loading-screen">
-        <h2>Creating whiteboard...</h2>
+      <div style={{ 
+        height: '100vh', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        background: '#f0f0f0',
+        flexDirection: 'column',
+        gap: '20px'
+      }}>
+        <h2>Creating your whiteboard...</h2>
+        <div>Please wait</div>
       </div>
     );
   }
@@ -111,46 +220,50 @@ const Whiteboard = () => {
   return (
     <div className="whiteboard">
       <div className="whiteboard-header">
-        <button className="fullscreen-btn">⛶ Fullscreen</button>
-        <div className='save-btn'>Zapisz💾</div>
-        <div className="file-menu">Plik ▼</div>
         <div className="whiteboard-info">
-          <span>Room: {whiteboardId}</span>
-          <span>You: {currentUser.name}</span>
+          <span className="whiteboard-id">Room: {whiteboardId}</span>
+          <span className="user-info">You: {currentUser.name}</span>
         </div>
-        <button className="invite-btn" onClick={copyInviteLink}>📋 Invite</button>
+        <div className="header-controls">
+          <button 
+            className="invite-btn" 
+            onClick={copyInviteLink}
+          >
+            📋 Copy Invite Link
+          </button>
+          <button className="fullscreen-btn">⛶ Fullscreen</button>
+          <button className="save-btn">💾 Save</button>
+        </div>
       </div>
 
-      <PointerTrail active={tool === 'pointer'} />
       <div className="whiteboard-main">
-        <Canvas
+        <Toolbar 
+        position="left"
           tool={tool}
-          setTool={setTool}                     // <-- pewne przekazanie
-          color={color}
-          size={size}
-          setShowColorPicker={setShowColorPicker}
-          whiteboardId={whiteboardId}
-          socket={socket}                        // <- używaj state, nie ref.current
-          currentUser={currentUser}
-          onDrawing={handleDrawing}
-          onCursorMove={handleCursorMove}
-        />
-
-        <Toolbar
-          position="left"
-          tool={tool}
-          setTool={setTool}                      // <-- pewne przekazanie
+          setTool={setTool}
           color={color}
           setColor={setColor}
           size={size}
           setSize={setSize}
+          showColorPicker={showColorPicker}
           setShowColorPicker={setShowColorPicker}
-          socket={socket}                        // <- używaj state, nie ref.current
-          whiteboardId={whiteboardId}
-          currentUser={currentUser}
         />
 
-        <Sidebar
+         <PointerTrail active={tool === 'pointer'} />
+        
+        <Canvas 
+          tool={tool}
+          color={color}
+          size={size[tool]}
+          setShowColorPicker={setShowColorPicker}
+          whiteboardId={whiteboardId}
+          socket={socketRef.current}
+          currentUser={currentUser}
+          onDrawing={handleDrawing}
+          onCursorMove={handleCursorMove}
+        />
+        
+        <Sidebar 
           whiteboardId={whiteboardId}
           socket={socketRef.current}
           currentUser={currentUser}
@@ -158,11 +271,7 @@ const Whiteboard = () => {
 
         {showColorPicker && (
           <div className="color-picker-wrapper">
-            <ColorPicker
-              color={color}
-              setColor={setColor}
-              setShowColorPicker={setShowColorPicker}
-            />
+            <ColorPicker color={color} setColor={setColor} setShowColorPicker={setShowColorPicker} />
           </div>
         )}
       </div>

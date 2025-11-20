@@ -18,7 +18,7 @@
   border-radius: 5px;
 }
 
-.users-list, .chat-section, .notes-section {
+.users-list, .chat-section {
   padding: 10px;
   border-bottom: 1px solid #bdc3c7;
   flex: 1;
@@ -39,13 +39,9 @@
 
 /* Chat container */
 .chat-messages {
-  height: 150px;
   max-height: 250px;
   overflow-y: auto;
-  background: white;
   padding: 10px;
-  border-radius: 5px;
-  margin-bottom: 10px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -57,10 +53,10 @@
   justify-content: flex-start; /* Układanie do lewej */
 }
 
-/* Wiadomości obecnego użytkownika */
-.message-bubble.mine {
-  justify-content: flex-end; /* przesunięcie w prawo */
-}
+/* Przesuniecie wiadomości obecnego usera do prawej */
+/*.message-bubble.mine {
+  justify-content: flex-end;
+} */
 
 /* Actual bubble */
 .bubble-content {
@@ -75,20 +71,20 @@
   color: white;
 }
 
-/* Minimalna różnica w wiadomości własnej */
+/* Minimalna rużnica w wiadomości */
 .message-bubble.mine .bubble-content {
-  background: #2b5581;
+  background: #2b5581; /* możesz zmienić na inny odcień */
   color: white;
 }
 
-/* Nazwa użytkownika w wiadomości */
+/* Nazwa urzytkownika w wiadomości */
 .message-user {
   display: block;
   font-weight: 700;
   margin-bottom: 4px;
 }
 
-/* Tekst wiadomości */
+/* teks wiadomości */
 .message-text {
   white-space: pre-wrap;
 }
@@ -114,7 +110,6 @@
   cursor: pointer;
 }
 
-/* Kamera użytkownika */
 .camera-video {
   width: 100%;
   border-radius: 5px;
@@ -134,11 +129,4 @@
 
 .camera-toggle-btn:hover {
   background: #34495e;
-}
-
-/* Notes section */
-.notes-section textarea {
-  width: 100%;
-  height: 100px;
-  resize: vertical;
 }
