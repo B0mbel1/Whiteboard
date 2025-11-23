@@ -458,12 +458,13 @@ const getToolSize = () => {
           onMouseUp={stopDrawing}
           onMouseMove={handleMouseMove}
           onMouseLeave={stopDrawing}
-          style={{
-            cursor: tool === 'eraser' ? 'crosshair' : 'default',
-            width: '100%',
-            height: '100%',
-            display: 'block'
-          }}
+          // style={{
+          //   cursor: tool === 'eraser' ? 'crosshair' : 'default',
+          //   width: '100%',
+          //   height: '100%',
+          //   display: 'block'
+          // }}
+          style={{}}
         />
         {notes.map(note => (
           <Note
