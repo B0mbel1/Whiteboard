@@ -23,6 +23,12 @@ const Canvas = ({
   const currentDrawingRef = useRef(null);
   const [notes, setNotes] = useState([]);
 
+    const backgroundModes = [
+    { id: 'white', name: 'Białe tło', icon: '🌕' },
+    { id: 'grid', name: 'Kratka', icon: '🏁' },
+    { id: 'lines', name: 'Siatka linii', icon: '📐' },
+    { id: 'black', name: 'Czarne tło', icon: '🌑' },
+  ];
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -122,21 +128,23 @@ const Canvas = ({
     }
   }, [socket]);
 
-  const clearCanvas = () => {
-    const context = contextRef.current;
-    const canvas = canvasRef.current;
-    if (!context || !canvas) return;
+const clearCanvas = () => {
+  const context = contextRef.current;
+  const canvas = canvasRef.current;
+  if (!context || !canvas) return;
 
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    
-    if (backgroundMode === 'white') {
-      context.fillStyle = 'white';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-    } else if (backgroundMode === 'black') {
-      context.fillStyle = 'black';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-    }
-  };
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // Użyj aktualnego backgroundMode
+  if (backgroundMode === 'white') {
+    context.fillStyle = 'white';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+  } else if (backgroundMode === 'black') {
+    context.fillStyle = 'black';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+  }
+  // Dla 'grid' i 'lines' - CSS zajmie się tłem
+};
 
   const drawRemote = (data) => {
     const context = contextRef.current;
@@ -390,23 +398,21 @@ const getToolSize = () => {
     }
   };
 
-  const backgroundModes = [
-    { id: 'white', name: 'Białe tło', icon: '🌕' },
-    { id: 'grid', name: 'Kratka', icon: '🏁' },
-    { id: 'lines', name: 'Siatka linii', icon: '📐' },
-    { id: 'black', name: 'Czarne tło', icon: '🌑' },
-  ];
-
   const toggleBackground = () => {
-    const currentIndex = backgroundModes.findIndex(mode => mode.id === backgroundMode);
-    const nextIndex = (currentIndex + 1) % backgroundModes.length;
-    setBackgroundMode(backgroundModes[nextIndex].id);
-    
-    // Clear and redraw canvas with new background
-    setTimeout(() => {
-      clearCanvas();
-    }, 100);
-  };
+  const currentIndex = backgroundModes.findIndex(mode => mode.id === backgroundMode);
+  const nextIndex = (currentIndex + 1) % backgroundModes.length;
+  const newBackgroundMode = backgroundModes[nextIndex].id;
+  
+  setBackgroundMode(newBackgroundMode);
+  
+  // Natychmiastowe wyczyszczenie i ustawienie nowego tła
+  clearCanvas();
+};
+
+// Zmień useEffect, aby reagował na zmianę backgroundMode
+useEffect(() => {
+  clearCanvas();
+}, [backgroundMode]);
 
   const getCurrentBackgroundIcon = () =>
     backgroundModes.find(mode => mode.id === backgroundMode)?.icon;
