@@ -336,13 +336,15 @@ const getToolSize = () => {
   };
 
   const handleCanvasClick = (e) => {
+    setSelectedNoteId(null);
+    setSelectedTextBoxId(null);
     if (tool === 'notes') {
       const rect = canvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
       setNotes(prev => [...prev, { id: Date.now(), x, y }]);
-      if (setTool) setTimeout(() => setTool('cursor'), 0);
+      if (setTool) setTool('cursor');
     } else if (tool === 'text') {
       const rect = canvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -352,7 +354,7 @@ const getToolSize = () => {
       if (socket) {
         socket.emit('text-create', { whiteboardId, textBox: newTextBox });
       }
-      if (setTool) setTimeout(() => setTool('cursor'), 0);
+      if (setTool) setTool('cursor');
     }
   };
 
@@ -384,6 +386,15 @@ const getToolSize = () => {
   // 🔹 Obsługa Backspace/Delete dla zaznaczonej notatki
   useEffect(() => {
     const handleKeyDown = (e) => {
+      const activeElement = document.activeElement;
+      if (
+        activeElement &&
+        (activeElement.tagName.toLowerCase() === 'input' ||
+          activeElement.tagName.toLowerCase() === 'textarea')
+      ) {
+        return;
+      }
+
       if (selectedNoteId && (e.key === 'Backspace' || e.key === 'Delete')) {
         removeNote(selectedNoteId);
       }
@@ -526,6 +537,8 @@ const getToolSize = () => {
             id={textBox.id}
             x={textBox.x}
             y={textBox.y}
+            width={textBox.width}
+            height={textBox.height}
             text={textBox.text}
             onUpdate={handleTextUpdate}
             onRemove={removeTextBox}

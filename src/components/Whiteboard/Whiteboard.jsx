@@ -260,6 +260,7 @@ const Whiteboard = () => {
         
         <Canvas 
           tool={tool}
+          setTool={setTool}
           color={color}
           size={size[tool]}
           setShowColorPicker={setShowColorPicker}
