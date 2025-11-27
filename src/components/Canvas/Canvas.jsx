@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './Canvas.css';
+import { getStandardizedSize, getDisplaySize, getToolEffects } from '../../utils/toolSizes';
+import { drawCompletePath, drawPathSegment } from '../../utils/drawingUtils';
 import Note from './Note';
 
 const Canvas = ({ 
@@ -138,41 +140,12 @@ const Canvas = ({
     }
   };
 
-  const drawRemote = (data) => {
+    const drawRemote = (data) => {
     const context = contextRef.current;
-    if (!context || !data.points || data.points.length === 0) return;
+    if (!context || !data.points || data.points.length < 2) return;
 
-    context.save();
-    
-    if (data.tool === 'pencil' || data.tool === 'brush') {
-      context.globalCompositeOperation = 'source-over';
-      context.strokeStyle = data.color;
-      context.lineWidth = data.size;
-      context.lineCap = 'round';
-      context.lineJoin = 'round';
-      
-      if (data.tool === 'brush') {
-        context.shadowBlur = 5;
-        context.shadowColor = data.color;
-      } else {
-        context.shadowBlur = 0;
-      }
-    } else if (data.tool === 'eraser') {
-      context.globalCompositeOperation = 'destination-out';
-      context.strokeStyle = 'rgba(0,0,0,1)';
-      context.lineWidth = data.size;
-      context.shadowBlur = 0;
-    }
-
-    context.beginPath();
-    context.moveTo(data.points[0].x, data.points[0].y);
-    
-    for (let i = 1; i < data.points.length; i++) {
-      context.lineTo(data.points[i].x, data.points[i].y);
-    }
-    
-    context.stroke();
-    context.restore();
+    // UŻYJ drawCompletePath dla spójności
+    drawCompletePath(context, data.tool, data.color, data.size, data.points);
   };
 
   const getCanvasCoordinates = (clientX, clientY) => {
@@ -217,12 +190,8 @@ const getToolSize = () => {
   const base = (typeof size === "object" && size?.[tool]) 
     ? size[tool] 
     : (typeof size === "number" ? size : 3);
-
-  if (tool === 'pencil') return Math.max(1, base - 2);
-  if (tool === 'brush') return base + 10;
-  if (tool === 'eraser') return base + 30;
-
-  return base;
+  
+  return getDisplaySize(tool, base);
 };
 
 
@@ -295,36 +264,18 @@ const getToolSize = () => {
 
   const draw = ({ nativeEvent }) => {
     if (!isDrawing || !contextRef.current) return;
-
-  // ❗ zablokuj jeśli tool nie rysuje
-  if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
+    if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
     
     const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
     
     if (currentDrawingRef.current) {
-      currentDrawingRef.current.points.push({ x, y });
-    }
+      const points = currentDrawingRef.current.points;
+      const previousPoint = points[points.length - 1];
+      points.push({ x, y });
 
-    // Local drawing
-    if (tool === 'pencil') {
-      contextRef.current.globalCompositeOperation = 'source-over';
-      contextRef.current.strokeStyle = color;
-      contextRef.current.shadowBlur = 0;
-    } else if (tool === 'eraser') {
-      contextRef.current.globalCompositeOperation = 'destination-out';
-      contextRef.current.strokeStyle = 'rgba(0,0,0,1)';
-      contextRef.current.shadowBlur = 0;
-    } else if (tool === 'brush') {
-      contextRef.current.globalCompositeOperation = 'source-over';
-      contextRef.current.strokeStyle = color;
-      contextRef.current.shadowBlur = 5;
-      contextRef.current.shadowColor = color;
+      // Rysuj tylko NOWY segment używając drawPathSegment
+      drawPathSegment(contextRef.current, tool, color, size, previousPoint, { x, y });
     }
-
-    contextRef.current.lineCap = 'round';
-    contextRef.current.lineJoin = 'round';
-    contextRef.current.lineTo(x, y);
-    contextRef.current.stroke();
   };
 
   const handleCanvasClick = (e) => {
