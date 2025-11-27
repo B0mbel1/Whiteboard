@@ -131,7 +131,8 @@ io.on("connection", (socket) => {
     socket.emit("whiteboard-data", {
       users: Array.from(whiteboard.users.values()),
       drawingData: whiteboard.drawingData,
-      textBoxes: whiteboard.textBoxes
+      textBoxes: whiteboard.textBoxes,
+      notes: whiteboard.notes
     });
     
     // Notify other users in the room about the new user
@@ -141,7 +142,7 @@ io.on("connection", (socket) => {
     });
   });
 
-  // Handle text events
+  // ========== OBSŁUGA TEKSTU (ulepszona) ==========
   socket.on("text-create", (data) => {
     const { whiteboardId, textBox } = data;
     const whiteboard = whiteboards.get(whiteboardId);
@@ -169,6 +170,37 @@ io.on("connection", (socket) => {
     if (whiteboard) {
       whiteboard.textBoxes = whiteboard.textBoxes.filter(tb => tb.id !== id);
       socket.to(whiteboardId).emit("text-delete", { id });
+    }
+  });
+
+   // ========== OBSŁUGA NOTATEK ==========
+  socket.on("note-create", (data) => {
+    const { whiteboardId, note } = data;
+    const whiteboard = whiteboards.get(whiteboardId);
+    if (whiteboard) {
+      whiteboard.notes.push(note);
+      socket.to(whiteboardId).emit("note-create", { note });
+    }
+  });
+
+  socket.on("note-update", (data) => {
+    const { whiteboardId, id, ...props } = data;
+    const whiteboard = whiteboards.get(whiteboardId);
+    if (whiteboard) {
+      const note = whiteboard.notes.find(n => n.id === id);
+      if (note) {
+        Object.assign(note, props);
+        socket.to(whiteboardId).emit("note-update", { id, ...props });
+      }
+    }
+  });
+
+  socket.on("note-delete", (data) => {
+    const { whiteboardId, id } = data;
+    const whiteboard = whiteboards.get(whiteboardId);
+    if (whiteboard) {
+      whiteboard.notes = whiteboard.notes.filter(n => n.id !== id);
+      socket.to(whiteboardId).emit("note-delete", { id });
     }
   });
 

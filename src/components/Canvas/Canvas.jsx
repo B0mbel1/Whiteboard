@@ -16,22 +16,33 @@ const Canvas = ({
   currentUser,
   onDrawing,
   onCursorMove,
-  textBoxes: initialTextBoxes
+  textBoxes: initialTextBoxes,
+  notes: initialNotes,
+  onNoteCreate,
+  onNoteUpdate,
+  onNoteDelete
 }) => {
-  const [backgroundMode, setBackgroundMode] = useState('grid');
+const [backgroundMode, setBackgroundMode] = useState('grid');
   const [remoteCursors, setRemoteCursors] = useState(new Map());
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const contextRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const currentDrawingRef = useRef(null);
-  const [notes, setNotes] = useState([]);
+  const [notes, setNotes] = useState(initialNotes || []);
   const [textBoxes, setTextBoxes] = useState(initialTextBoxes || []);
+  
+  // 🔹 POPRAWIONE: Jedna deklaracja dla zaznaczonego tekstu i notatki
   const [selectedTextBoxId, setSelectedTextBoxId] = useState(null);
+  const [selectedNoteId, setSelectedNoteId] = useState(null);
 
   useEffect(() => {
     setTextBoxes(initialTextBoxes || []);
   }, [initialTextBoxes]);
+
+    useEffect(() => {
+    setNotes(initialNotes || []);
+  }, [initialNotes]);
 
     const backgroundModes = [
     { id: 'white', name: 'Białe tło', icon: '🌕' },
@@ -172,9 +183,6 @@ const clearCanvas = () => {
       y: clientY - rect.top
     };
   };
-
-  // 🔹 Nowe: zaznaczona notatka
-  const [selectedNoteId, setSelectedNoteId] = useState(null);
 
   // Funkcja do bezpiecznego zmiany rozmiaru canvas bez utraty zawartości
   const updateCanvasSize = () => {
@@ -322,7 +330,19 @@ const getToolSize = () => {
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
-      setNotes(prev => [...prev, { id: Date.now(), x, y }]);
+      const newNote = { 
+        id: Date.now() + Math.random(), 
+        x, 
+        y, 
+        text: '',
+        width: 180,
+        height: 120
+      };
+      
+      setNotes(prev => [...prev, newNote]);
+      if (onNoteCreate) {
+        onNoteCreate(newNote);
+      }
       if (setTool) setTool('cursor');
     } else if (tool === 'text') {
       const rect = canvasRef.current.getBoundingClientRect();
@@ -385,6 +405,54 @@ const getToolSize = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedNoteId, selectedTextBoxId]);
 
+   // DODANE: funkcje do obsługi notatek
+  const handleNoteUpdate = (id, updates) => {
+    setNotes(prev => prev.map(note => 
+      note.id === id ? { ...note, ...updates } : note
+    ));
+    
+    if (onNoteUpdate) {
+      onNoteUpdate(id, updates);
+    }
+  };
+
+  const handleNoteDelete = (id) => {
+    setNotes(prev => prev.filter(note => note.id !== id));
+    if (selectedNoteId === id) setSelectedNoteId(null);
+    
+    if (onNoteDelete) {
+      onNoteDelete(id);
+    }
+  };
+
+    // DODANE: obsługa socket dla notatek
+  useEffect(() => {
+    if (socket) {
+      const handleNoteCreate = (data) => {
+        setNotes(prev => [...prev, data.note]);
+      };
+      
+      const handleNoteUpdate = (data) => {
+        setNotes(prev => prev.map(note => 
+          note.id === data.id ? { ...note, ...data } : note
+        ));
+      };
+      
+      const handleNoteDelete = (data) => {
+        setNotes(prev => prev.filter(note => note.id !== data.id));
+      };
+
+      socket.on('note-create', handleNoteCreate);
+      socket.on('note-update', handleNoteUpdate);
+      socket.on('note-delete', handleNoteDelete);
+      
+      return () => {
+        socket.off('note-create', handleNoteCreate);
+        socket.off('note-update', handleNoteUpdate);
+        socket.off('note-delete', handleNoteDelete);
+      };
+    }
+  }, [socket]);
 
   const handleMouseMove = (e) => {
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
@@ -499,16 +567,22 @@ useEffect(() => {
           // }}
           style={{}}
         />
-        {notes.map(note => (
+         {notes.map(note => (
           <Note
             key={note.id}
             id={note.id}
             x={note.x}
             y={note.y}
-            onRemove={removeNote}
-            selectedNoteId={selectedNoteId} // 🔹 przekaż zaznaczenie
-            setSelectedNoteId={setSelectedNoteId} // 🔹 funkcja do zaznaczania
-          />))}
+            width={note.width}
+            height={note.height}
+            initialText={note.text}
+            onUpdate={handleNoteUpdate}
+            onRemove={handleNoteDelete}
+            selectedNoteId={selectedNoteId}
+            setSelectedNoteId={setSelectedNoteId}
+            socket={socket}
+          />
+        ))}
         {textBoxes.map(textBox => (
           <Text
             key={textBox.id}
