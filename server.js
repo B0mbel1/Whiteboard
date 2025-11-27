@@ -43,7 +43,8 @@ app.get('/api/create-whiteboard', (req, res) => {
     whiteboards.set(whiteboardId, {
       users: new Map(),
       drawingData: [],
-      textBoxes: []
+      textBoxes: [],
+      notes: []
     });
     console.log(`📝 Created new whiteboard: ${whiteboardId}`);
     res.json({ 
