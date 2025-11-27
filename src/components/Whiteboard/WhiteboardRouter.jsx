@@ -189,6 +189,7 @@ const WhiteboardRouter = () => {
         <Canvas 
           tool={tool}
           color={color}
+          setTool={setTool}
           size={size[tool]}
           setShowColorPicker={setShowColorPicker}
           whiteboardId={whiteboardId}
