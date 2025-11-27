@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './Canvas.css';
 import Note from './Note';
+import Text from './Text';
 
 const Canvas = ({ 
   tool, 
@@ -12,7 +13,8 @@ const Canvas = ({
   setTool,
   currentUser,
   onDrawing,
-  onCursorMove 
+  onCursorMove,
+  textBoxes: initialTextBoxes
 }) => {
   const [backgroundMode, setBackgroundMode] = useState('grid');
   const [remoteCursors, setRemoteCursors] = useState(new Map());
@@ -22,6 +24,12 @@ const Canvas = ({
   const [isDrawing, setIsDrawing] = useState(false);
   const currentDrawingRef = useRef(null);
   const [notes, setNotes] = useState([]);
+  const [textBoxes, setTextBoxes] = useState(initialTextBoxes || []);
+  const [selectedTextBoxId, setSelectedTextBoxId] = useState(null);
+
+  useEffect(() => {
+    setTextBoxes(initialTextBoxes || []);
+  }, [initialTextBoxes]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -328,14 +336,26 @@ const getToolSize = () => {
   };
 
   const handleCanvasClick = (e) => {
-    if (tool !== 'notes') return;
+    setSelectedNoteId(null);
+    setSelectedTextBoxId(null);
+    if (tool === 'notes') {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
 
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    setNotes(prev => [...prev, { id: Date.now(), x, y }]);
-    if (setTool) setTimeout(() => setTool('cursor'), 0);
+      setNotes(prev => [...prev, { id: Date.now(), x, y }]);
+      if (setTool) setTool('cursor');
+    } else if (tool === 'text') {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const newTextBox = { id: Date.now(), x, y, text: '' };
+      setTextBoxes(prev => [...prev, newTextBox]);
+      if (socket) {
+        socket.emit('text-create', { whiteboardId, textBox: newTextBox });
+      }
+      if (setTool) setTool('cursor');
+    }
   };
 
   // 🔹 Nowa funkcja removeNote z obsługą zaznaczenia
@@ -344,17 +364,47 @@ const getToolSize = () => {
     if (selectedNoteId === id) setSelectedNoteId(null);
   };
 
+  const handleTextUpdate = (id, newProps) => {
+    setTextBoxes(prev =>
+      prev.map(textBox =>
+        textBox.id === id ? { ...textBox, ...newProps } : textBox
+      )
+    );
+    if (socket) {
+      socket.emit('text-update', { whiteboardId, id, ...newProps });
+    }
+  };
+
+  const removeTextBox = (id) => {
+    setTextBoxes(prev => prev.filter(tb => tb.id !== id));
+    if (selectedTextBoxId === id) setSelectedTextBoxId(null);
+    if (socket) {
+      socket.emit('text-delete', { whiteboardId, id });
+    }
+  };
+
   // 🔹 Obsługa Backspace/Delete dla zaznaczonej notatki
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (!selectedNoteId) return;
-      if (e.key === 'Backspace' || e.key === 'Delete') {
+      const activeElement = document.activeElement;
+      if (
+        activeElement &&
+        (activeElement.tagName.toLowerCase() === 'input' ||
+          activeElement.tagName.toLowerCase() === 'textarea')
+      ) {
+        return;
+      }
+
+      if (selectedNoteId && (e.key === 'Backspace' || e.key === 'Delete')) {
         removeNote(selectedNoteId);
+      }
+      if (selectedTextBoxId && (e.key === 'Backspace' || e.key === 'Delete')) {
+        removeTextBox(selectedTextBoxId);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedNoteId]);
+  }, [selectedNoteId, selectedTextBoxId]);
 
 
   const handleMouseMove = (e) => {
@@ -424,6 +474,32 @@ const getToolSize = () => {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    if (socket) {
+      const handleTextCreate = (data) => {
+        setTextBoxes(prev => [...prev, data.textBox]);
+      };
+      const handleTextUpdate = (data) => {
+        setTextBoxes(prev =>
+          prev.map(textBox =>
+            textBox.id === data.id ? { ...textBox, ...data } : textBox
+          )
+        );
+      };
+      const handleTextDelete = (data) => {
+        setTextBoxes(prev => prev.filter(tb => tb.id !== data.id));
+      };
+      socket.on('text-create', handleTextCreate);
+      socket.on('text-update', handleTextUpdate);
+      socket.on('text-delete', handleTextDelete);
+      return () => {
+        socket.off('text-create', handleTextCreate);
+        socket.off('text-update', handleTextUpdate);
+        socket.off('text-delete', handleTextDelete);
+      };
+    }
+  }, [socket]);
+
   // Convert Map to array for rendering
   const remoteCursorsArray = Array.from(remoteCursors.values());
 
@@ -455,6 +531,22 @@ const getToolSize = () => {
             selectedNoteId={selectedNoteId} // 🔹 przekaż zaznaczenie
             setSelectedNoteId={setSelectedNoteId} // 🔹 funkcja do zaznaczania
           />))}
+        {textBoxes.map(textBox => (
+          <Text
+            key={textBox.id}
+            id={textBox.id}
+            x={textBox.x}
+            y={textBox.y}
+            width={textBox.width}
+            height={textBox.height}
+            text={textBox.text}
+            onUpdate={handleTextUpdate}
+            onRemove={removeTextBox}
+            selected={selectedTextBoxId === textBox.id}
+            setSelected={setSelectedTextBoxId}
+            socket={socket}
+          />
+        ))}
 
         {remoteCursorsArray.map((cursor) => (
           cursor.position && (

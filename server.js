@@ -42,7 +42,8 @@ app.get('/api/create-whiteboard', (req, res) => {
     const whiteboardId = generateId();
     whiteboards.set(whiteboardId, {
       users: new Map(),
-      drawingData: []
+      drawingData: [],
+      textBoxes: []
     });
     console.log(`📝 Created new whiteboard: ${whiteboardId}`);
     res.json({ 
@@ -129,7 +130,8 @@ io.on("connection", (socket) => {
     // Send current users and ALL drawing data to the new user
     socket.emit("whiteboard-data", {
       users: Array.from(whiteboard.users.values()),
-      drawingData: whiteboard.drawingData
+      drawingData: whiteboard.drawingData,
+      textBoxes: whiteboard.textBoxes
     });
     
     // Notify other users in the room about the new user
@@ -137,6 +139,37 @@ io.on("connection", (socket) => {
       user: { id: socket.id, ...user },
       users: Array.from(whiteboard.users.values())
     });
+  });
+
+  // Handle text events
+  socket.on("text-create", (data) => {
+    const { whiteboardId, textBox } = data;
+    const whiteboard = whiteboards.get(whiteboardId);
+    if (whiteboard) {
+      whiteboard.textBoxes.push(textBox);
+      socket.to(whiteboardId).emit("text-create", { textBox });
+    }
+  });
+
+  socket.on("text-update", (data) => {
+    const { whiteboardId, id, ...props } = data;
+    const whiteboard = whiteboards.get(whiteboardId);
+    if (whiteboard) {
+      const textBox = whiteboard.textBoxes.find(tb => tb.id === id);
+      if (textBox) {
+        Object.assign(textBox, props);
+        socket.to(whiteboardId).emit("text-update", { id, ...props });
+      }
+    }
+  });
+
+  socket.on("text-delete", (data) => {
+    const { whiteboardId, id } = data;
+    const whiteboard = whiteboards.get(whiteboardId);
+    if (whiteboard) {
+      whiteboard.textBoxes = whiteboard.textBoxes.filter(tb => tb.id !== id);
+      socket.to(whiteboardId).emit("text-delete", { id });
+    }
   });
 
   // Handle drawing events

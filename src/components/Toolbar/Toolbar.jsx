@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './Toolbar.css';
+import MultimediaModal from '../MultimediaModal/MultimediaModal.jsx';
 import PointerTrail from './PointerTrail.jsx';
 import ToolRangeCircle from './ToolRangeCircle.jsx';
 
@@ -16,6 +17,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
 
 
   const [showGifs, setShowGifs] = useState({ visible: false, x: 0, y: 0 });
+  const [showMultimedia, setShowMultimedia] = useState(false); // Stan dla modala multimediów
   const [gifQuery, setGifQuery] = useState('');
 
   const [gifs, setGifs] = useState([]); // lista gifów do wyświetlenia
@@ -58,6 +60,10 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
       x: rect.right + 10,
       y: rect.top - 20
     }));
+  };
+
+  const handleMultimediaClick = () => {
+    setShowMultimedia(true);
   };
 
   const fetchGifs = async (query = '', offset = 0, append = false) => {
@@ -231,7 +237,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
     { icon: '📋', name: 'Notatki', type: 'notes' },
     { icon: '😊', name: 'Emotki', type: 'emoji', onClick: handleEmojiClick },
     { icon: '🖼️', name: 'Gify', type: 'gifs', onClick: handleGifClick },
-    { icon: '📎', name: 'Multimedia', type: 'multi' },
+    { icon: '📎', name: 'Multimedia', type: 'multi', onClick: handleMultimediaClick },
   ];
 
   const shapes = [
@@ -433,6 +439,9 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
       >
         <span className={`arrow ${collapsed ? 'arrow-right' : 'arrow-left'}`}>➤</span>
       </div>
+      
+      {showMultimedia && <MultimediaModal onClose={() => setShowMultimedia(false)} />}
+
       <ToolRangeCircle tool={tool} size={size} />
     </>
   );
