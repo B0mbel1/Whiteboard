@@ -31,6 +31,12 @@ const Canvas = ({
     setTextBoxes(initialTextBoxes || []);
   }, [initialTextBoxes]);
 
+    const backgroundModes = [
+    { id: 'white', name: 'Białe tło', icon: '🌕' },
+    { id: 'grid', name: 'Kratka', icon: '🏁' },
+    { id: 'lines', name: 'Siatka linii', icon: '📐' },
+    { id: 'black', name: 'Czarne tło', icon: '🌑' },
+  ];
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -130,21 +136,23 @@ const Canvas = ({
     }
   }, [socket]);
 
-  const clearCanvas = () => {
-    const context = contextRef.current;
-    const canvas = canvasRef.current;
-    if (!context || !canvas) return;
+const clearCanvas = () => {
+  const context = contextRef.current;
+  const canvas = canvasRef.current;
+  if (!context || !canvas) return;
 
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    
-    if (backgroundMode === 'white') {
-      context.fillStyle = 'white';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-    } else if (backgroundMode === 'black') {
-      context.fillStyle = 'black';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-    }
-  };
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // Użyj aktualnego backgroundMode
+  if (backgroundMode === 'white') {
+    context.fillStyle = 'white';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+  } else if (backgroundMode === 'black') {
+    context.fillStyle = 'black';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+  }
+  // Dla 'grid' i 'lines' - CSS zajmie się tłem
+};
 
   const drawRemote = (data) => {
     const context = contextRef.current;
@@ -261,6 +269,8 @@ const getToolSize = () => {
     ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
   }, [color, size, tool]);
 
+
+  //Z takim kodem dobrze synchronizuje
   const startDrawing = ({ nativeEvent }) => {
       // ❗ Nie rysujemy, gdy tool NIE jest rysujący
   if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
@@ -272,14 +282,32 @@ const getToolSize = () => {
     
     contextRef.current.beginPath();
     contextRef.current.moveTo(x, y);
+
+    // // ❗ Nie rysujemy, gdy tool NIE jest rysujący
+    // if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
+
+    // if (setShowColorPicker) setShowColorPicker(false);
+    // const { offsetX, offsetY } = nativeEvent;
+    // const ctx = contextRef.current;
+    // ctx.beginPath();
+    // ctx.arc(offsetX, offsetY, ctx.lineWidth / 2, 0, Math.PI * 2);
+    // ctx.fillStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : color;
+    // ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
+    // ctx.fill();
+
+    // // rozpocznij rysowanie jak zwykle
+    // ctx.beginPath();
+    // ctx.moveTo(offsetX, offsetY);
     setIsDrawing(true);
     
+    //To usuwamy w drugiej wersji
     currentDrawingRef.current = {
       tool,
       color,
       size,
       points: [{ x, y }]
     };
+    // draw({ nativeEvent });
   };
 
   const stopDrawing = () => {
@@ -420,23 +448,21 @@ const getToolSize = () => {
     }
   };
 
-  const backgroundModes = [
-    { id: 'white', name: 'Białe tło', icon: '🌕' },
-    { id: 'grid', name: 'Kratka', icon: '🏁' },
-    { id: 'lines', name: 'Siatka linii', icon: '📐' },
-    { id: 'black', name: 'Czarne tło', icon: '🌑' },
-  ];
-
   const toggleBackground = () => {
-    const currentIndex = backgroundModes.findIndex(mode => mode.id === backgroundMode);
-    const nextIndex = (currentIndex + 1) % backgroundModes.length;
-    setBackgroundMode(backgroundModes[nextIndex].id);
-    
-    // Clear and redraw canvas with new background
-    setTimeout(() => {
-      clearCanvas();
-    }, 100);
-  };
+  const currentIndex = backgroundModes.findIndex(mode => mode.id === backgroundMode);
+  const nextIndex = (currentIndex + 1) % backgroundModes.length;
+  const newBackgroundMode = backgroundModes[nextIndex].id;
+  
+  setBackgroundMode(newBackgroundMode);
+  
+  // Natychmiastowe wyczyszczenie i ustawienie nowego tła
+  clearCanvas();
+};
+
+// Zmień useEffect, aby reagował na zmianę backgroundMode
+useEffect(() => {
+  clearCanvas();
+}, [backgroundMode]);
 
   const getCurrentBackgroundIcon = () =>
     backgroundModes.find(mode => mode.id === backgroundMode)?.icon;
@@ -514,12 +540,13 @@ const getToolSize = () => {
           onMouseUp={stopDrawing}
           onMouseMove={handleMouseMove}
           onMouseLeave={stopDrawing}
-          style={{
-            cursor: tool === 'eraser' ? 'crosshair' : 'default',
-            width: '100%',
-            height: '100%',
-            display: 'block'
-          }}
+          // style={{
+          //   cursor: tool === 'eraser' ? 'crosshair' : 'default',
+          //   width: '100%',
+          //   height: '100%',
+          //   display: 'block'
+          // }}
+          style={{}}
         />
         {notes.map(note => (
           <Note
