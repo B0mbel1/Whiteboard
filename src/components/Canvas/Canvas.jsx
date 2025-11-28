@@ -32,7 +32,7 @@ const Canvas = ({
   const [notes, setNotes] = useState(initialNotes || []);
   const [textBoxes, setTextBoxes] = useState(initialTextBoxes || []);
   
-  // 🔹 DODANE: Historia undo/redo
+  // 🔹 DODANE: Uproszczona historia undo/redo
   const [history, setHistory] = useState([]);
   const [historyStep, setHistoryStep] = useState(-1);
   const historyRef = useRef({ history: [], step: -1 });
@@ -40,10 +40,26 @@ const Canvas = ({
   const [selectedTextBoxId, setSelectedTextBoxId] = useState(null);
   const [selectedNoteId, setSelectedNoteId] = useState(null);
 
-  // 🔹 DODANE: Funkcje do zarządzania historią
-  const saveToHistory = (drawingData) => {
+  // 🔹 DODANE: Typy akcji dla historii
+  const ACTION_TYPES = {
+    DRAWING: 'drawing',
+    NOTE_CREATE: 'note_create',
+    NOTE_DELETE: 'note_delete',
+    TEXT_CREATE: 'text_create',
+    TEXT_DELETE: 'text_delete'
+  };
+
+  // 🔹 DODANE: Uproszczone funkcje do zarządzania historią
+  const saveToHistory = (actionType, data) => {
     const newHistory = historyRef.current.history.slice(0, historyRef.current.step + 1);
-    newHistory.push(drawingData);
+    
+    const historyItem = {
+      type: actionType,
+      data: data,
+      timestamp: Date.now()
+    };
+    
+    newHistory.push(historyItem);
     
     // Ogranicz historię do 50 kroków
     if (newHistory.length > 50) {
@@ -62,25 +78,120 @@ const Canvas = ({
   const undo = () => {
     if (historyRef.current.step < 0) return;
     
-    const newStep = historyRef.current.step - 1;
-    historyRef.current.step = newStep;
-    setHistoryStep(newStep);
+    const currentStep = historyRef.current.step;
+    const action = historyRef.current.history[currentStep];
     
-    // Przebuduj canvas od początku
-    clearCanvas();
-    redrawCanvas();
+    // Cofnij akcję w zależności od typu
+    switch (action.type) {
+      case ACTION_TYPES.DRAWING:
+        // Dla rysowania po prostu cofamy się o krok
+        historyRef.current.step = currentStep - 1;
+        setHistoryStep(currentStep - 1);
+        clearCanvas();
+        redrawCanvas();
+        break;
+        
+      case ACTION_TYPES.NOTE_CREATE:
+        // Cofnięcie tworzenia = usunięcie notatki
+        setNotes(prev => prev.filter(note => note.id !== action.data.note.id));
+        if (onNoteDelete && action.data.note.id) {
+          onNoteDelete(action.data.note.id);
+        }
+        historyRef.current.step = currentStep - 1;
+        setHistoryStep(currentStep - 1);
+        break;
+        
+      case ACTION_TYPES.NOTE_DELETE:
+        // Cofnięcie usunięcia = przywrócenie notatki
+        setNotes(prev => [...prev, action.data.note]);
+        if (onNoteCreate && action.data.note) {
+          onNoteCreate(action.data.note);
+        }
+        historyRef.current.step = currentStep - 1;
+        setHistoryStep(currentStep - 1);
+        break;
+        
+      case ACTION_TYPES.TEXT_CREATE:
+        // Cofnięcie tworzenia = usunięcie textboxa
+        setTextBoxes(prev => prev.filter(textBox => textBox.id !== action.data.textBox.id));
+        if (socket && action.data.textBox.id) {
+          socket.emit('text-delete', { whiteboardId, id: action.data.textBox.id });
+        }
+        historyRef.current.step = currentStep - 1;
+        setHistoryStep(currentStep - 1);
+        break;
+        
+      case ACTION_TYPES.TEXT_DELETE:
+        // Cofnięcie usunięcia = przywrócenie textboxa
+        setTextBoxes(prev => [...prev, action.data.textBox]);
+        if (socket && action.data.textBox) {
+          socket.emit('text-create', { whiteboardId, textBox: action.data.textBox });
+        }
+        historyRef.current.step = currentStep - 1;
+        setHistoryStep(currentStep - 1);
+        break;
+        
+      default:
+        historyRef.current.step = currentStep - 1;
+        setHistoryStep(currentStep - 1);
+    }
   };
 
   const redo = () => {
     if (historyRef.current.step >= historyRef.current.history.length - 1) return;
     
-    const newStep = historyRef.current.step + 1;
-    historyRef.current.step = newStep;
-    setHistoryStep(newStep);
+    const nextStep = historyRef.current.step + 1;
+    const action = historyRef.current.history[nextStep];
     
-    // Przebuduj canvas od początku
-    clearCanvas();
-    redrawCanvas();
+    // Ponów akcję w zależności od typu
+    switch (action.type) {
+      case ACTION_TYPES.DRAWING:
+        historyRef.current.step = nextStep;
+        setHistoryStep(nextStep);
+        clearCanvas();
+        redrawCanvas();
+        break;
+        
+      case ACTION_TYPES.NOTE_CREATE:
+        setNotes(prev => [...prev, action.data.note]);
+        if (onNoteCreate) {
+          onNoteCreate(action.data.note);
+        }
+        historyRef.current.step = nextStep;
+        setHistoryStep(nextStep);
+        break;
+        
+      case ACTION_TYPES.NOTE_DELETE:
+        setNotes(prev => prev.filter(note => note.id !== action.data.note.id));
+        if (onNoteDelete && action.data.note.id) {
+          onNoteDelete(action.data.note.id);
+        }
+        historyRef.current.step = nextStep;
+        setHistoryStep(nextStep);
+        break;
+        
+      case ACTION_TYPES.TEXT_CREATE:
+        setTextBoxes(prev => [...prev, action.data.textBox]);
+        if (socket && action.data.textBox) {
+          socket.emit('text-create', { whiteboardId, textBox: action.data.textBox });
+        }
+        historyRef.current.step = nextStep;
+        setHistoryStep(nextStep);
+        break;
+        
+      case ACTION_TYPES.TEXT_DELETE:
+        setTextBoxes(prev => prev.filter(textBox => textBox.id !== action.data.textBox.id));
+        if (socket && action.data.textBox.id) {
+          socket.emit('text-delete', { whiteboardId, id: action.data.textBox.id });
+        }
+        historyRef.current.step = nextStep;
+        setHistoryStep(nextStep);
+        break;
+        
+      default:
+        historyRef.current.step = nextStep;
+        setHistoryStep(nextStep);
+    }
   };
 
   const redrawCanvas = () => {
@@ -89,16 +200,15 @@ const Canvas = ({
     
     // Narysuj wszystkie kroki do aktualnego punktu w historii
     for (let i = 0; i <= historyRef.current.step; i++) {
-      const drawing = historyRef.current.history[i];
-      if (drawing && drawing.points && drawing.points.length > 1) {
-        drawCompletePath(context, drawing.tool, drawing.color, drawing.size, drawing.points);
+      const action = historyRef.current.history[i];
+      if (action.type === ACTION_TYPES.DRAWING && action.data && action.data.points && action.data.points.length > 1) {
+        drawCompletePath(context, action.data.tool, action.data.color, action.data.size, action.data.points);
       }
     }
   };
 
   // 🔹 DODANE: Przekaż funkcje undo/redo do Toolbar
   useEffect(() => {
-    // Znajdź element toolbar i przekaż funkcje
     const toolbar = document.querySelector('.toolbar');
     if (toolbar) {
       toolbar.undo = undo;
@@ -385,7 +495,7 @@ const Canvas = ({
       onDrawing(currentDrawingRef.current);
       
       // 🔹 DODANE: Zapisz do historii
-      saveToHistory(currentDrawingRef.current);
+      saveToHistory(ACTION_TYPES.DRAWING, currentDrawingRef.current);
     }
     
     currentDrawingRef.current = null;
@@ -424,6 +534,9 @@ const Canvas = ({
         height: 120
       };
       
+      // 🔹 DODANE: Zapisz do historii przed utworzeniem
+      saveToHistory(ACTION_TYPES.NOTE_CREATE, { note: newNote });
+      
       setNotes(prev => [...prev, newNote]);
       if (onNoteCreate) {
         onNoteCreate(newNote);
@@ -433,7 +546,18 @@ const Canvas = ({
       const rect = canvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      const newTextBox = { id: Date.now(), x, y, text: '' };
+      const newTextBox = { 
+        id: Date.now(), 
+        x, 
+        y, 
+        text: '',
+        width: 200,
+        height: 100
+      };
+      
+      // 🔹 DODANE: Zapisz do historii przed utworzeniem
+      saveToHistory(ACTION_TYPES.TEXT_CREATE, { textBox: newTextBox });
+      
       setTextBoxes(prev => [...prev, newTextBox]);
       if (socket) {
         socket.emit('text-create', { whiteboardId, textBox: newTextBox });
@@ -442,12 +566,54 @@ const Canvas = ({
     }
   };
 
-  // 🔹 Nowa funkcja removeNote z obsługą zaznaczenia
+  // 🔹 DODANE: Uproszczona funkcja removeNote z historią
   const removeNote = (id) => {
-    setNotes(prev => prev.filter(n => n.id !== id));
-    if (selectedNoteId === id) setSelectedNoteId(null);
+    const noteToDelete = notes.find(note => note.id === id);
+    if (noteToDelete) {
+      // 🔹 DODANE: Zapisz do historii przed usunięciem
+      saveToHistory(ACTION_TYPES.NOTE_DELETE, { noteId: id, note: noteToDelete });
+      
+      setNotes(prev => prev.filter(n => n.id !== id));
+      if (selectedNoteId === id) setSelectedNoteId(null);
+      
+      if (onNoteDelete) {
+        onNoteDelete(id);
+      }
+    }
   };
 
+  // 🔹 DODANE: Uproszczona funkcja handleNoteUpdate (bez historii)
+  const handleNoteUpdate = (id, updates) => {
+    setNotes(prev => prev.map(note => 
+      note.id === id ? { ...note, ...updates } : note
+    ));
+    
+    if (onNoteUpdate) {
+      onNoteUpdate(id, updates);
+    }
+  };
+
+  const handleNoteDelete = (id) => {
+    removeNote(id);
+  };
+
+  // 🔹 DODANE: Uproszczona funkcja removeTextBox z historią
+  const removeTextBox = (id) => {
+    const textBoxToDelete = textBoxes.find(textBox => textBox.id === id);
+    if (textBoxToDelete) {
+      // 🔹 DODANE: Zapisz do historii przed usunięciem
+      saveToHistory(ACTION_TYPES.TEXT_DELETE, { textBoxId: id, textBox: textBoxToDelete });
+      
+      setTextBoxes(prev => prev.filter(tb => tb.id !== id));
+      if (selectedTextBoxId === id) setSelectedTextBoxId(null);
+      
+      if (socket) {
+        socket.emit('text-delete', { whiteboardId, id });
+      }
+    }
+  };
+
+  // 🔹 DODANE: Uproszczona funkcja handleTextUpdate (bez historii)
   const handleTextUpdate = (id, newProps) => {
     setTextBoxes(prev =>
       prev.map(textBox =>
@@ -459,15 +625,7 @@ const Canvas = ({
     }
   };
 
-  const removeTextBox = (id) => {
-    setTextBoxes(prev => prev.filter(tb => tb.id !== id));
-    if (selectedTextBoxId === id) setSelectedTextBoxId(null);
-    if (socket) {
-      socket.emit('text-delete', { whiteboardId, id });
-    }
-  };
-
-  // 🔹 Obsługa Backspace/Delete dla zaznaczonej notatki
+  // 🔹 DODANE: Obsługa Backspace/Delete dla zaznaczonej notatki z historią
   useEffect(() => {
     const handleKeyDown = (e) => {
       const activeElement = document.activeElement;
@@ -489,26 +647,6 @@ const Canvas = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedNoteId, selectedTextBoxId]);
-
-  // DODANE: funkcje do obsługi notatek
-  const handleNoteUpdate = (id, updates) => {
-    setNotes(prev => prev.map(note => 
-      note.id === id ? { ...note, ...updates } : note
-    ));
-    
-    if (onNoteUpdate) {
-      onNoteUpdate(id, updates);
-    }
-  };
-
-  const handleNoteDelete = (id) => {
-    setNotes(prev => prev.filter(note => note.id !== id));
-    if (selectedNoteId === id) setSelectedNoteId(null);
-    
-    if (onNoteDelete) {
-      onNoteDelete(id);
-    }
-  };
 
   // DODANE: obsługa socket dla notatek
   useEffect(() => {
@@ -642,8 +780,9 @@ const Canvas = ({
 
   console.log("🎨 Canvas rendering:", {
     notesCount: notes.length,
-    notes: notes.map(n => ({ id: n.id, x: n.x, y: n.y })),
-    selectedNoteId: selectedNoteId
+    textBoxesCount: textBoxes.length,
+    selectedNoteId: selectedNoteId,
+    selectedTextBoxId: selectedTextBoxId
   });
 
   return (

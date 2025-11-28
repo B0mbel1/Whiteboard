@@ -20,6 +20,7 @@ const Note = ({
   const noteRef = useRef(null);
   const isDragging = useRef(false);
   const dragOffset = useRef({ x: 0, y: 0 });
+  const lastPosition = useRef({ x, y }); // 🔹 DODANE: Śledzenie poprzedniej pozycji
 
   // Synchronizuj zmiany z serwera
   useEffect(() => {
@@ -41,6 +42,7 @@ const Note = ({
 
   const handleMouseDown = (e) => {
     setSelectedNoteId(id);
+    lastPosition.current = { ...pos }; // 🔹 ZAPISZ pozycję przed rozpoczęciem przesuwania
 
     if (e.target.classList.contains('note-header')) {
       isDragging.current = true;
@@ -61,8 +63,11 @@ const Note = ({
   const handleMouseUp = () => {
     if (isDragging.current) {
       isDragging.current = false;
-      // Wyślij aktualizację pozycji
-      if (onUpdate) {
+      
+      // 🔹 DODANE: Sprawdź czy pozycja się zmieniła
+      const positionChanged = pos.x !== lastPosition.current.x || pos.y !== lastPosition.current.y;
+      
+      if (positionChanged && onUpdate) {
         onUpdate(id, { position: pos, text, size });
       }
     }
@@ -71,11 +76,10 @@ const Note = ({
   const handleTextChange = (e) => {
     const newText = e.target.value;
     setText(newText);
-    // Możesz dodać debounce tutaj jeśli chcesz uniknąć zbyt wielu aktualizacji
   };
 
   const handleTextBlur = () => {
-    if (onUpdate) {
+    if (onUpdate && text !== initialText) {
       onUpdate(id, { position: pos, text, size });
     }
   };
