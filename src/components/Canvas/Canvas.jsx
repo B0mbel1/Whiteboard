@@ -548,6 +548,12 @@ useEffect(() => {
   // Convert Map to array for rendering
   const remoteCursorsArray = Array.from(remoteCursors.values());
 
+  console.log("🎨 Canvas rendering:", {
+  notesCount: notes.length,
+  notes: notes.map(n => ({ id: n.id, x: n.x, y: n.y })),
+  selectedNoteId: selectedNoteId
+});
+
   return (
     <div className="canvas-container" ref={containerRef}>
       <div className={`canvas-area background-${backgroundMode}`}

@@ -114,12 +114,8 @@ const Whiteboard = () => {
       });
 
       newSocket.on('whiteboard-data', (data) => {
-        if (data.textBoxes) {
-          setTextBoxes(data.textBoxes);
-        }
-        if (data.notes) { // DODANE: odbierz notatki
-          setNotes(data.notes);
-        }
+          setTextBoxes(data.textBoxes || []);
+          setNotes(data.notes || []); 
       });
 
          // DODANE: obsługa notatek

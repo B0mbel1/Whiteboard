@@ -82,13 +82,19 @@ const WhiteboardRouter = () => {
 
     // ✅ DODAJ TE LISTENERY - to kluczowe dla notatek!
     newSocket.on('whiteboard-data', (data) => {
-      console.log("📦 Received whiteboard data:", data);
-      if (data.textBoxes) {
-        setTextBoxes(data.textBoxes);
-      }
-      if (data.notes) {
-        setNotes(data.notes);  // ✅ Odbieranie notatek
-      }
+        console.log("📦 Received whiteboard data:", {
+    notes: data.notes?.length || 0,
+    textBoxes: data.textBoxes?.length || 0,
+    notesDetails: data.notes?.map(n => ({ id: n.id, x: n.x, y: n.y })) || []
+  });
+  
+  // ✅ UŻYJ danych z serwera, NIE initialNotes
+  if (data.textBoxes) {
+    setTextBoxes(data.textBoxes);
+  }
+  if (data.notes) {
+    setNotes(data.notes);
+  }
     });
 
     // Obsługa tekstu
