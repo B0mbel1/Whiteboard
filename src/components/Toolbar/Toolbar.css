@@ -335,3 +335,26 @@
   .gif-grid img:hover {
     transform: scale(1.05);
   }
+
+  /* 🔹 DODANE: Stylowanie przycisków undo/redo */
+.tool-undo-redo {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 10px;
+}
+
+.tool-undo-redo .tool-btn {
+  flex: 1;
+  padding: 8px;
+  font-size: 16px;
+}
+
+.tool-undo-redo .tool-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.tool-undo-redo .tool-btn:not(.disabled):hover {
+  background: #3498db;
+  color: white;
+}
