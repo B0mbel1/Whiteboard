@@ -23,22 +23,37 @@ const Note = ({
   const lastPosition = useRef({ x, y }); // 🔹 DODANE: Śledzenie poprzedniej pozycji
 
   // Synchronizuj zmiany z serwera
-  useEffect(() => {
-    if (socket) {
-      const handleNoteUpdate = (data) => {
-        if (data.id === id) {
-          if (data.position) setPos(data.position);
-          if (data.text !== undefined) setText(data.text);
-          if (data.size) setSize(data.size);
+// Note.jsx - ZASTĄP obecny useEffect obsługujący socket tym:
+useEffect(() => {
+  if (socket) {
+    const handleNoteUpdate = (data) => {
+      if (data.id === id) {
+        console.log("📝 Note update received:", data);
+        
+        // ✅ POPRAWKA: Obsłuż zarówno position JAK i bezpośrednio x, y
+        if (data.position) {
+          setPos(data.position);
+        } else if (data.x !== undefined && data.y !== undefined) {
+          // Jeśli serwer wysyła bezpośrednio x, y
+          setPos({ x: data.x, y: data.y });
         }
-      };
-      
-      socket.on('note-update', handleNoteUpdate);
-      return () => {
-        socket.off('note-update', handleNoteUpdate);
-      };
-    }
-  }, [socket, id]);
+        
+        if (data.text !== undefined) setText(data.text);
+        if (data.size) setSize(data.size);
+      }
+    };
+    
+    socket.on('note-update', handleNoteUpdate);
+    return () => {
+      socket.off('note-update', handleNoteUpdate);
+    };
+  }
+}, [socket, id]);
+
+// ✅ DODAJ: Synchronizuj pozycję z props
+useEffect(() => {
+  setPos({ x, y });
+}, [x, y]);
 
   const handleMouseDown = (e) => {
     setSelectedNoteId(id);

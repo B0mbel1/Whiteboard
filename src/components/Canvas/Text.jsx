@@ -12,22 +12,37 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
   const isResizing = useRef(false);
 
   // Synchronizuj zmiany z serwera
-  useEffect(() => {
-    if (socket) {
-      const handleTextUpdate = (data) => {
-        if (data.id === id) {
-          if (data.position) setPosition(data.position);
-          if (data.text !== undefined) setText(data.text);
-          if (data.size) setSize(data.size);
+// Text.jsx - ZASTĄP obecny useEffect obsługujący socket tym:
+useEffect(() => {
+  if (socket) {
+    const handleTextUpdate = (data) => {
+      if (data.id === id) {
+        console.log("📝 Text update received:", data);
+        
+        // ✅ POPRAWKA: Obsłuż zarówno position JAK i bezpośrednio x, y
+        if (data.position) {
+          setPosition(data.position);
+        } else if (data.x !== undefined && data.y !== undefined) {
+          // Jeśli serwer wysyła bezpośrednio x, y
+          setPosition({ x: data.x, y: data.y });
         }
-      };
-      
-      socket.on('text-update', handleTextUpdate);
-      return () => {
-        socket.off('text-update', handleTextUpdate);
-      };
-    }
-  }, [socket, id]);
+        
+        if (data.text !== undefined) setText(data.text);
+        if (data.size) setSize(data.size);
+      }
+    };
+    
+    socket.on('text-update', handleTextUpdate);
+    return () => {
+      socket.off('text-update', handleTextUpdate);
+    };
+  }
+}, [socket, id]);
+
+// ✅ DODAJ: Synchronizuj pozycję z props
+useEffect(() => {
+  setPosition({ x, y });
+}, [x, y]);
 
   const handleMouseDown = (e) => {
     if (isEditing) return;

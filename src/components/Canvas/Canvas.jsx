@@ -583,15 +583,26 @@ const Canvas = ({
   };
 
   // 🔹 DODANE: Uproszczona funkcja handleNoteUpdate (bez historii)
-  const handleNoteUpdate = (id, updates) => {
-    setNotes(prev => prev.map(note => 
-      note.id === id ? { ...note, ...updates } : note
-    ));
+// Canvas.jsx - ZASTĄP obecną funkcję handleNoteUpdate tym:
+const handleNoteUpdate = (id, updates) => {
+  console.log("🔄 Updating note:", id, updates);
+  
+  setNotes(prev => {
+    const exists = prev.some(note => note.id === id);
+    console.log("📦 Note exists before update:", exists);
     
-    if (onNoteUpdate) {
-      onNoteUpdate(id, updates);
-    }
-  };
+    const updated = prev.map(note => 
+      note.id === id ? { ...note, ...updates } : note
+    );
+    
+    console.log("📦 Notes after update:", updated.length);
+    return updated;
+  });
+  
+  if (onNoteUpdate) {
+    onNoteUpdate(id, updates);
+  }
+};
 
   const handleNoteDelete = (id) => {
     removeNote(id);
@@ -614,16 +625,26 @@ const Canvas = ({
   };
 
   // 🔹 DODANE: Uproszczona funkcja handleTextUpdate (bez historii)
-  const handleTextUpdate = (id, newProps) => {
-    setTextBoxes(prev =>
-      prev.map(textBox =>
-        textBox.id === id ? { ...textBox, ...newProps } : textBox
-      )
+// Canvas.jsx - ZASTĄP obecną funkcję handleTextUpdate tym:
+const handleTextUpdate = (id, newProps) => {
+  console.log("🔄 Updating textbox:", id, newProps);
+  
+  setTextBoxes(prev => {
+    const exists = prev.some(tb => tb.id === id);
+    console.log("📦 Textbox exists before update:", exists);
+    
+    const updated = prev.map(textBox =>
+      textBox.id === id ? { ...textBox, ...newProps } : textBox
     );
-    if (socket) {
-      socket.emit('text-update', { whiteboardId, id, ...newProps });
-    }
-  };
+    
+    console.log("📦 Textboxes after update:", updated.length);
+    return updated;
+  });
+  
+  if (socket) {
+    socket.emit('text-update', { whiteboardId, id, ...newProps });
+  }
+};
 
   // 🔹 DODANE: Obsługa Backspace/Delete dla zaznaczonej notatki z historią
   useEffect(() => {

@@ -182,6 +182,7 @@ socket.on("text-create", (data) => {
   }
 });
 
+// server.js - w handlerze text-update ZASTĄP obecny kod tym:
 socket.on("text-update", (data) => {
   const { whiteboardId, id, ...props } = data;
   const whiteboard = whiteboards.get(whiteboardId);
@@ -193,18 +194,29 @@ socket.on("text-update", (data) => {
     
     const textBox = whiteboard.textBoxes.find(tb => tb.id === id);
     if (textBox) {
-      // ✅ AKTUALIZUJ position ORAZ bezpośrednio x, y
+      // ✅ POPRAWKA: Zawsze aktualizuj position ORAZ x, y osobno
       if (props.position) {
         textBox.position = props.position;
         textBox.x = props.position.x;
         textBox.y = props.position.y;
+      } else if (props.x !== undefined && props.y !== undefined) {
+        textBox.x = props.x;
+        textBox.y = props.y;
+        textBox.position = { x: props.x, y: props.y };
       }
       
-      // Aktualizuj inne właściwości
       if (props.text !== undefined) textBox.text = props.text;
       if (props.size) textBox.size = props.size;
       
-      socket.to(whiteboardId).emit("text-update", { id, ...props });
+      // ✅ POPRAWKA: Wyślij spójne dane
+      socket.to(whiteboardId).emit("text-update", { 
+        id, 
+        position: textBox.position,
+        x: textBox.x,
+        y: textBox.y,
+        text: textBox.text,
+        size: textBox.size
+      });
     }
   }
 });
@@ -250,11 +262,12 @@ socket.on("note-create", (data) => {
 });
 
 // ZASTĄP obecny handler note-update tym:
+// server.js - w handlerze note-update ZASTĄP obecny kod tym:
 socket.on("note-update", (data) => {
   const { whiteboardId, id, ...props } = data;
   const whiteboard = whiteboards.get(whiteboardId);
   
-  console.log(`🔄 Note update received:`, { id, props });
+  console.log("🔄 Note update received:", { id, props });
   
   if (whiteboard) {
     if (!whiteboard.notes) {
@@ -263,26 +276,38 @@ socket.on("note-update", (data) => {
     
     const note = whiteboard.notes.find(n => n.id === id);
     if (note) {
-      // ✅ POPRAWKA: Aktualizuj zarówno position JAK i bezpośrednio x, y
+      // ✅ POPRAWKA: Zawsze aktualizuj position ORAZ x, y osobno
       if (props.position) {
-        // Aktualizuj position object
         note.position = props.position;
-        // ✅ AKTUALIZUJ BEZPOŚREDNIO x i y dla kompatybilności
-        note.x = props.position.x;
-        note.y = props.position.y;
+        note.x = props.position.x;  // ✅ ZAWSZE aktualizuj x
+        note.y = props.position.y;  // ✅ ZAWSZE aktualizuj y
+      } else if (props.x !== undefined && props.y !== undefined) {
+        // Jeśli klient wysłał bezpośrednio x, y
+        note.x = props.x;
+        note.y = props.y;
+        note.position = { x: props.x, y: props.y }; // ✅ ZAWSZE aktualizuj position
       }
       
       // Aktualizuj inne właściwości
       if (props.text !== undefined) note.text = props.text;
       if (props.size) note.size = props.size;
       
-      console.log(`📝 Updated note ${id}:`, { 
+      console.log("📝 Updated note:", { 
+        id, 
         x: note.x, 
         y: note.y, 
         position: note.position 
       });
       
-      socket.to(whiteboardId).emit("note-update", { id, ...props });
+      // ✅ POPRAWKA: Wyślij spójne dane do wszystkich klientów
+      socket.to(whiteboardId).emit("note-update", { 
+        id, 
+        position: note.position, // ZAWSZE wyślij position
+        x: note.x,               // ORAZ osobno x
+        y: note.y,               // ORAZ osobno y
+        text: note.text,
+        size: note.size
+      });
     }
   }
 });
