@@ -161,26 +161,53 @@ io.on("connection", (socket) => {
   });
 
   // ========== OBSŁUGA TEKSTU (ulepszona) ==========
-  socket.on("text-create", (data) => {
-    const { whiteboardId, textBox } = data;
-    const whiteboard = whiteboards.get(whiteboardId);
-    if (whiteboard) {
-      whiteboard.textBoxes.push(textBox);
-      socket.to(whiteboardId).emit("text-create", { textBox });
+socket.on("text-create", (data) => {
+  const { whiteboardId, textBox } = data;
+  const whiteboard = whiteboards.get(whiteboardId);
+  
+  if (whiteboard) {
+    if (!whiteboard.textBoxes) {
+      whiteboard.textBoxes = [];
     }
-  });
+    
+    // ✅ UPEWNIJ SIĘ ŻE TEXTBOX MA SPÓJNE DANE
+    const textBoxToSave = {
+      ...textBox,
+      x: textBox.position ? textBox.position.x : textBox.x,
+      y: textBox.position ? textBox.position.y : textBox.y
+    };
+    
+    whiteboard.textBoxes.push(textBoxToSave);
+    socket.to(whiteboardId).emit("text-create", { textBox: textBoxToSave });
+  }
+});
 
-  socket.on("text-update", (data) => {
-    const { whiteboardId, id, ...props } = data;
-    const whiteboard = whiteboards.get(whiteboardId);
-    if (whiteboard) {
-      const textBox = whiteboard.textBoxes.find(tb => tb.id === id);
-      if (textBox) {
-        Object.assign(textBox, props);
-        socket.to(whiteboardId).emit("text-update", { id, ...props });
-      }
+socket.on("text-update", (data) => {
+  const { whiteboardId, id, ...props } = data;
+  const whiteboard = whiteboards.get(whiteboardId);
+  
+  if (whiteboard) {
+    if (!whiteboard.textBoxes) {
+      whiteboard.textBoxes = [];
     }
-  });
+    
+    const textBox = whiteboard.textBoxes.find(tb => tb.id === id);
+    if (textBox) {
+      // ✅ AKTUALIZUJ position ORAZ bezpośrednio x, y
+      if (props.position) {
+        textBox.position = props.position;
+        textBox.x = props.position.x;
+        textBox.y = props.position.y;
+      }
+      
+      // Aktualizuj inne właściwości
+      if (props.text !== undefined) textBox.text = props.text;
+      if (props.size) textBox.size = props.size;
+      
+      socket.to(whiteboardId).emit("text-update", { id, ...props });
+    }
+  }
+});
 
   socket.on("text-delete", (data) => {
     const { whiteboardId, id } = data;
