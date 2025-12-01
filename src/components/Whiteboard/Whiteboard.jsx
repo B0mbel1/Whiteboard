@@ -19,6 +19,7 @@ const Whiteboard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [textBoxes, setTextBoxes] = useState([]);
+  const [notes, setNotes] = useState([]); 
   
   const [currentUser] = useState(() => {
     // Generate a more unique user ID
@@ -113,9 +114,23 @@ const Whiteboard = () => {
       });
 
       newSocket.on('whiteboard-data', (data) => {
-        if (data.textBoxes) {
-          setTextBoxes(data.textBoxes);
-        }
+          setTextBoxes(data.textBoxes || []);
+          setNotes(data.notes || []); 
+      });
+
+         // DODANE: obsługa notatek
+      newSocket.on('note-create', (data) => {
+        setNotes(prev => [...prev, data.note]);
+      });
+
+      newSocket.on('note-update', (data) => {
+        setNotes(prev => prev.map(note => 
+          note.id === data.id ? { ...note, ...data } : note
+        ));
+      });
+
+      newSocket.on('note-delete', (data) => {
+        setNotes(prev => prev.filter(note => note.id !== data.id));
       });
 
       newSocket.on('connect_error', (error) => {
@@ -126,6 +141,35 @@ const Whiteboard = () => {
     } catch (error) {
       console.error("❌ Error initializing socket:", error);
       setError('Failed to initialize connection.');
+    }
+  };
+
+    // DODANE: funkcje do obsługi notatek
+  const handleNoteCreate = (note) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('note-create', {
+        whiteboardId,
+        note
+      });
+    }
+  };
+
+  const handleNoteUpdate = (id, updates) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('note-update', {
+        whiteboardId,
+        id,
+        ...updates
+      });
+    }
+  };
+
+  const handleNoteDelete = (id) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('note-delete', {
+        whiteboardId,
+        id
+      });
     }
   };
 
@@ -270,6 +314,10 @@ const Whiteboard = () => {
           onDrawing={handleDrawing}
           onCursorMove={handleCursorMove}
           textBoxes={textBoxes}
+          notes={notes} // DODANE: przekaż notatki
+          onNoteCreate={handleNoteCreate} // DODANE
+          onNoteUpdate={handleNoteUpdate} // DODANE
+          onNoteDelete={handleNoteDelete} // DODANE
         />
         
         <Sidebar 

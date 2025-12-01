@@ -43,7 +43,8 @@ app.get('/api/create-whiteboard', (req, res) => {
     whiteboards.set(whiteboardId, {
       users: new Map(),
       drawingData: [],
-      textBoxes: []
+      textBoxes: [],
+      notes: []
     });
     console.log(`📝 Created new whiteboard: ${whiteboardId}`);
     res.json({ 
@@ -98,12 +99,21 @@ io.on("connection", (socket) => {
     if (!whiteboards.has(whiteboardId)) {
       whiteboards.set(whiteboardId, {
         users: new Map(),
-        drawingData: []
+        drawingData: [],
+        textBoxes: [],
+        notes:[]
       });
       console.log(`📝 Created whiteboard on join: ${whiteboardId}`);
     }
     
     const whiteboard = whiteboards.get(whiteboardId);
+
+      // DEBUG: Sprawdź stan przed dołączeniem
+  console.log(`🔍 BEFORE JOIN - Whiteboard ${whiteboardId} state:`, {
+    notes: whiteboard.notes?.length || 0,
+    textBoxes: whiteboard.textBoxes?.length || 0,
+    notesDetails: whiteboard.notes?.map(n => ({ id: n.id, x: n.x, y: n.y })) || []
+  });
     
     // Check if user already exists in this whiteboard
     if (whiteboard.users.has(socket.id)) {
@@ -127,12 +137,21 @@ io.on("connection", (socket) => {
     console.log(`👤 User ${user.name} joined whiteboard: ${whiteboardId}`);
     logWhiteboardState(whiteboardId);
     
-    // Send current users and ALL drawing data to the new user
-    socket.emit("whiteboard-data", {
-      users: Array.from(whiteboard.users.values()),
-      drawingData: whiteboard.drawingData,
-      textBoxes: whiteboard.textBoxes
-    });
+      // ✅ POPRAWKA: ZAWSZE wysyłaj kompletne dane
+  const whiteboardData = {
+    users: Array.from(whiteboard.users.values()),
+    drawingData: whiteboard.drawingData || [],
+    textBoxes: whiteboard.textBoxes || [],
+    notes: whiteboard.notes || []
+  };
+  
+  console.log(`📤 Sending whiteboard data to new user:`, {
+    notes: whiteboardData.notes.length,
+    textBoxes: whiteboardData.textBoxes.length
+  });
+  
+  // Send current users and ALL data to the new user
+  socket.emit("whiteboard-data", whiteboardData);
     
     // Notify other users in the room about the new user
     socket.to(whiteboardId).emit("user-joined", {
@@ -141,27 +160,66 @@ io.on("connection", (socket) => {
     });
   });
 
-  // Handle text events
-  socket.on("text-create", (data) => {
-    const { whiteboardId, textBox } = data;
-    const whiteboard = whiteboards.get(whiteboardId);
-    if (whiteboard) {
-      whiteboard.textBoxes.push(textBox);
-      socket.to(whiteboardId).emit("text-create", { textBox });
+  // ========== OBSŁUGA TEKSTU (ulepszona) ==========
+socket.on("text-create", (data) => {
+  const { whiteboardId, textBox } = data;
+  const whiteboard = whiteboards.get(whiteboardId);
+  
+  if (whiteboard) {
+    if (!whiteboard.textBoxes) {
+      whiteboard.textBoxes = [];
     }
-  });
+    
+    // ✅ UPEWNIJ SIĘ ŻE TEXTBOX MA SPÓJNE DANE
+    const textBoxToSave = {
+      ...textBox,
+      x: textBox.position ? textBox.position.x : textBox.x,
+      y: textBox.position ? textBox.position.y : textBox.y
+    };
+    
+    whiteboard.textBoxes.push(textBoxToSave);
+    socket.to(whiteboardId).emit("text-create", { textBox: textBoxToSave });
+  }
+});
 
-  socket.on("text-update", (data) => {
-    const { whiteboardId, id, ...props } = data;
-    const whiteboard = whiteboards.get(whiteboardId);
-    if (whiteboard) {
-      const textBox = whiteboard.textBoxes.find(tb => tb.id === id);
-      if (textBox) {
-        Object.assign(textBox, props);
-        socket.to(whiteboardId).emit("text-update", { id, ...props });
-      }
+// server.js - w handlerze text-update ZASTĄP obecny kod tym:
+socket.on("text-update", (data) => {
+  const { whiteboardId, id, ...props } = data;
+  const whiteboard = whiteboards.get(whiteboardId);
+  
+  if (whiteboard) {
+    if (!whiteboard.textBoxes) {
+      whiteboard.textBoxes = [];
     }
-  });
+    
+    const textBox = whiteboard.textBoxes.find(tb => tb.id === id);
+    if (textBox) {
+      // ✅ POPRAWKA: Zawsze aktualizuj position ORAZ x, y osobno
+      if (props.position) {
+        textBox.position = props.position;
+        textBox.x = props.position.x;
+        textBox.y = props.position.y;
+      } else if (props.x !== undefined && props.y !== undefined) {
+        textBox.x = props.x;
+        textBox.y = props.y;
+        textBox.position = { x: props.x, y: props.y };
+      }
+      
+      if (props.text !== undefined) textBox.text = props.text;
+      if (props.size) textBox.size = props.size;
+      
+      // ✅ POPRAWKA: Wyślij spójne dane
+      socket.to(whiteboardId).emit("text-update", { 
+        id, 
+        position: textBox.position,
+        x: textBox.x,
+        y: textBox.y,
+        text: textBox.text,
+        size: textBox.size
+      });
+    }
+  }
+});
 
   socket.on("text-delete", (data) => {
     const { whiteboardId, id } = data;
@@ -169,6 +227,99 @@ io.on("connection", (socket) => {
     if (whiteboard) {
       whiteboard.textBoxes = whiteboard.textBoxes.filter(tb => tb.id !== id);
       socket.to(whiteboardId).emit("text-delete", { id });
+    }
+  });
+
+   // ========== OBSŁUGA NOTATEK ==========
+// W handlerze note-create, upewnij się że nowa notatka ma spójne dane:
+socket.on("note-create", (data) => {
+  const { whiteboardId, note } = data;
+  const whiteboard = whiteboards.get(whiteboardId);
+  
+  console.log(`➕ Note create received:`, { noteId: note.id, whiteboardId });
+  
+  if (whiteboard) {
+    if (!whiteboard.notes) {
+      whiteboard.notes = [];
+    }
+    
+    // ✅ UPEWNIJ SIĘ ŻE NOTATKA MA SPÓJNE DANE
+    const noteToSave = {
+      ...note,
+      // Jeśli mamy position, upewnij się że x i y są zgodne
+      x: note.position ? note.position.x : note.x,
+      y: note.position ? note.position.y : note.y
+    };
+    
+    whiteboard.notes.push(noteToSave);
+    console.log(`📝 Added note to whiteboard:`, { 
+      id: noteToSave.id, 
+      x: noteToSave.x, 
+      y: noteToSave.y 
+    });
+    socket.to(whiteboardId).emit("note-create", { note: noteToSave });
+  }
+});
+
+// ZASTĄP obecny handler note-update tym:
+// server.js - w handlerze note-update ZASTĄP obecny kod tym:
+socket.on("note-update", (data) => {
+  const { whiteboardId, id, ...props } = data;
+  const whiteboard = whiteboards.get(whiteboardId);
+  
+  console.log("🔄 Note update received:", { id, props });
+  
+  if (whiteboard) {
+    if (!whiteboard.notes) {
+      whiteboard.notes = [];
+    }
+    
+    const note = whiteboard.notes.find(n => n.id === id);
+    if (note) {
+      // ✅ POPRAWKA: Zawsze aktualizuj position ORAZ x, y osobno
+      if (props.position) {
+        note.position = props.position;
+        note.x = props.position.x;  // ✅ ZAWSZE aktualizuj x
+        note.y = props.position.y;  // ✅ ZAWSZE aktualizuj y
+      } else if (props.x !== undefined && props.y !== undefined) {
+        // Jeśli klient wysłał bezpośrednio x, y
+        note.x = props.x;
+        note.y = props.y;
+        note.position = { x: props.x, y: props.y }; // ✅ ZAWSZE aktualizuj position
+      }
+      
+      // Aktualizuj inne właściwości
+      if (props.text !== undefined) note.text = props.text;
+      if (props.size) note.size = props.size;
+      
+      console.log("📝 Updated note:", { 
+        id, 
+        x: note.x, 
+        y: note.y, 
+        position: note.position 
+      });
+      
+      // ✅ POPRAWKA: Wyślij spójne dane do wszystkich klientów
+      socket.to(whiteboardId).emit("note-update", { 
+        id, 
+        position: note.position,
+        x: note.x,
+        y: note.y,
+        text: note.text,
+        size: note.size,
+        width: note.width || 180,    // ✅ ZAWSZE wyślij width
+        height: note.height || 120   // ✅ ZAWSZE wyślij height
+      });
+    }
+  }
+});
+
+  socket.on("note-delete", (data) => {
+    const { whiteboardId, id } = data;
+    const whiteboard = whiteboards.get(whiteboardId);
+    if (whiteboard) {
+      whiteboard.notes = whiteboard.notes.filter(n => n.id !== id);
+      socket.to(whiteboardId).emit("note-delete", { id });
     }
   });
 

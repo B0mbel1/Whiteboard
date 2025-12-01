@@ -17,8 +17,11 @@ const WhiteboardRouter = () => {
   const [socket, setSocket] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   
+  // ✅ DODAJ TE STANY - to najważniejsze!
+  const [textBoxes, setTextBoxes] = useState([]);
+  const [notes, setNotes] = useState([]);
+  
   const [currentUser] = useState(() => {
-    // Generate a more unique user ID
     const userId = 'user_' + Math.random().toString(36).substring(2, 15);
     const userName = 'User' + Math.floor(Math.random() * 1000);
     const userColor = `hsl(${Math.random() * 360}, 80%, 60%)`;
@@ -33,14 +36,13 @@ const WhiteboardRouter = () => {
   });
   
   const socketRef = useRef(null);
-  const hasJoinedRef = useRef(false); // Track if we've already joined
+  const hasJoinedRef = useRef(false);
 
   useEffect(() => {
     if (whiteboardId && !hasJoinedRef.current) {
       initializeSocket(whiteboardId);
     }
 
-    // Cleanup on unmount
     return () => {
       if (socketRef.current) {
         console.log("🔌 Disconnecting socket");
@@ -53,7 +55,6 @@ const WhiteboardRouter = () => {
     setIsLoading(true);
     hasJoinedRef.current = false;
     
-    // Initialize socket connection
     const newSocket = io('http://localhost:3001', {
       timeout: 10000,
       transports: ['websocket', 'polling']
@@ -63,13 +64,10 @@ const WhiteboardRouter = () => {
     setSocket(newSocket);
 
     console.log("🔌 Socket initialized for whiteboard:", whiteboardId);
-    console.log("👤 Current user:", currentUser);
 
-    // Set up connection success handler - JOIN ONLY AFTER CONNECTION
     newSocket.on('connect', () => {
       console.log("✅ Connected to server");
       
-      // Join the whiteboard only once after connection is established
       if (!hasJoinedRef.current) {
         hasJoinedRef.current = true;
         newSocket.emit('join-whiteboard', {
@@ -82,20 +80,75 @@ const WhiteboardRouter = () => {
       setIsLoading(false);
     });
 
+    // ✅ DODAJ TE LISTENERY - to kluczowe dla notatek!
+    newSocket.on('whiteboard-data', (data) => {
+        console.log("📦 Received whiteboard data:", {
+    notes: data.notes?.length || 0,
+    textBoxes: data.textBoxes?.length || 0,
+    notesDetails: data.notes?.map(n => ({ id: n.id, x: n.x, y: n.y })) || []
+  });
+  
+  // ✅ UŻYJ danych z serwera, NIE initialNotes
+  if (data.textBoxes) {
+    setTextBoxes(data.textBoxes);
+  }
+  if (data.notes) {
+    setNotes(data.notes);
+  }
+    });
+
+    // Obsługa tekstu
+    newSocket.on('text-create', (data) => {
+      setTextBoxes(prev => [...prev, data.textBox]);
+    });
+
+    newSocket.on('text-delete', (data) => {
+      setTextBoxes(prev => prev.filter(tb => tb.id !== data.id));
+    });
+
+    // ✅ DODAJ OBSŁUGĘ NOTATEK
+    newSocket.on('note-create', (data) => {
+      setNotes(prev => [...prev, data.note]);
+    });
+
+
+    newSocket.on('note-delete', (data) => {
+      setNotes(prev => prev.filter(note => note.id !== data.id));
+    });
+
     newSocket.on('connect_error', (error) => {
       console.error("❌ Connection error:", error);
       setIsLoading(false);
     });
+  };
 
-    // Handle reconnection events
-    newSocket.on('reconnect', (attempt) => {
-      console.log("🔁 Socket reconnected, attempt:", attempt);
-      // Don't re-join on reconnect, the server should maintain our state
-    });
+  // ✅ DODAJ FUNKCJE OBSŁUGI NOTATEK
+  const handleNoteCreate = (note) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('note-create', {
+        whiteboardId,
+        note
+      });
+    }
+  };
 
-    newSocket.on('reconnect_attempt', (attempt) => {
-      console.log("🔄 Attempting to reconnect:", attempt);
-    });
+  const handleNoteUpdate = (id, updates) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('note-update', {
+        whiteboardId,
+        id,
+        ...updates
+      });
+    }
+  };
+
+  const handleNoteDelete = (id) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('note-delete', {
+        whiteboardId,
+        id
+      });
+    }
   };
 
   const handleDrawing = (drawingData) => {
@@ -124,7 +177,6 @@ const WhiteboardRouter = () => {
         alert('✅ Invite link copied to clipboard! Share it with others to collaborate!');
       } catch (err) {
         console.error('Failed to copy:', err);
-        // Fallback for browsers that don't support clipboard API
         const textArea = document.createElement('textarea');
         textArea.value = link;
         document.body.appendChild(textArea);
@@ -184,11 +236,13 @@ const WhiteboardRouter = () => {
           setShowColorPicker={setShowColorPicker}
         />
 
-          <PointerTrail active={tool === 'pointer'} />
+        <PointerTrail active={tool === 'pointer'} />
         
+        {/* ✅ PRZEKAŻ NOTATKI DO CANVAS - to najważniejsze! */}
         <Canvas 
           tool={tool}
           color={color}
+          setTool={setTool}
           size={size[tool]}
           setShowColorPicker={setShowColorPicker}
           whiteboardId={whiteboardId}
@@ -196,6 +250,11 @@ const WhiteboardRouter = () => {
           currentUser={currentUser}
           onDrawing={handleDrawing}
           onCursorMove={handleCursorMove}
+          textBoxes={textBoxes}
+          notes={notes}
+          onNoteCreate={handleNoteCreate}
+          onNoteUpdate={handleNoteUpdate}
+          onNoteDelete={handleNoteDelete}
         />
         
         <Sidebar 
