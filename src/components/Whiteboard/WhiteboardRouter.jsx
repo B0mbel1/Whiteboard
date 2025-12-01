@@ -102,12 +102,6 @@ const WhiteboardRouter = () => {
       setTextBoxes(prev => [...prev, data.textBox]);
     });
 
-    newSocket.on('text-update', (data) => {
-      setTextBoxes(prev => prev.map(textBox =>
-        textBox.id === data.id ? { ...textBox, ...data } : textBox
-      ));
-    });
-
     newSocket.on('text-delete', (data) => {
       setTextBoxes(prev => prev.filter(tb => tb.id !== data.id));
     });
@@ -117,11 +111,6 @@ const WhiteboardRouter = () => {
       setNotes(prev => [...prev, data.note]);
     });
 
-    newSocket.on('note-update', (data) => {
-      setNotes(prev => prev.map(note => 
-        note.id === data.id ? { ...note, ...data } : note
-      ));
-    });
 
     newSocket.on('note-delete', (data) => {
       setNotes(prev => prev.filter(note => note.id !== data.id));

@@ -526,18 +526,23 @@ const Canvas = ({
       const y = e.clientY - rect.top;
 
       const newNote = { 
-        id: Date.now() + Math.random(), 
+        id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         x, 
         y, 
         text: '',
         width: 180,
         height: 120
       };
+
+      setNotes(prev => {
+    const exists = prev.some(note => note.id === newNote.id);
+    return exists ? prev : [...prev, newNote];
+  });
       
       // 🔹 DODANE: Zapisz do historii przed utworzeniem
       saveToHistory(ACTION_TYPES.NOTE_CREATE, { note: newNote });
       
-      setNotes(prev => [...prev, newNote]);
+
       if (onNoteCreate) {
         onNoteCreate(newNote);
       }
@@ -583,25 +588,28 @@ const Canvas = ({
   };
 
   // 🔹 DODANE: Uproszczona funkcja handleNoteUpdate (bez historii)
-// Canvas.jsx - ZASTĄP obecną funkcję handleNoteUpdate tym:
+// Canvas.jsx - ZASTĄP funkcję handleNoteUpdate TYM:
 const handleNoteUpdate = (id, updates) => {
-  console.log("🔄 Updating note:", id, updates);
+  console.log("🔄 Local handleNoteUpdate called:", id, updates);
   
-  setNotes(prev => {
-    const exists = prev.some(note => note.id === id);
-    console.log("📦 Note exists before update:", exists);
-    
-    const updated = prev.map(note => 
-      note.id === id ? { ...note, ...updates } : note
-    );
-    
-    console.log("📦 Notes after update:", updated.length);
-    return updated;
-  });
-  
+  // NIE aktualizuj lokalnego stanu tutaj!
+  // Tylko wyślij do serwera
   if (onNoteUpdate) {
-    onNoteUpdate(id, updates);
+    // Przygotuj dane do wysłania
+    const dataToSend = { ...updates };
+    
+    // Jeśli updates zawiera position, upewnij się że x i y też są
+    if (updates.position) {
+      dataToSend.x = updates.position.x;
+      dataToSend.y = updates.position.y;
+    }
+    
+    console.log("📤 Sending note update to server:", id, dataToSend);
+    onNoteUpdate(id, dataToSend);
   }
+  
+  // WAŻNE: NIE wywołuj setNotes tutaj!
+  // Socket.io listener zaktualizuje stan po otrzymaniu odpowiedzi
 };
 
   const handleNoteDelete = (id) => {
@@ -676,11 +684,57 @@ const handleTextUpdate = (id, newProps) => {
         setNotes(prev => [...prev, data.note]);
       };
       
-      const handleNoteUpdate = (data) => {
-        setNotes(prev => prev.map(note => 
-          note.id === data.id ? { ...note, ...data } : note
-        ));
-      };
+       const handleNoteUpdate = (data) => {
+      console.log("📝 Socket: note-update received:", { 
+        id: data.id, 
+        hasPosition: !!data.position,
+        hasX: data.x !== undefined,
+        hasY: data.y !== undefined 
+      });
+      
+      setNotes(prev => {
+        const noteIndex = prev.findIndex(note => note.id === data.id);
+        
+        if (noteIndex === -1) {
+          console.log("❌ Socket: note not found locally, cannot update");
+          return prev;
+        }
+        
+        // Pobierz istniejącą notatkę
+        const existingNote = prev[noteIndex];
+        
+        // Przygotuj update - NIE nadpisuj całej notatki, tylko zaktualizuj pola
+        const updates = { ...data };
+        
+        // Jeśli jest position, rozbij na x, y
+        if (data.position) {
+          updates.x = data.position.x;
+          updates.y = data.position.y;
+        }
+        
+        // Usuń position z updates (użyjemy tylko x, y)
+        delete updates.position;
+        
+        // Stwórz zaktualizowaną notatkę - zachowaj wszystkie istniejące pola
+        const updatedNote = {
+          ...existingNote,
+          ...updates
+        };
+        
+        console.log("📝 Socket: updating note:", {
+          oldId: existingNote.id,
+          newId: updatedNote.id,
+          oldX: existingNote.x,
+          newX: updatedNote.x
+        });
+        
+        // Zamień tylko tę jedną notatkę
+        const newNotes = [...prev];
+        newNotes[noteIndex] = updatedNote;
+        
+        return newNotes;
+      });
+    };
       
       const handleNoteDelete = (data) => {
         setNotes(prev => prev.filter(note => note.id !== data.id));

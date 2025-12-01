@@ -302,11 +302,13 @@ socket.on("note-update", (data) => {
       // ✅ POPRAWKA: Wyślij spójne dane do wszystkich klientów
       socket.to(whiteboardId).emit("note-update", { 
         id, 
-        position: note.position, // ZAWSZE wyślij position
-        x: note.x,               // ORAZ osobno x
-        y: note.y,               // ORAZ osobno y
+        position: note.position,
+        x: note.x,
+        y: note.y,
         text: note.text,
-        size: note.size
+        size: note.size,
+        width: note.width || 180,    // ✅ ZAWSZE wyślij width
+        height: note.height || 120   // ✅ ZAWSZE wyślij height
       });
     }
   }

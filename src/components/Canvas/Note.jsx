@@ -75,29 +75,43 @@ useEffect(() => {
     setPos(newPos);
   };
 
-  const handleMouseUp = () => {
-    if (isDragging.current) {
-      isDragging.current = false;
-      
-      // 🔹 DODANE: Sprawdź czy pozycja się zmieniła
-      const positionChanged = pos.x !== lastPosition.current.x || pos.y !== lastPosition.current.y;
-      
-      if (positionChanged && onUpdate) {
-        onUpdate(id, { position: pos, text, size });
-      }
+const handleMouseUp = () => {
+  if (isDragging.current) {
+    isDragging.current = false;
+    
+    const positionChanged = pos.x !== lastPosition.current.x || pos.y !== lastPosition.current.y;
+    
+    if (positionChanged && onUpdate) {
+      console.log("📤 Note: Sending update for note:", id);
+      // ✅ Wysyłaj JEDNOCZEŚNIE position i x,y
+      onUpdate(id, { 
+        position: { x: pos.x, y: pos.y },
+        x: pos.x,
+        y: pos.y,
+        text, 
+        size 
+      });
     }
-  };
+  }
+};
 
   const handleTextChange = (e) => {
     const newText = e.target.value;
     setText(newText);
   };
 
-  const handleTextBlur = () => {
-    if (onUpdate && text !== initialText) {
-      onUpdate(id, { position: pos, text, size });
-    }
-  };
+const handleTextBlur = () => {
+  if (onUpdate && text !== initialText) {
+    console.log("📤 Note: Sending text update for note:", id);
+    onUpdate(id, { 
+      position: { x: pos.x, y: pos.y }, // ✅ Zawsze wysyłaj pełne dane
+      x: pos.x,
+      y: pos.y,
+      text, 
+      size 
+    });
+  }
+};
 
   const handleResize = (newWidth, newHeight) => {
     const updatedSize = { 
