@@ -18,6 +18,7 @@ const Whiteboard = () => {
   const [whiteboardId, setWhiteboardId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [textBoxes, setTextBoxes] = useState([]);
   
   const [currentUser] = useState(() => {
     // Generate a more unique user ID
@@ -108,6 +109,12 @@ const Whiteboard = () => {
             whiteboardId: whiteboardId,
             user: currentUser
           });
+        }
+      });
+
+      newSocket.on('whiteboard-data', (data) => {
+        if (data.textBoxes) {
+          setTextBoxes(data.textBoxes);
         }
       });
 
@@ -253,6 +260,7 @@ const Whiteboard = () => {
         
         <Canvas 
           tool={tool}
+          setTool={setTool}
           color={color}
           size={size[tool]}
           setShowColorPicker={setShowColorPicker}
@@ -261,6 +269,7 @@ const Whiteboard = () => {
           currentUser={currentUser}
           onDrawing={handleDrawing}
           onCursorMove={handleCursorMove}
+          textBoxes={textBoxes}
         />
         
         <Sidebar 
@@ -278,5 +287,6 @@ const Whiteboard = () => {
     </div>
   );
 };
+
 
 export default Whiteboard;
