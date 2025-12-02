@@ -15,7 +15,6 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
   const [recentColors, setRecentColors] = useState([]);
   const [tempColor, setTempColor] = useState(selectedColor);
 
-
   const [showGifs, setShowGifs] = useState({ visible: false, x: 0, y: 0 });
   const [showMultimedia, setShowMultimedia] = useState(false); // Stan dla modala multimediów
   const [gifQuery, setGifQuery] = useState('');
@@ -29,6 +28,9 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
   const API_KEY = 'XpMqI44Eo56UVR4wh8kFgFdGtR71nNRb';
   const GIF_LIMIT = 24; // np. 24 GIFy na stronę
 
+  // 🔹 DODANE: Stan dla undo/redo
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
 
   const handleSizeChange = (toolKey, value) => {
     setSize(prev => ({ ...prev, [toolKey]: parseInt(value, 10) }));
@@ -52,7 +54,6 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
     }));
   };
 
-
   const handleGifClick = (e) => {
     const rect = e.target.getBoundingClientRect();
     setShowGifs(prev => ({
@@ -65,6 +66,49 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
   const handleMultimediaClick = () => {
     setShowMultimedia(true);
   };
+
+  // 🔹 DODANE: Funkcje undo/redo
+  const handleUndo = () => {
+    const toolbar = document.querySelector('.toolbar');
+    if (toolbar && toolbar.undo) {
+      toolbar.undo();
+    }
+  };
+
+  const handleRedo = () => {
+    const toolbar = document.querySelector('.toolbar');
+    if (toolbar && toolbar.redo) {
+      toolbar.redo();
+    }
+  };
+
+  // 🔹 DODANE: Aktualizuj stan przycisków undo/redo
+  const updateUndoRedoState = () => {
+    const toolbar = document.querySelector('.toolbar');
+    if (toolbar) {
+      setCanUndo(toolbar.canUndo ? toolbar.canUndo() : false);
+      setCanRedo(toolbar.canRedo ? toolbar.canRedo() : false);
+    }
+  };
+
+  // 🔹 DODANE: Udostępnij funkcję aktualizacji
+  useEffect(() => {
+    const toolbar = document.querySelector('.toolbar');
+    if (toolbar) {
+      toolbar.updateUndoRedoState = updateUndoRedoState;
+    }
+  }, []);
+
+  // 🔹 DODANE: Słuchaj zmian w historii
+  useEffect(() => {
+    const checkState = () => {
+      updateUndoRedoState();
+    };
+    
+    // Sprawdzaj stan co 100ms
+    const interval = setInterval(checkState, 100);
+    return () => clearInterval(interval);
+  }, []);
 
   const fetchGifs = async (query = '', offset = 0, append = false) => {
     const cacheKey = `${query}_${offset}`;
@@ -286,10 +330,32 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
             </div>
           ))}
         </div>
-        <div className="tool-item tool-undo-redo">
-          <button className="tool-btn" title="Cofnij" style={{ cursor: 'default' }}>↶</button>
-          <button className="tool-btn" title="Ponów" style={{ cursor: 'default' }}>↷</button>
+
+        {/* 🔹 DODANE: Przyciski undo/redo z poprawioną funkcjonalnością */}
+        <div className="toolbar-section">
+          <h4>Akcje</h4>
+          <div className="tool-undo-redo">
+            <button 
+              className={`tool-btn ${!canUndo ? 'disabled' : ''}`} 
+              title="Cofnij (Ctrl+Z)" 
+              onClick={handleUndo}
+              disabled={!canUndo}
+              style={{ cursor: canUndo ? 'default' : 'not-allowed' }}
+            >
+              ↩️
+            </button>
+            <button 
+              className={`tool-btn ${!canRedo ? 'disabled' : ''}`} 
+              title="Ponów (Ctrl+Y)" 
+              onClick={handleRedo}
+              disabled={!canRedo}
+              style={{ cursor: canRedo ? 'default' : 'not-allowed' }}
+            >
+              ↪️
+            </button>
+          </div>
         </div>
+
         {/* Kolor i historia */}
         <div className="toolbar-section">
           <h4>Kolor</h4>

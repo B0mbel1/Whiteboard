@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './Canvas.css';
+import { getStandardizedSize, getDisplaySize, getToolEffects } from '../../utils/toolSizes';
+import { drawCompletePath, drawPathSegment } from '../../utils/drawingUtils';
 import Note from './Note';
 import Text from './Text';
 
@@ -14,7 +16,11 @@ const Canvas = ({
   currentUser,
   onDrawing,
   onCursorMove,
-  textBoxes: initialTextBoxes
+  textBoxes: initialTextBoxes,
+  notes: initialNotes,
+  onNoteCreate,
+  onNoteUpdate,
+  onNoteDelete
 }) => {
   const [backgroundMode, setBackgroundMode] = useState('grid');
   const [remoteCursors, setRemoteCursors] = useState(new Map());
@@ -23,20 +29,238 @@ const Canvas = ({
   const contextRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const currentDrawingRef = useRef(null);
-  const [notes, setNotes] = useState([]);
+  const [notes, setNotes] = useState(initialNotes || []);
   const [textBoxes, setTextBoxes] = useState(initialTextBoxes || []);
+  
+  // 🔹 DODANE: Uproszczona historia undo/redo
+  const [history, setHistory] = useState([]);
+  const [historyStep, setHistoryStep] = useState(-1);
+  const historyRef = useRef({ history: [], step: -1 });
+  
   const [selectedTextBoxId, setSelectedTextBoxId] = useState(null);
+  const [selectedNoteId, setSelectedNoteId] = useState(null);
+
+  // 🔹 DODANE: Typy akcji dla historii
+  const ACTION_TYPES = {
+    DRAWING: 'drawing',
+    NOTE_CREATE: 'note_create',
+    NOTE_DELETE: 'note_delete',
+    TEXT_CREATE: 'text_create',
+    TEXT_DELETE: 'text_delete'
+  };
+
+  // 🔹 DODANE: Uproszczone funkcje do zarządzania historią
+  const saveToHistory = (actionType, data) => {
+    const newHistory = historyRef.current.history.slice(0, historyRef.current.step + 1);
+    
+    const historyItem = {
+      type: actionType,
+      data: data,
+      timestamp: Date.now()
+    };
+    
+    newHistory.push(historyItem);
+    
+    // Ogranicz historię do 50 kroków
+    if (newHistory.length > 50) {
+      newHistory.shift();
+    }
+    
+    historyRef.current = {
+      history: newHistory,
+      step: newHistory.length - 1
+    };
+    
+    setHistory(newHistory);
+    setHistoryStep(newHistory.length - 1);
+  };
+
+  const undo = () => {
+    if (historyRef.current.step < 0) return;
+    
+    const currentStep = historyRef.current.step;
+    const action = historyRef.current.history[currentStep];
+    
+    // Cofnij akcję w zależności od typu
+    switch (action.type) {
+      case ACTION_TYPES.DRAWING:
+        // Dla rysowania po prostu cofamy się o krok
+        historyRef.current.step = currentStep - 1;
+        setHistoryStep(currentStep - 1);
+        clearCanvas();
+        redrawCanvas();
+        break;
+        
+      case ACTION_TYPES.NOTE_CREATE:
+        // Cofnięcie tworzenia = usunięcie notatki
+        setNotes(prev => prev.filter(note => note.id !== action.data.note.id));
+        if (onNoteDelete && action.data.note.id) {
+          onNoteDelete(action.data.note.id);
+        }
+        historyRef.current.step = currentStep - 1;
+        setHistoryStep(currentStep - 1);
+        break;
+        
+      case ACTION_TYPES.NOTE_DELETE:
+        // Cofnięcie usunięcia = przywrócenie notatki
+        setNotes(prev => [...prev, action.data.note]);
+        if (onNoteCreate && action.data.note) {
+          onNoteCreate(action.data.note);
+        }
+        historyRef.current.step = currentStep - 1;
+        setHistoryStep(currentStep - 1);
+        break;
+        
+      case ACTION_TYPES.TEXT_CREATE:
+        // Cofnięcie tworzenia = usunięcie textboxa
+        setTextBoxes(prev => prev.filter(textBox => textBox.id !== action.data.textBox.id));
+        if (socket && action.data.textBox.id) {
+          socket.emit('text-delete', { whiteboardId, id: action.data.textBox.id });
+        }
+        historyRef.current.step = currentStep - 1;
+        setHistoryStep(currentStep - 1);
+        break;
+        
+      case ACTION_TYPES.TEXT_DELETE:
+        // Cofnięcie usunięcia = przywrócenie textboxa
+        setTextBoxes(prev => [...prev, action.data.textBox]);
+        if (socket && action.data.textBox) {
+          socket.emit('text-create', { whiteboardId, textBox: action.data.textBox });
+        }
+        historyRef.current.step = currentStep - 1;
+        setHistoryStep(currentStep - 1);
+        break;
+        
+      default:
+        historyRef.current.step = currentStep - 1;
+        setHistoryStep(currentStep - 1);
+    }
+  };
+
+  const redo = () => {
+    if (historyRef.current.step >= historyRef.current.history.length - 1) return;
+    
+    const nextStep = historyRef.current.step + 1;
+    const action = historyRef.current.history[nextStep];
+    
+    // Ponów akcję w zależności od typu
+    switch (action.type) {
+      case ACTION_TYPES.DRAWING:
+        historyRef.current.step = nextStep;
+        setHistoryStep(nextStep);
+        clearCanvas();
+        redrawCanvas();
+        break;
+        
+      case ACTION_TYPES.NOTE_CREATE:
+        setNotes(prev => [...prev, action.data.note]);
+        if (onNoteCreate) {
+          onNoteCreate(action.data.note);
+        }
+        historyRef.current.step = nextStep;
+        setHistoryStep(nextStep);
+        break;
+        
+      case ACTION_TYPES.NOTE_DELETE:
+        setNotes(prev => prev.filter(note => note.id !== action.data.note.id));
+        if (onNoteDelete && action.data.note.id) {
+          onNoteDelete(action.data.note.id);
+        }
+        historyRef.current.step = nextStep;
+        setHistoryStep(nextStep);
+        break;
+        
+      case ACTION_TYPES.TEXT_CREATE:
+        setTextBoxes(prev => [...prev, action.data.textBox]);
+        if (socket && action.data.textBox) {
+          socket.emit('text-create', { whiteboardId, textBox: action.data.textBox });
+        }
+        historyRef.current.step = nextStep;
+        setHistoryStep(nextStep);
+        break;
+        
+      case ACTION_TYPES.TEXT_DELETE:
+        setTextBoxes(prev => prev.filter(textBox => textBox.id !== action.data.textBox.id));
+        if (socket && action.data.textBox.id) {
+          socket.emit('text-delete', { whiteboardId, id: action.data.textBox.id });
+        }
+        historyRef.current.step = nextStep;
+        setHistoryStep(nextStep);
+        break;
+        
+      default:
+        historyRef.current.step = nextStep;
+        setHistoryStep(nextStep);
+    }
+  };
+
+  const redrawCanvas = () => {
+    const context = contextRef.current;
+    if (!context) return;
+    
+    // Narysuj wszystkie kroki do aktualnego punktu w historii
+    for (let i = 0; i <= historyRef.current.step; i++) {
+      const action = historyRef.current.history[i];
+      if (action.type === ACTION_TYPES.DRAWING && action.data && action.data.points && action.data.points.length > 1) {
+        drawCompletePath(context, action.data.tool, action.data.color, action.data.size, action.data.points);
+      }
+    }
+  };
+
+  // 🔹 DODANE: Przekaż funkcje undo/redo do Toolbar
+  useEffect(() => {
+    const toolbar = document.querySelector('.toolbar');
+    if (toolbar) {
+      toolbar.undo = undo;
+      toolbar.redo = redo;
+      toolbar.canUndo = () => historyRef.current.step >= 0;
+      toolbar.canRedo = () => historyRef.current.step < historyRef.current.history.length - 1;
+    }
+  }, []);
+
+  // 🔹 DODANE: Aktualizuj przyciski undo/redo gdy zmienia się historia
+  useEffect(() => {
+    const toolbar = document.querySelector('.toolbar');
+    if (toolbar) {
+      toolbar.updateUndoRedoState?.();
+    }
+  }, [historyStep, history]);
+
+  // 🔹 DODANE: Skróty klawiaturowe
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ctrl+Z - Undo
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      }
+      
+      // Ctrl+Y lub Ctrl+Shift+Z - Redo
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        redo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   useEffect(() => {
     setTextBoxes(initialTextBoxes || []);
   }, [initialTextBoxes]);
 
-    const backgroundModes = [
+  useEffect(() => {
+    setNotes(initialNotes || []);
+  }, [initialNotes]);
+
+  const backgroundModes = [
     { id: 'white', name: 'Białe tło', icon: '🌕' },
     { id: 'grid', name: 'Kratka', icon: '🏁' },
     { id: 'lines', name: 'Siatka linii', icon: '📐' },
     { id: 'black', name: 'Czarne tło', icon: '🌑' },
   ];
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -136,59 +360,30 @@ const Canvas = ({
     }
   }, [socket]);
 
-const clearCanvas = () => {
-  const context = contextRef.current;
-  const canvas = canvasRef.current;
-  if (!context || !canvas) return;
+  const clearCanvas = () => {
+    const context = contextRef.current;
+    const canvas = canvasRef.current;
+    if (!context || !canvas) return;
 
-  context.clearRect(0, 0, canvas.width, canvas.height);
-  
-  // Użyj aktualnego backgroundMode
-  if (backgroundMode === 'white') {
-    context.fillStyle = 'white';
-    context.fillRect(0, 0, canvas.width, canvas.height);
-  } else if (backgroundMode === 'black') {
-    context.fillStyle = 'black';
-    context.fillRect(0, 0, canvas.width, canvas.height);
-  }
-  // Dla 'grid' i 'lines' - CSS zajmie się tłem
-};
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Użyj aktualnego backgroundMode
+    if (backgroundMode === 'white') {
+      context.fillStyle = 'white';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+    } else if (backgroundMode === 'black') {
+      context.fillStyle = 'black';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    // Dla 'grid' i 'lines' - CSS zajmie się tłem
+  };
 
   const drawRemote = (data) => {
     const context = contextRef.current;
-    if (!context || !data.points || data.points.length === 0) return;
+    if (!context || !data.points || data.points.length < 2) return;
 
-    context.save();
-    
-    if (data.tool === 'pencil' || data.tool === 'brush') {
-      context.globalCompositeOperation = 'source-over';
-      context.strokeStyle = data.color;
-      context.lineWidth = data.size;
-      context.lineCap = 'round';
-      context.lineJoin = 'round';
-      
-      if (data.tool === 'brush') {
-        context.shadowBlur = 5;
-        context.shadowColor = data.color;
-      } else {
-        context.shadowBlur = 0;
-      }
-    } else if (data.tool === 'eraser') {
-      context.globalCompositeOperation = 'destination-out';
-      context.strokeStyle = 'rgba(0,0,0,1)';
-      context.lineWidth = data.size;
-      context.shadowBlur = 0;
-    }
-
-    context.beginPath();
-    context.moveTo(data.points[0].x, data.points[0].y);
-    
-    for (let i = 1; i < data.points.length; i++) {
-      context.lineTo(data.points[i].x, data.points[i].y);
-    }
-    
-    context.stroke();
-    context.restore();
+    // UŻYJ drawCompletePath dla spójności
+    drawCompletePath(context, data.tool, data.color, data.size, data.points);
   };
 
   const getCanvasCoordinates = (clientX, clientY) => {
@@ -199,9 +394,6 @@ const clearCanvas = () => {
       y: clientY - rect.top
     };
   };
-
-  // 🔹 Nowe: zaznaczona notatka
-  const [selectedNoteId, setSelectedNoteId] = useState(null);
 
   // Funkcja do bezpiecznego zmiany rozmiaru canvas bez utraty zawartości
   const updateCanvasSize = () => {
@@ -229,18 +421,13 @@ const clearCanvas = () => {
     ctx.lineWidth = toolSize;
   };
 
-const getToolSize = () => {
-  const base = (typeof size === "object" && size?.[tool]) 
-    ? size[tool] 
-    : (typeof size === "number" ? size : 3);
-
-  if (tool === 'pencil') return Math.max(1, base - 2);
-  if (tool === 'brush') return base + 10;
-  if (tool === 'eraser') return base + 30;
-
-  return base;
-};
-
+  const getToolSize = () => {
+    const base = (typeof size === "object" && size?.[tool]) 
+      ? size[tool] 
+      : (typeof size === "number" ? size : 3);
+    
+    return getDisplaySize(tool, base);
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -269,11 +456,10 @@ const getToolSize = () => {
     ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
   }, [color, size, tool]);
 
-
-  //Z takim kodem dobrze synchronizuje
   const startDrawing = ({ nativeEvent }) => {
-      // ❗ Nie rysujemy, gdy tool NIE jest rysujący
-  if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
+    // ❗ Nie rysujemy, gdy tool NIE jest rysujący
+    if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
+    
     if (setShowColorPicker) {
       setShowColorPicker(false);
     }
@@ -283,47 +469,33 @@ const getToolSize = () => {
     contextRef.current.beginPath();
     contextRef.current.moveTo(x, y);
 
-    // // ❗ Nie rysujemy, gdy tool NIE jest rysujący
-    // if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
-
-    // if (setShowColorPicker) setShowColorPicker(false);
-    // const { offsetX, offsetY } = nativeEvent;
-    // const ctx = contextRef.current;
-    // ctx.beginPath();
-    // ctx.arc(offsetX, offsetY, ctx.lineWidth / 2, 0, Math.PI * 2);
-    // ctx.fillStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : color;
-    // ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
-    // ctx.fill();
-
-    // // rozpocznij rysowanie jak zwykle
-    // ctx.beginPath();
-    // ctx.moveTo(offsetX, offsetY);
     setIsDrawing(true);
     
-    //To usuwamy w drugiej wersji
     currentDrawingRef.current = {
       tool,
       color,
       size,
       points: [{ x, y }]
     };
-    // draw({ nativeEvent });
   };
 
   const stopDrawing = () => {
     if (!isDrawing) return;
 
-      // ❗ zablokuj NIE-rysujące tool’e
-  if (!['pencil', 'brush', 'eraser'].includes(tool)) {
-    setIsDrawing(false);
-    return;
-  }
+    // ❗ zablokuj NIE-rysujące tool'e
+    if (!['pencil', 'brush', 'eraser'].includes(tool)) {
+      setIsDrawing(false);
+      return;
+    }
     
     contextRef.current.closePath();
     setIsDrawing(false);
     
     if (currentDrawingRef.current && onDrawing) {
       onDrawing(currentDrawingRef.current);
+      
+      // 🔹 DODANE: Zapisz do historii
+      saveToHistory(ACTION_TYPES.DRAWING, currentDrawingRef.current);
     }
     
     currentDrawingRef.current = null;
@@ -331,36 +503,18 @@ const getToolSize = () => {
 
   const draw = ({ nativeEvent }) => {
     if (!isDrawing || !contextRef.current) return;
-
-  // ❗ zablokuj jeśli tool nie rysuje
-  if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
+    if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
     
     const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
     
     if (currentDrawingRef.current) {
-      currentDrawingRef.current.points.push({ x, y });
-    }
+      const points = currentDrawingRef.current.points;
+      const previousPoint = points[points.length - 1];
+      points.push({ x, y });
 
-    // Local drawing
-    if (tool === 'pencil') {
-      contextRef.current.globalCompositeOperation = 'source-over';
-      contextRef.current.strokeStyle = color;
-      contextRef.current.shadowBlur = 0;
-    } else if (tool === 'eraser') {
-      contextRef.current.globalCompositeOperation = 'destination-out';
-      contextRef.current.strokeStyle = 'rgba(0,0,0,1)';
-      contextRef.current.shadowBlur = 0;
-    } else if (tool === 'brush') {
-      contextRef.current.globalCompositeOperation = 'source-over';
-      contextRef.current.strokeStyle = color;
-      contextRef.current.shadowBlur = 5;
-      contextRef.current.shadowColor = color;
+      // Rysuj tylko NOWY segment używając drawPathSegment
+      drawPathSegment(contextRef.current, tool, color, size, previousPoint, { x, y });
     }
-
-    contextRef.current.lineCap = 'round';
-    contextRef.current.lineJoin = 'round';
-    contextRef.current.lineTo(x, y);
-    contextRef.current.stroke();
   };
 
   const handleCanvasClick = (e) => {
@@ -371,13 +525,44 @@ const getToolSize = () => {
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
-      setNotes(prev => [...prev, { id: Date.now(), x, y }]);
+      const newNote = { 
+        id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        x, 
+        y, 
+        text: '',
+        width: 180,
+        height: 120
+      };
+
+      setNotes(prev => {
+    const exists = prev.some(note => note.id === newNote.id);
+    return exists ? prev : [...prev, newNote];
+  });
+      
+      // 🔹 DODANE: Zapisz do historii przed utworzeniem
+      saveToHistory(ACTION_TYPES.NOTE_CREATE, { note: newNote });
+      
+
+      if (onNoteCreate) {
+        onNoteCreate(newNote);
+      }
       if (setTool) setTool('cursor');
     } else if (tool === 'text') {
       const rect = canvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      const newTextBox = { id: Date.now(), x, y, text: '' };
+      const newTextBox = { 
+        id: Date.now(), 
+        x, 
+        y, 
+        text: '',
+        width: 200,
+        height: 100
+      };
+      
+      // 🔹 DODANE: Zapisz do historii przed utworzeniem
+      saveToHistory(ACTION_TYPES.TEXT_CREATE, { textBox: newTextBox });
+      
       setTextBoxes(prev => [...prev, newTextBox]);
       if (socket) {
         socket.emit('text-create', { whiteboardId, textBox: newTextBox });
@@ -386,32 +571,90 @@ const getToolSize = () => {
     }
   };
 
-  // 🔹 Nowa funkcja removeNote z obsługą zaznaczenia
+  // 🔹 DODANE: Uproszczona funkcja removeNote z historią
   const removeNote = (id) => {
-    setNotes(prev => prev.filter(n => n.id !== id));
-    if (selectedNoteId === id) setSelectedNoteId(null);
-  };
-
-  const handleTextUpdate = (id, newProps) => {
-    setTextBoxes(prev =>
-      prev.map(textBox =>
-        textBox.id === id ? { ...textBox, ...newProps } : textBox
-      )
-    );
-    if (socket) {
-      socket.emit('text-update', { whiteboardId, id, ...newProps });
+    const noteToDelete = notes.find(note => note.id === id);
+    if (noteToDelete) {
+      // 🔹 DODANE: Zapisz do historii przed usunięciem
+      saveToHistory(ACTION_TYPES.NOTE_DELETE, { noteId: id, note: noteToDelete });
+      
+      setNotes(prev => prev.filter(n => n.id !== id));
+      if (selectedNoteId === id) setSelectedNoteId(null);
+      
+      if (onNoteDelete) {
+        onNoteDelete(id);
+      }
     }
   };
 
+  // 🔹 DODANE: Uproszczona funkcja handleNoteUpdate (bez historii)
+// Canvas.jsx - ZASTĄP funkcję handleNoteUpdate TYM:
+const handleNoteUpdate = (id, updates) => {
+  console.log("🔄 Local handleNoteUpdate called:", id, updates);
+  
+  // NIE aktualizuj lokalnego stanu tutaj!
+  // Tylko wyślij do serwera
+  if (onNoteUpdate) {
+    // Przygotuj dane do wysłania
+    const dataToSend = { ...updates };
+    
+    // Jeśli updates zawiera position, upewnij się że x i y też są
+    if (updates.position) {
+      dataToSend.x = updates.position.x;
+      dataToSend.y = updates.position.y;
+    }
+    
+    console.log("📤 Sending note update to server:", id, dataToSend);
+    onNoteUpdate(id, dataToSend);
+  }
+  
+  // WAŻNE: NIE wywołuj setNotes tutaj!
+  // Socket.io listener zaktualizuje stan po otrzymaniu odpowiedzi
+};
+
+  const handleNoteDelete = (id) => {
+    removeNote(id);
+  };
+
+  // 🔹 DODANE: Uproszczona funkcja removeTextBox z historią
   const removeTextBox = (id) => {
-    setTextBoxes(prev => prev.filter(tb => tb.id !== id));
-    if (selectedTextBoxId === id) setSelectedTextBoxId(null);
-    if (socket) {
-      socket.emit('text-delete', { whiteboardId, id });
+    const textBoxToDelete = textBoxes.find(textBox => textBox.id === id);
+    if (textBoxToDelete) {
+      // 🔹 DODANE: Zapisz do historii przed usunięciem
+      saveToHistory(ACTION_TYPES.TEXT_DELETE, { textBoxId: id, textBox: textBoxToDelete });
+      
+      setTextBoxes(prev => prev.filter(tb => tb.id !== id));
+      if (selectedTextBoxId === id) setSelectedTextBoxId(null);
+      
+      if (socket) {
+        socket.emit('text-delete', { whiteboardId, id });
+      }
     }
   };
 
-  // 🔹 Obsługa Backspace/Delete dla zaznaczonej notatki
+  // 🔹 DODANE: Uproszczona funkcja handleTextUpdate (bez historii)
+// Canvas.jsx - ZASTĄP obecną funkcję handleTextUpdate tym:
+const handleTextUpdate = (id, newProps) => {
+  console.log("🔄 Updating textbox:", id, newProps);
+  
+  setTextBoxes(prev => {
+    const exists = prev.some(tb => tb.id === id);
+    console.log("📦 Textbox exists before update:", exists);
+    
+    const updated = prev.map(textBox =>
+      textBox.id === id ? { ...textBox, ...newProps } : textBox
+    );
+    
+    console.log("📦 Textboxes after update:", updated.length);
+    return updated;
+  });
+  
+  if (socket) {
+    socket.emit('text-update', { whiteboardId, id, ...newProps });
+  }
+};
+
+  // 🔹 DODANE: Obsługa Backspace/Delete dla zaznaczonej notatki z historią
   useEffect(() => {
     const handleKeyDown = (e) => {
       const activeElement = document.activeElement;
@@ -434,6 +677,80 @@ const getToolSize = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedNoteId, selectedTextBoxId]);
 
+  // DODANE: obsługa socket dla notatek
+  useEffect(() => {
+    if (socket) {
+      const handleNoteCreate = (data) => {
+        setNotes(prev => [...prev, data.note]);
+      };
+      
+       const handleNoteUpdate = (data) => {
+      console.log("📝 Socket: note-update received:", { 
+        id: data.id, 
+        hasPosition: !!data.position,
+        hasX: data.x !== undefined,
+        hasY: data.y !== undefined 
+      });
+      
+      setNotes(prev => {
+        const noteIndex = prev.findIndex(note => note.id === data.id);
+        
+        if (noteIndex === -1) {
+          console.log("❌ Socket: note not found locally, cannot update");
+          return prev;
+        }
+        
+        // Pobierz istniejącą notatkę
+        const existingNote = prev[noteIndex];
+        
+        // Przygotuj update - NIE nadpisuj całej notatki, tylko zaktualizuj pola
+        const updates = { ...data };
+        
+        // Jeśli jest position, rozbij na x, y
+        if (data.position) {
+          updates.x = data.position.x;
+          updates.y = data.position.y;
+        }
+        
+        // Usuń position z updates (użyjemy tylko x, y)
+        delete updates.position;
+        
+        // Stwórz zaktualizowaną notatkę - zachowaj wszystkie istniejące pola
+        const updatedNote = {
+          ...existingNote,
+          ...updates
+        };
+        
+        console.log("📝 Socket: updating note:", {
+          oldId: existingNote.id,
+          newId: updatedNote.id,
+          oldX: existingNote.x,
+          newX: updatedNote.x
+        });
+        
+        // Zamień tylko tę jedną notatkę
+        const newNotes = [...prev];
+        newNotes[noteIndex] = updatedNote;
+        
+        return newNotes;
+      });
+    };
+      
+      const handleNoteDelete = (data) => {
+        setNotes(prev => prev.filter(note => note.id !== data.id));
+      };
+
+      socket.on('note-create', handleNoteCreate);
+      socket.on('note-update', handleNoteUpdate);
+      socket.on('note-delete', handleNoteDelete);
+      
+      return () => {
+        socket.off('note-create', handleNoteCreate);
+        socket.off('note-update', handleNoteUpdate);
+        socket.off('note-delete', handleNoteDelete);
+      };
+    }
+  }, [socket]);
 
   const handleMouseMove = (e) => {
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
@@ -449,20 +766,20 @@ const getToolSize = () => {
   };
 
   const toggleBackground = () => {
-  const currentIndex = backgroundModes.findIndex(mode => mode.id === backgroundMode);
-  const nextIndex = (currentIndex + 1) % backgroundModes.length;
-  const newBackgroundMode = backgroundModes[nextIndex].id;
-  
-  setBackgroundMode(newBackgroundMode);
-  
-  // Natychmiastowe wyczyszczenie i ustawienie nowego tła
-  clearCanvas();
-};
+    const currentIndex = backgroundModes.findIndex(mode => mode.id === backgroundMode);
+    const nextIndex = (currentIndex + 1) % backgroundModes.length;
+    const newBackgroundMode = backgroundModes[nextIndex].id;
+    
+    setBackgroundMode(newBackgroundMode);
+    
+    // Natychmiastowe wyczyszczenie i ustawienie nowego tła
+    clearCanvas();
+  };
 
-// Zmień useEffect, aby reagował na zmianę backgroundMode
-useEffect(() => {
-  clearCanvas();
-}, [backgroundMode]);
+  // Zmień useEffect, aby reagował na zmianę backgroundMode
+  useEffect(() => {
+    clearCanvas();
+  }, [backgroundMode]);
 
   const getCurrentBackgroundIcon = () =>
     backgroundModes.find(mode => mode.id === backgroundMode)?.icon;
@@ -526,13 +843,27 @@ useEffect(() => {
     }
   }, [socket]);
 
+  // 🔹 DODANE: Wyczyść historię przy zmianie whiteboard
+  useEffect(() => {
+    historyRef.current = { history: [], step: -1 };
+    setHistory([]);
+    setHistoryStep(-1);
+  }, [whiteboardId]);
+
   // Convert Map to array for rendering
   const remoteCursorsArray = Array.from(remoteCursors.values());
+
+  console.log("🎨 Canvas rendering:", {
+    notesCount: notes.length,
+    textBoxesCount: textBoxes.length,
+    selectedNoteId: selectedNoteId,
+    selectedTextBoxId: selectedTextBoxId
+  });
 
   return (
     <div className="canvas-container" ref={containerRef}>
       <div className={`canvas-area background-${backgroundMode}`}
-      onClick={handleCanvasClick}
+        onClick={handleCanvasClick}
       >
         <canvas
           ref={canvasRef}
@@ -540,12 +871,6 @@ useEffect(() => {
           onMouseUp={stopDrawing}
           onMouseMove={handleMouseMove}
           onMouseLeave={stopDrawing}
-          // style={{
-          //   cursor: tool === 'eraser' ? 'crosshair' : 'default',
-          //   width: '100%',
-          //   height: '100%',
-          //   display: 'block'
-          // }}
           style={{}}
         />
         {notes.map(note => (
@@ -554,10 +879,16 @@ useEffect(() => {
             id={note.id}
             x={note.x}
             y={note.y}
-            onRemove={removeNote}
-            selectedNoteId={selectedNoteId} // 🔹 przekaż zaznaczenie
-            setSelectedNoteId={setSelectedNoteId} // 🔹 funkcja do zaznaczania
-          />))}
+            width={note.width}
+            height={note.height}
+            initialText={note.text}
+            onUpdate={handleNoteUpdate}
+            onRemove={handleNoteDelete}
+            selectedNoteId={selectedNoteId}
+            setSelectedNoteId={setSelectedNoteId}
+            socket={socket}
+          />
+        ))}
         {textBoxes.map(textBox => (
           <Text
             key={textBox.id}
@@ -617,7 +948,6 @@ useEffect(() => {
               </div>
             </div>
           )
-          
         ))}
         
         <button 
