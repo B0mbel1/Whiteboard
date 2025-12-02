@@ -61,3 +61,36 @@
   border-radius: 3px;
   cursor: pointer;
 }
+
+.user-count-wrapper {
+  position: relative;
+  display: inline-block;
+  margin-left: 10px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.user-list-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%; /* poniżej span z liczbą */
+  left: 0;
+  background: #2d3a45;
+  border: 1px solid #1f2a33;
+  border-radius: 4px;
+  padding: 5px;
+  min-width: 120px;
+  z-index: 9999;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+
+.user-list-wrapper:hover .user-list-dropdown,
+.user-count-wrapper:hover .user-list-dropdown {
+  display: block;
+}
+
+.user-list-item {
+  display: block;
+  padding: 2px 6px;
+}

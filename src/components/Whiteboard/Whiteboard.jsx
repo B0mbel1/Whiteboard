@@ -6,6 +6,7 @@ import Canvas from '../Canvas/Canvas';
 import Sidebar from '../Sidebar/Sidebar';
 import ColorPicker from '../Toolbar/ColorPicker'; 
 import PointerTrail from '../Toolbar/PointerTrail';
+import UserDropdown from '../UserDropdown/UserDropdown';
 
 import './Whiteboard.css';
 
@@ -19,6 +20,8 @@ const Whiteboard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [textBoxes, setTextBoxes] = useState([]);
+  const [users, setUsers] = useState([]);
+
   
   const [currentUser] = useState(() => {
     // Generate a more unique user ID
@@ -116,6 +119,22 @@ const Whiteboard = () => {
         if (data.textBoxes) {
           setTextBoxes(data.textBoxes);
         }
+      });
+
+      //Obsługa Usera
+      newSocket.on('whiteboard-users', (data) => {
+        setUsers(data.users);
+      });
+
+      newSocket.on('user-joined', ({ user }) => {
+        setUsers(prev => {
+        if (prev.some(u => u.id === user.id)) return prev;
+        return [...prev, user];
+        });
+      });
+
+      newSocket.on('user-left', ({ userId }) => {
+      setUsers(prev => prev.filter(u => u.id !== userId));
       });
 
       newSocket.on('connect_error', (error) => {
@@ -230,7 +249,24 @@ const Whiteboard = () => {
         <div className="whiteboard-info">
           <span className="whiteboard-id">Room: {whiteboardId}</span>
           <span className="user-info">You: {currentUser.name}</span>
+          <span className="user-count-wrapper">
+            👥 {users.length}
+
+            {users.length > 0 && (
+              <span className="user-list-dropdown">
+                {users.map(user => (
+                  <span
+                    key={user.id}
+                    className="user-list-item"
+                    style={{ color: user.color }}>
+                    {user.name}
+                  </span>))}
+              </span>
+            )}
+          </span>
         </div>
+
+
         <div className="header-controls">
           <button 
             className="invite-btn" 
