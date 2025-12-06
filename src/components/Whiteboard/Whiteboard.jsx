@@ -118,20 +118,7 @@ const Whiteboard = () => {
           setNotes(data.notes || []); 
       });
 
-         // DODANE: obsługa notatek
-      newSocket.on('note-create', (data) => {
-        setNotes(prev => [...prev, data.note]);
-      });
-
-      newSocket.on('note-update', (data) => {
-        setNotes(prev => prev.map(note => 
-          note.id === data.id ? { ...note, ...data } : note
-        ));
-      });
-
-      newSocket.on('note-delete', (data) => {
-        setNotes(prev => prev.filter(note => note.id !== data.id));
-      });
+       
 
       newSocket.on('connect_error', (error) => {
         console.error("❌ Socket connection error:", error);
