@@ -16,25 +16,38 @@ const WhiteboardRouter = () => {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [socket, setSocket] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   // ✅ DODAJ TE STANY - to najważniejsze!
   const [textBoxes, setTextBoxes] = useState([]);
   const [notes, setNotes] = useState([]);
-  
+
+  // Emojis
+  const [emojis, setEmojis] = useState([]);
+  const [activeEmoji, setActiveEmoji] = useState(null); // Tutaj przechowamy np. "😎" wybrane z paska
+
+  //Gifs
+  const [gifs, setGifs] = useState([]);
+  const [activeGif, setActiveGif] = useState(null); // URL wybranego gifa
+
+  //Shapes
+  const [shapes, setShapes] = useState([]);
+  const [activeShape, setActiveShape] = useState(null);
+
+
   const [currentUser] = useState(() => {
     const userId = 'user_' + Math.random().toString(36).substring(2, 15);
     const userName = 'User' + Math.floor(Math.random() * 1000);
     const userColor = `hsl(${Math.random() * 360}, 80%, 60%)`;
-    
+
     console.log("👤 Generated user:", { id: userId, name: userName, color: userColor });
-    
+
     return {
       id: userId,
       name: userName,
       color: userColor
     };
   });
-  
+
   const socketRef = useRef(null);
   const hasJoinedRef = useRef(false);
 
@@ -54,12 +67,12 @@ const WhiteboardRouter = () => {
   const initializeSocket = (whiteboardId) => {
     setIsLoading(true);
     hasJoinedRef.current = false;
-    
+
     const newSocket = io('http://localhost:3001', {
       timeout: 10000,
       transports: ['websocket', 'polling']
     });
-    
+
     socketRef.current = newSocket;
     setSocket(newSocket);
 
@@ -67,7 +80,7 @@ const WhiteboardRouter = () => {
 
     newSocket.on('connect', () => {
       console.log("✅ Connected to server");
-      
+
       if (!hasJoinedRef.current) {
         hasJoinedRef.current = true;
         newSocket.emit('join-whiteboard', {
@@ -76,25 +89,72 @@ const WhiteboardRouter = () => {
         });
         console.log("📤 Sent join-whiteboard event");
       }
-      
+
       setIsLoading(false);
     });
 
     // ✅ DODAJ TE LISTENERY - to kluczowe dla notatek!
     newSocket.on('whiteboard-data', (data) => {
-        console.log("📦 Received whiteboard data:", {
-    notes: data.notes?.length || 0,
-    textBoxes: data.textBoxes?.length || 0,
-    notesDetails: data.notes?.map(n => ({ id: n.id, x: n.x, y: n.y })) || []
-  });
-  
-  // ✅ UŻYJ danych z serwera, NIE initialNotes
-  if (data.textBoxes) {
-    setTextBoxes(data.textBoxes);
-  }
-  if (data.notes) {
-    setNotes(data.notes);
-  }
+      console.log("📦 Received whiteboard data:", {
+        notes: data.notes?.length || 0,
+        textBoxes: data.textBoxes?.length || 0,
+        notesDetails: data.notes?.map(n => ({ id: n.id, x: n.x, y: n.y })) || []
+      });
+
+      // ✅ UŻYJ danych z serwera, NIE initialNotes
+      if (data.textBoxes) {
+        setTextBoxes(data.textBoxes);
+      }
+      if (data.notes) {
+        setNotes(data.notes);
+      }
+    });
+
+
+    //Gif
+    newSocket.on('whiteboard-data', (data) => {
+      // ... istniejące
+      if (data.textBoxes) setTextBoxes(data.textBoxes);
+      if (data.notes) setNotes(data.notes);
+      if (data.emojis) setEmojis(data.emojis);
+      if (data.gifs) setGifs(data.gifs);
+      if (data.shapes) setShapes(data.shapes);
+    });
+
+    newSocket.on('gif-update', (data) => {
+      setGifs(prev => prev.map(g => g.id === data.id ? { ...g, ...data } : g));
+    });
+
+    //emojis
+    newSocket.on('whiteboard-data', (data) => {
+      // ... istniejące
+      if (data.textBoxes) setTextBoxes(data.textBoxes);
+      if (data.notes) setNotes(data.notes);
+
+      // 🆕 Odbierz emoji przy wejściu
+      if (data.emojis) setEmojis(data.emojis);
+    });
+
+    newSocket.on('emoji-create', (data) => {
+      setEmojis(prev => [...prev, data.emoji]);
+    });
+
+    newSocket.on('emoji-delete', (data) => {
+      setEmojis(prev => prev.filter(e => e.id !== data.id));
+    });
+
+    //Shapes
+    newSocket.on('shape-create', (data) => {
+      setShapes(prev => [...prev, data.shape]);
+    });
+
+    newSocket.on('shape-delete', (data) => {
+      setShapes(prev => prev.filter(s => s.id !== data.id));
+    });
+    newSocket.on('shape-update', (data) => {
+      setShapes(prev => prev.map(s =>
+        s.id === data.id ? { ...s, ...data } : s
+      ));
     });
 
     // Obsługa tekstu
@@ -120,6 +180,69 @@ const WhiteboardRouter = () => {
       console.error("❌ Connection error:", error);
       setIsLoading(false);
     });
+
+    //Gif
+    newSocket.on('gif-create', (data) => {
+      setGifs(prev => [...prev, data.gif]);
+    });
+
+    newSocket.on('gif-delete', (data) => {
+      setGifs(prev => prev.filter(g => g.id !== data.id));
+    });
+  };
+
+  //Shapes
+  const handleShapeCreate = (shape) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('shape-create', { whiteboardId, shape });
+    }
+  };
+
+  const handleShapeDelete = (id) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('shape-delete', { whiteboardId, id });
+    }
+  };
+  const handleShapeUpdate = (id, updates) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('shape-update', {
+        whiteboardId,
+        id,
+        ...updates
+      });
+    }
+  };
+
+
+  //Gif
+  const handleGifCreate = (gif) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('gif-create', { whiteboardId, gif });
+    }
+  };
+
+  const handleGifDelete = (id) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('gif-delete', { whiteboardId, id });
+    }
+  };
+  const handleGifUpdate = (id, updates) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('gif-update', { whiteboardId, id, ...updates });
+    }
+  };
+
+  //emojis
+  const handleEmojiCreate = (emoji) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('emoji-create', { whiteboardId, emoji });
+    }
+  };
+
+  const handleEmojiDelete = (id) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('emoji-delete', { whiteboardId, id });
+    }
   };
 
   // ✅ DODAJ FUNKCJE OBSŁUGI NOTATEK
@@ -190,10 +313,10 @@ const WhiteboardRouter = () => {
 
   if (isLoading) {
     return (
-      <div style={{ 
-        height: '100vh', 
-        display: 'flex', 
-        alignItems: 'center', 
+      <div style={{
+        height: '100vh',
+        display: 'flex',
+        alignItems: 'center',
         justifyContent: 'center',
         background: '#f0f0f0',
         flexDirection: 'column',
@@ -213,8 +336,8 @@ const WhiteboardRouter = () => {
           <span className="user-info">You: {currentUser.name}</span>
         </div>
         <div className="header-controls">
-          <button 
-            className="invite-btn" 
+          <button
+            className="invite-btn"
             onClick={copyInviteLink}
           >
             📋 Copy Invite Link
@@ -225,7 +348,7 @@ const WhiteboardRouter = () => {
       </div>
 
       <div className="whiteboard-main">
-        <Toolbar 
+        <Toolbar
           tool={tool}
           setTool={setTool}
           color={color}
@@ -234,12 +357,16 @@ const WhiteboardRouter = () => {
           setSize={setSize}
           showColorPicker={showColorPicker}
           setShowColorPicker={setShowColorPicker}
+          activeEmoji={activeEmoji}
+          setActiveEmoji={setActiveEmoji}
+          setActiveGif={setActiveGif}
+          setActiveShape={setActiveShape}
         />
 
         <PointerTrail active={tool === 'pointer'} />
-        
+
         {/* ✅ PRZEKAŻ NOTATKI DO CANVAS - to najważniejsze! */}
-        <Canvas 
+        <Canvas
           tool={tool}
           color={color}
           setTool={setTool}
@@ -255,9 +382,22 @@ const WhiteboardRouter = () => {
           onNoteCreate={handleNoteCreate}
           onNoteUpdate={handleNoteUpdate}
           onNoteDelete={handleNoteDelete}
+          emojis={emojis}
+          activeEmoji={activeEmoji} // Aktualnie wybrane emoji do postawienia
+          onEmojiCreate={handleEmojiCreate}
+          onEmojiDelete={handleEmojiDelete}
+          gifs={gifs}                     // ✅ Przekazujemy listę
+          activeGif={activeGif}           // ✅ Przekazujemy wybrany URL
+          onGifCreate={handleGifCreate}   // ✅ Funkcja tworzenia
+          onGifDelete={handleGifDelete}   // ✅ Funkcja usuwania
+          shapes={shapes}
+          activeShape={activeShape}
+          onShapeCreate={handleShapeCreate}
+          onShapeDelete={handleShapeDelete}
+          onShapeUpdate={handleShapeUpdate} // <--- Przekazujemy funkcję
         />
-        
-        <Sidebar 
+
+        <Sidebar
           whiteboardId={whiteboardId}
           socket={socketRef.current}
           currentUser={currentUser}
