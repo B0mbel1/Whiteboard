@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const Emoji = ({ 
-  id, 
-  x, 
-  y, 
-  emoji, 
-  size = 48, 
-  selected, 
-  onSelect, 
+const Emoji = ({
+  id,
+  x,
+  y,
+  emoji,
+  size = 48,
+  selected,
+  onSelect,
   onRemove,
-  onUpdate 
+  onUpdate
 }) => {
   // --- Stan dla skalowania ---
   const [isResizing, setIsResizing] = useState(false);
@@ -54,15 +54,15 @@ const Emoji = ({
 
   // 2. Logika PRZESUWANIA
   const handleDragStart = (e) => {
-    // Ignoruj jeśli kliknięto przycisk lub resize
+    e.stopPropagation();
+    console.log("🎯 Emoji: Próba zaznaczenia ID:", id); // <--- DODAJ TO
     if (e.target.tagName === 'BUTTON' || isResizing) return;
-    
+
     // Zatrzymujemy mousedown, żeby nie rysować po canvasie
-    e.stopPropagation(); 
-    
+
     onSelect(id);
     setIsDragging(true);
-    
+
     dragOffsetRef.current = {
       x: e.clientX - x,
       y: e.clientY - y
@@ -93,12 +93,11 @@ const Emoji = ({
 
   return (
     <div
+      className="emoji-item"
       onMouseDown={handleDragStart}
-      // 🆕 TO JEST KLUCZOWA ZMIANA:
-      // Zatrzymujemy propagację kliknięcia, żeby Canvas nie odznaczył elementu
       onClick={(e) => {
         e.stopPropagation();
-        onSelect(id); // Dla pewności ponawiamy zaznaczenie przy pełnym kliknięciu
+        onSelect(id);
       }}
       style={{
         position: 'absolute',
@@ -117,7 +116,8 @@ const Emoji = ({
       }}
     >
       {emoji}
-      
+
+
       {/* Przycisk usuwania */}
       {selected && !isDragging && !isResizing && (
         <button
@@ -154,7 +154,7 @@ const Emoji = ({
         <div
           onMouseDown={handleResizeStart}
           // Dodajemy stopPropagation też tutaj, żeby kliknięcie w uchwyt nie robiło zamieszania
-          onClick={(e) => e.stopPropagation()} 
+          onClick={(e) => e.stopPropagation()}
           style={{
             position: 'absolute',
             bottom: '-6px',

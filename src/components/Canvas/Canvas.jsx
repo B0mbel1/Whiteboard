@@ -580,6 +580,13 @@ const Canvas = ({
   };
 
   const handleCanvasClick = (e) => {
+    // 🔍 DEBUG: Zobaczmy w co dokładnie kliknął system
+    console.log("🖱️ Kliknięto w element:", e.target);
+    console.log("🔍 Czy to emoji?", e.target.closest('.emoji-item'));
+    if (e.target.closest('.emoji-item')) {
+      console.log("🛡️ Kliknięto w Emoji - Canvas ignoruje to zdarzenie.");
+      return; // 🛑 STOP! Nie idź dalej, nie resetuj zaznaczenia!
+    }
     setSelectedNoteId(null);
     setSelectedTextBoxId(null);
     setSelectedEmojiId(null);
@@ -773,7 +780,18 @@ const Canvas = ({
       ) {
         return;
       }
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        console.log("Kasowanie - aktualnie zaznaczone:", {
+          Note: selectedNoteId,
+          Text: selectedTextBoxId,
+          Emoji: selectedEmojiId //
+        });
 
+        if (selectedEmojiId) {
+          console.log("Próbuję usunąć emoji o ID:", selectedEmojiId);
+          removeEmoji(selectedEmojiId);
+        }
+      }
       if (selectedNoteId && (e.key === 'Backspace' || e.key === 'Delete')) {
         removeNote(selectedNoteId);
       }
@@ -781,12 +799,13 @@ const Canvas = ({
         removeTextBox(selectedTextBoxId);
       }
       if (selectedEmojiId && (e.key === 'Backspace' || e.key === 'Delete')) {
+        console.log("Usuwanie emoji:", selectedEmojiId); // Dla pewności log
         removeEmoji(selectedEmojiId);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedNoteId, selectedTextBoxId], [selectedEmojiId]);
+  }, [selectedNoteId, selectedTextBoxId, selectedEmojiId]);
 
   // DODANE: obsługa socket dla notatek
   useEffect(() => {
@@ -987,8 +1006,12 @@ const Canvas = ({
     notesCount: notes.length,
     textBoxesCount: textBoxes.length,
     selectedNoteId: selectedNoteId,
-    selectedTextBoxId: selectedTextBoxId
+    selectedTextBoxId: selectedTextBoxId,
+    emojis: emojis.length,         // <-- Dodane
+    selEmoji: selectedEmojiId      // <-- Dodane (najważniejsze)
   });
+
+
 
   return (
     <div className="canvas-container" ref={containerRef}>
