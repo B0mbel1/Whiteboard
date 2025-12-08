@@ -1,18 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './Note.css';
 
-const Note = ({ 
-  id, 
-  x, 
-  y, 
-  width, 
-  height, 
-  initialText = '', 
-  onUpdate, 
-  onRemove, 
-  selectedNoteId, 
+const Note = ({
+  id,
+  x,
+  y,
+  width,
+  height,
+  initialText = '',
+  onUpdate,
+  onRemove,
+  selectedNoteId,
   setSelectedNoteId,
-  socket 
+  socket
 }) => {
   const [text, setText] = useState(initialText);
   const [pos, setPos] = useState({ x, y });
@@ -23,37 +23,37 @@ const Note = ({
   const lastPosition = useRef({ x, y }); // 🔹 DODANE: Śledzenie poprzedniej pozycji
 
   // Synchronizuj zmiany z serwera
-// Note.jsx - ZASTĄP obecny useEffect obsługujący socket tym:
-useEffect(() => {
-  if (socket) {
-    const handleNoteUpdate = (data) => {
-      if (data.id === id) {
-        console.log("📝 Note update received:", data);
-        
-        // ✅ POPRAWKA: Obsłuż zarówno position JAK i bezpośrednio x, y
-        if (data.position) {
-          setPos(data.position);
-        } else if (data.x !== undefined && data.y !== undefined) {
-          // Jeśli serwer wysyła bezpośrednio x, y
-          setPos({ x: data.x, y: data.y });
-        }
-        
-        if (data.text !== undefined) setText(data.text);
-        if (data.size) setSize(data.size);
-      }
-    };
-    
-    socket.on('note-update', handleNoteUpdate);
-    return () => {
-      socket.off('note-update', handleNoteUpdate);
-    };
-  }
-}, [socket, id]);
+  // Note.jsx - ZASTĄP obecny useEffect obsługujący socket tym:
+  useEffect(() => {
+    if (socket) {
+      const handleNoteUpdate = (data) => {
+        if (data.id === id) {
+          console.log("📝 Note update received:", data);
 
-// ✅ DODAJ: Synchronizuj pozycję z props
-useEffect(() => {
-  setPos({ x, y });
-}, [x, y]);
+          // ✅ POPRAWKA: Obsłuż zarówno position JAK i bezpośrednio x, y
+          if (data.position) {
+            setPos(data.position);
+          } else if (data.x !== undefined && data.y !== undefined) {
+            // Jeśli serwer wysyła bezpośrednio x, y
+            setPos({ x: data.x, y: data.y });
+          }
+
+          if (data.text !== undefined) setText(data.text);
+          if (data.size) setSize(data.size);
+        }
+      };
+
+      socket.on('note-update', handleNoteUpdate);
+      return () => {
+        socket.off('note-update', handleNoteUpdate);
+      };
+    }
+  }, [socket, id]);
+
+  // ✅ DODAJ: Synchronizuj pozycję z props
+  useEffect(() => {
+    setPos({ x, y });
+  }, [x, y]);
 
   const handleMouseDown = (e) => {
     setSelectedNoteId(id);
@@ -75,51 +75,51 @@ useEffect(() => {
     setPos(newPos);
   };
 
-const handleMouseUp = () => {
-  if (isDragging.current) {
-    isDragging.current = false;
-    
-    const positionChanged = pos.x !== lastPosition.current.x || pos.y !== lastPosition.current.y;
-    
-    if (positionChanged && onUpdate) {
-      console.log("📤 Note: Sending update for note:", id);
-      // ✅ Wysyłaj JEDNOCZEŚNIE position i x,y
-      onUpdate(id, { 
-        position: { x: pos.x, y: pos.y },
-        x: pos.x,
-        y: pos.y,
-        text, 
-        size 
-      });
+  const handleMouseUp = () => {
+    if (isDragging.current) {
+      isDragging.current = false;
+
+      const positionChanged = pos.x !== lastPosition.current.x || pos.y !== lastPosition.current.y;
+
+      if (positionChanged && onUpdate) {
+        console.log("📤 Note: Sending update for note:", id);
+        // ✅ Wysyłaj JEDNOCZEŚNIE position i x,y
+        onUpdate(id, {
+          position: { x: pos.x, y: pos.y },
+          x: pos.x,
+          y: pos.y,
+          text,
+          size
+        });
+      }
     }
-  }
-};
+  };
 
   const handleTextChange = (e) => {
     const newText = e.target.value;
     setText(newText);
   };
 
-const handleTextBlur = () => {
-  if (onUpdate && text !== initialText) {
-    console.log("📤 Note: Sending text update for note:", id);
-    onUpdate(id, { 
-      position: { x: pos.x, y: pos.y }, // ✅ Zawsze wysyłaj pełne dane
-      x: pos.x,
-      y: pos.y,
-      text, 
-      size 
-    });
-  }
-};
+  const handleTextBlur = () => {
+    if (onUpdate && text !== initialText) {
+      console.log("📤 Note: Sending text update for note:", id);
+      onUpdate(id, {
+        position: { x: pos.x, y: pos.y }, // ✅ Zawsze wysyłaj pełne dane
+        x: pos.x,
+        y: pos.y,
+        text,
+        size
+      });
+    }
+  };
 
   const handleResize = (newWidth, newHeight) => {
-    const updatedSize = { 
-      width: newWidth > 100 ? newWidth : 100, 
-      height: newHeight > 80 ? newHeight : 80 
+    const updatedSize = {
+      width: newWidth > 100 ? newWidth : 100,
+      height: newHeight > 80 ? newHeight : 80
     };
     setSize(updatedSize);
-    
+
     if (onUpdate) {
       onUpdate(id, { position: pos, text, size: updatedSize });
     }
@@ -145,10 +145,14 @@ const handleTextBlur = () => {
         height: size.height,
       }}
       onMouseDown={handleMouseDown}
+      onClick={(e) => e.stopPropagation()}
     >
       <div className="note-header">
         🗒️
-        <button className="note-close" onClick={() => onRemove(id)}>✕</button>
+        <button className="note-close" onClick={(e) => {
+          e.stopPropagation();
+          onRemove(id);
+        }}>✕</button>
       </div>
       <textarea
         className="note-text"
@@ -156,6 +160,7 @@ const handleTextBlur = () => {
         onChange={handleTextChange}
         onBlur={handleTextBlur}
         placeholder="Twoja notatka..."
+        onMouseDown={(e) => e.stopPropagation()}
       />
       <div
         className="note-resizer"
