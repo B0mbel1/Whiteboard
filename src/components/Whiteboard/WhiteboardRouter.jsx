@@ -151,6 +151,11 @@ const WhiteboardRouter = () => {
     newSocket.on('shape-delete', (data) => {
       setShapes(prev => prev.filter(s => s.id !== data.id));
     });
+    newSocket.on('shape-update', (data) => {
+      setShapes(prev => prev.map(s =>
+        s.id === data.id ? { ...s, ...data } : s
+      ));
+    });
 
     // Obsługa tekstu
     newSocket.on('text-create', (data) => {
@@ -196,6 +201,15 @@ const WhiteboardRouter = () => {
   const handleShapeDelete = (id) => {
     if (socketRef.current && whiteboardId) {
       socketRef.current.emit('shape-delete', { whiteboardId, id });
+    }
+  };
+  const handleShapeUpdate = (id, updates) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('shape-update', {
+        whiteboardId,
+        id,
+        ...updates
+      });
     }
   };
 
@@ -380,6 +394,7 @@ const WhiteboardRouter = () => {
           activeShape={activeShape}
           onShapeCreate={handleShapeCreate}
           onShapeDelete={handleShapeDelete}
+          onShapeUpdate={handleShapeUpdate} // <--- Przekazujemy funkcję
         />
 
         <Sidebar

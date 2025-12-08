@@ -37,6 +37,7 @@ const Canvas = ({
   activeShape,
   onShapeCreate,
   onShapeDelete,
+  onShapeUpdate,
 }) => {
   const [backgroundMode, setBackgroundMode] = useState('grid');
   const [remoteCursors, setRemoteCursors] = useState(new Map());
@@ -337,6 +338,23 @@ const Canvas = ({
     }
   };
 
+  const removeShape = (id) => {
+    const shapeToDelete = shapes.find(s => s.id === id);
+    if (shapeToDelete) {
+      // 1. Zapisz do historii
+      saveToHistory(ACTION_TYPES.SHAPE_DELETE, { shapeId: id, shape: shapeToDelete });
+
+      // 2. Usuń lokalnie
+      setShapes(prev => prev.filter(s => s.id !== id));
+
+      // 3. Resetuj zaznaczenie
+      if (selectedShapeId === id) setSelectedShapeId(null);
+
+      // 4. Wyślij przez socket
+      if (onShapeDelete) onShapeDelete(id);
+    }
+  };
+
   const removeGif = (id) => {
     const gifToDelete = gifs.find(g => g.id === id);
     if (gifToDelete) {
@@ -347,15 +365,6 @@ const Canvas = ({
     }
   };
 
-  const removeShape = (id) => {
-    const shapeToDelete = shapes.find(s => s.id === id);
-    if (shapeToDelete) {
-      saveToHistory(ACTION_TYPES.SHAPE_DELETE, { shapeId: id, shape: shapeToDelete });
-      setShapes(prev => prev.filter(s => s.id !== id));
-      if (selectedShapeId === id) setSelectedShapeId(null);
-      if (onShapeDelete) onShapeDelete(id);
-    }
-  };
 
   const removeEmoji = (id) => {
     const emojiToDelete = emojis.find(e => e.id === id);
@@ -708,16 +717,29 @@ const Canvas = ({
     }
   };
 
+  const handleShapeUpdate = (id, newProps) => {
+    // Aktualizuj lokalny stan natychmiast dla płynności
+    setShapes(prev => prev.map(shape =>
+      shape.id === id ? { ...shape, ...newProps } : shape
+    ));
+
+    // Wyślij do serwera (WhiteboardRouter)
+    if (onShapeUpdate) {
+      onShapeUpdate(id, newProps);
+    }
+  };
+
   const handleCanvasClick = (e) => {
-    if (e.target.closest('.emoji-item')) {
-      console.log("🛡️ Kliknięto w Emoji - Canvas ignoruje to zdarzenie.");
-      return; // 🛑 STOP! Nie idź dalej, nie resetuj zaznaczenia!
+    if (e.target.closest('.shape-item') || e.target.closest('.emoji-item')) {
+      return;
     }
     setSelectedNoteId(null);
     setSelectedTextBoxId(null);
     setSelectedEmojiId(null);
     setSelectedGifId(null);
     setSelectedShapeId(null);
+
+
     if (tool === 'notes') {
       const rect = canvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -831,22 +853,19 @@ const Canvas = ({
 
       const newShape = {
         id: `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        x,
-        y,
-        type: activeShape // 'square', 'star', etc.
+        x: x - 50, // Centrowanie: przesuwamy o połowę domyślnego rozmiaru
+        y: y - 50,
+        width: 100, // Domyślna szerokość
+        height: 100, // Domyślna wysokość
+        type: activeShape
       };
 
-      // Dodaj lokalnie
       setShapes(prev => [...prev, newShape]);
-
-      // Historia
       saveToHistory(ACTION_TYPES.SHAPE_CREATE, { shape: newShape });
-
-      // Wyślij socketem
       if (onShapeCreate) onShapeCreate(newShape);
-
-      // Zmień na kursor
-      if (setTool) setTool('cursor');
+      if (setTool) {
+        setTool('cursor');
+      }
     }
 
   };
@@ -963,7 +982,9 @@ const Canvas = ({
         console.log("Kasowanie - aktualnie zaznaczone:", {
           Note: selectedNoteId,
           Text: selectedTextBoxId,
-          Emoji: selectedEmojiId //
+          Emoji: selectedEmojiId,
+          Gif: selectedGifId,
+          Shape: selectedShapeId // <-- Logujemy też kształt
         });
 
         if (selectedEmojiId) {
@@ -983,10 +1004,13 @@ const Canvas = ({
       if (selectedGifId && (e.key === 'Backspace' || e.key === 'Delete')) {
         removeGif(selectedGifId);
       }
+      if (selectedShapeId) {
+        removeShape(selectedShapeId);
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedNoteId, selectedTextBoxId, selectedEmojiId, selectedGifId]);
+  }, [selectedNoteId, selectedTextBoxId, selectedEmojiId, selectedGifId,selectedShapeId]);
 
   // DODANE: obsługa socket dla notatek
   useEffect(() => {
@@ -1312,16 +1336,17 @@ const Canvas = ({
             onUpdate={handleGifUpdate} // ✅ PRZEKAŻ FUNKCJĘ UPDATE          
           />
 
-          
+
         ))}
         {shapes.map(shape => (
-            <Shape
-                key={shape.id}
-                {...shape}
-                selected={selectedShapeId === shape.id}
-                onSelect={setSelectedShapeId}
-                onRemove={removeShape}
-            />
+          <Shape
+            key={shape.id}
+            {...shape}
+            selected={selectedShapeId === shape.id}
+            onSelect={setSelectedShapeId}
+            onRemove={removeShape}
+            onUpdate={handleShapeUpdate} // <--- WAŻNE
+          />
         ))}
 
         {remoteCursorsArray.map((cursor) => (
