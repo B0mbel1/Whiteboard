@@ -5,6 +5,7 @@ import { drawCompletePath, drawPathSegment } from '../../utils/drawingUtils';
 import Note from './Note';
 import Text from './Text';
 import Emoji from './Emoji';
+import Gif from './Gif'; // lub ścieżka gdzie go utworzyłeś
 
 const Canvas = ({
   tool,
@@ -25,7 +26,12 @@ const Canvas = ({
   emojis: initialEmojis,
   activeEmoji, // To jest emoji wybrane z Toolbara (np. "🔥")
   onEmojiCreate,
-  onEmojiDelete
+  onEmojiDelete,
+  gifs: initialGifs,      // ✅
+  activeGif,              // ✅ URL z toolbara
+  onGifCreate,            // ✅
+  onGifDelete,
+  onGifUpdate
 }) => {
   const [backgroundMode, setBackgroundMode] = useState('grid');
   const [remoteCursors, setRemoteCursors] = useState(new Map());
@@ -49,6 +55,9 @@ const Canvas = ({
   const [emojis, setEmojis] = useState(initialEmojis || []);
   const [selectedEmojiId, setSelectedEmojiId] = useState(null);
 
+  //Gif
+  const [gifs, setGifs] = useState(initialGifs || []);
+  const [selectedGifId, setSelectedGifId] = useState(null);
 
   // 🔹 DODANE: Typy akcji dla historii
   const ACTION_TYPES = {
@@ -59,7 +68,10 @@ const Canvas = ({
     TEXT_DELETE: 'text_delete',
 
     EMOJI_CREATE: 'emoji_create',
-    EMOJI_DELETE: 'emoji_delete'
+    EMOJI_DELETE: 'emoji_delete',
+
+    GIF_CREATE: 'gif_create', // ✅
+    GIF_DELETE: 'gif_delete'  // ✅
   };
 
   // 🔹 DODANE: Uproszczone funkcje do zarządzania historią
@@ -162,6 +174,20 @@ const Canvas = ({
         setHistoryStep(currentStep - 1);
         break;
 
+      case ACTION_TYPES.GIF_CREATE:
+        setGifs(prev => prev.filter(g => g.id !== action.data.gif.id));
+        if (onGifDelete && action.data.gif.id) onGifDelete(action.data.gif.id);
+        historyRef.current.step = currentStep - 1;
+        setHistoryStep(currentStep - 1);
+        break;
+
+      case ACTION_TYPES.GIF_DELETE:
+        setGifs(prev => [...prev, action.data.gif]);
+        if (onGifCreate && action.data.gif) onGifCreate(action.data.gif);
+        historyRef.current.step = currentStep - 1;
+        setHistoryStep(currentStep - 1);
+        break;
+
       default:
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
@@ -233,6 +259,20 @@ const Canvas = ({
         setHistoryStep(nextStep);
         break;
 
+      case ACTION_TYPES.GIF_CREATE:
+        setGifs(prev => [...prev, action.data.gif]);
+        if (onGifCreate) onGifCreate(action.data.gif);
+        historyRef.current.step = nextStep;
+        setHistoryStep(nextStep);
+        break;
+
+      case ACTION_TYPES.GIF_DELETE:
+        setGifs(prev => prev.filter(g => g.id !== action.data.gif.id));
+        if (onGifDelete) onGifDelete(action.data.gif.id);
+        historyRef.current.step = nextStep;
+        setHistoryStep(nextStep);
+        break;
+
       default:
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
@@ -252,6 +292,16 @@ const Canvas = ({
     }
   };
 
+  const removeGif = (id) => {
+    const gifToDelete = gifs.find(g => g.id === id);
+    if (gifToDelete) {
+      saveToHistory(ACTION_TYPES.GIF_DELETE, { gifId: id, gif: gifToDelete });
+      setGifs(prev => prev.filter(g => g.id !== id));
+      if (selectedGifId === id) setSelectedGifId(null);
+      if (onGifDelete) onGifDelete(id);
+    }
+  };
+
   const removeEmoji = (id) => {
     const emojiToDelete = emojis.find(e => e.id === id);
     if (emojiToDelete) {
@@ -263,6 +313,10 @@ const Canvas = ({
       if (onEmojiDelete) onEmojiDelete(id);
     }
   };
+
+  useEffect(() => {
+    setGifs(initialGifs || []);
+  }, [initialGifs]);
 
   useEffect(() => {
     setEmojis(initialEmojis || []);
@@ -456,6 +510,26 @@ const Canvas = ({
       y: clientY - rect.top
     };
   };
+  //GIF
+  const handleGifUpdate = (id, updates) => {
+    console.log("🔄 Updating GIF:", id, updates);
+
+    // Aktualizuj lokalnie dla płynności
+    setGifs(prev => prev.map(gif =>
+      gif.id === id ? { ...gif, ...updates } : gif
+    ));
+
+    // Wyślij na serwer
+    if (onGifUpdate) {
+      onGifUpdate(id, updates);
+    }
+    // Uwaga: Na razie nie dodajemy przesuwania/skalowania do historii Undo/Redo,
+    // bo generuje to setki zdarzeń na sekundę.
+  };
+
+
+
+
 
   // Funkcja do bezpiecznego zmiany rozmiaru canvas bez utraty zawartości
   const updateCanvasSize = () => {
@@ -580,9 +654,6 @@ const Canvas = ({
   };
 
   const handleCanvasClick = (e) => {
-    // 🔍 DEBUG: Zobaczmy w co dokładnie kliknął system
-    console.log("🖱️ Kliknięto w element:", e.target);
-    console.log("🔍 Czy to emoji?", e.target.closest('.emoji-item'));
     if (e.target.closest('.emoji-item')) {
       console.log("🛡️ Kliknięto w Emoji - Canvas ignoruje to zdarzenie.");
       return; // 🛑 STOP! Nie idź dalej, nie resetuj zaznaczenia!
@@ -668,6 +739,32 @@ const Canvas = ({
       if (onEmojiCreate) onEmojiCreate(newEmoji);
 
       // ✅ DODANO: Zmiana narzędzia na kursor po postawieniu
+      if (setTool) setTool('cursor');
+    }
+
+    if (tool === 'gif' && activeGif) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      const newGif = {
+        id: `gif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        x: x - 75, // Centrowanie (połowa szerokości 150px)
+        y: y - 75,
+        url: activeGif,
+        width: 150
+      };
+
+      // Dodaj lokalnie
+      setGifs(prev => [...prev, newGif]);
+
+      // Zapisz historię
+      saveToHistory(ACTION_TYPES.GIF_CREATE, { gif: newGif });
+
+      // Wyślij socketem
+      if (onGifCreate) onGifCreate(newGif);
+
+      // Zmień na kursor
       if (setTool) setTool('cursor');
     }
   };
@@ -799,13 +896,15 @@ const Canvas = ({
         removeTextBox(selectedTextBoxId);
       }
       if (selectedEmojiId && (e.key === 'Backspace' || e.key === 'Delete')) {
-        console.log("Usuwanie emoji:", selectedEmojiId); // Dla pewności log
         removeEmoji(selectedEmojiId);
+      }
+      if (selectedGifId && (e.key === 'Backspace' || e.key === 'Delete')) {
+        removeGif(selectedGifId);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedNoteId, selectedTextBoxId, selectedEmojiId]);
+  }, [selectedNoteId, selectedTextBoxId, selectedEmojiId, selectedGifId]);
 
   // DODANE: obsługa socket dla notatek
   useEffect(() => {
@@ -898,7 +997,39 @@ const Canvas = ({
         socket.off('emoji-delete', handleEmojiDeleteSocket);
         // ... cleanup innych
       };
+
+      const handleGifCreateSocket = (data) => {
+        setGifs(prev => {
+          const exists = prev.some(g => g.id === data.gif.id);
+          return exists ? prev : [...prev, data.gif];
+        });
+      };
+      const handleGifDeleteSocket = (data) => {
+        setGifs(prev => prev.filter(g => g.id !== data.id));
+      };
+
+      socket.on('gif-create', handleGifCreateSocket);
+      socket.on('gif-delete', handleGifDeleteSocket);
+
+      return () => {
+        // ... cleanup innych ...
+        socket.off('gif-create', handleGifCreateSocket);
+        socket.off('gif-delete', handleGifDeleteSocket);
+      };
     }
+    const handleGifUpdateSocket = (data) => {
+      console.log("📡 Socket: gif-update received:", data);
+      setGifs(prev => prev.map(gif =>
+        gif.id === data.id ? { ...gif, ...data } : gif
+      ));
+    };
+
+    socket.on('gif-update', handleGifUpdateSocket);
+
+    return () => {
+      // ... cleanup innych ...
+      socket.off('gif-update', handleGifUpdateSocket);
+    };
   }, [socket]);
 
   const handleMouseMove = (e) => {
@@ -1067,6 +1198,15 @@ const Canvas = ({
             onSelect={setSelectedEmojiId}
             onRemove={removeEmoji}
             onUpdate={handleEmojiUpdate} // 🆕 Dodajemy ten prop
+          />
+        ))}
+        {gifs.map(gif => (
+          <Gif
+            key={gif.id}
+            {...gif}
+            selected={selectedGifId === gif.id}
+            onSelect={setSelectedGifId}
+            onUpdate={handleGifUpdate} // ✅ PRZEKAŻ FUNKCJĘ UPDATE          
           />
         ))}
 

@@ -25,6 +25,11 @@ const WhiteboardRouter = () => {
   const [emojis, setEmojis] = useState([]);
   const [activeEmoji, setActiveEmoji] = useState(null); // Tutaj przechowamy np. "😎" wybrane z paska
 
+  //Gifs
+  const [gifs, setGifs] = useState([]);
+  const [activeGif, setActiveGif] = useState(null); // URL wybranego gifa
+
+
   const [currentUser] = useState(() => {
     const userId = 'user_' + Math.random().toString(36).substring(2, 15);
     const userName = 'User' + Math.floor(Math.random() * 1000);
@@ -101,6 +106,22 @@ const WhiteboardRouter = () => {
       }
     });
 
+
+    //Gif
+    newSocket.on('whiteboard-data', (data) => {
+      // ... istniejące
+      if (data.textBoxes) setTextBoxes(data.textBoxes);
+      if (data.notes) setNotes(data.notes);
+      if (data.emojis) setEmojis(data.emojis);
+
+      // ✅ DODAJ TO:
+      if (data.gifs) setGifs(data.gifs);
+    });
+
+    newSocket.on('gif-update', (data) => {
+      setGifs(prev => prev.map(g => g.id === data.id ? { ...g, ...data } : g));
+    });
+
     //emojis
     newSocket.on('whiteboard-data', (data) => {
       // ... istniejące
@@ -143,8 +164,34 @@ const WhiteboardRouter = () => {
       console.error("❌ Connection error:", error);
       setIsLoading(false);
     });
+
+    //Gif
+    newSocket.on('gif-create', (data) => {
+      setGifs(prev => [...prev, data.gif]);
+    });
+
+    newSocket.on('gif-delete', (data) => {
+      setGifs(prev => prev.filter(g => g.id !== data.id));
+    });
   };
 
+  //Gif
+  const handleGifCreate = (gif) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('gif-create', { whiteboardId, gif });
+    }
+  };
+
+  const handleGifDelete = (id) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('gif-delete', { whiteboardId, id });
+    }
+  };
+  const handleGifUpdate = (id, updates) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('gif-update', { whiteboardId, id, ...updates });
+    }
+  };
 
   //emojis
   const handleEmojiCreate = (emoji) => {
@@ -273,6 +320,7 @@ const WhiteboardRouter = () => {
           setShowColorPicker={setShowColorPicker}
           activeEmoji={activeEmoji}
           setActiveEmoji={setActiveEmoji}
+          setActiveGif={setActiveGif}
         />
 
         <PointerTrail active={tool === 'pointer'} />
@@ -298,6 +346,10 @@ const WhiteboardRouter = () => {
           activeEmoji={activeEmoji} // Aktualnie wybrane emoji do postawienia
           onEmojiCreate={handleEmojiCreate}
           onEmojiDelete={handleEmojiDelete}
+          gifs={gifs}                     // ✅ Przekazujemy listę
+          activeGif={activeGif}           // ✅ Przekazujemy wybrany URL
+          onGifCreate={handleGifCreate}   // ✅ Funkcja tworzenia
+          onGifDelete={handleGifDelete}   // ✅ Funkcja usuwania
         />
 
         <Sidebar

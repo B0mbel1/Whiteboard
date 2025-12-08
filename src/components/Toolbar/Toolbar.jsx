@@ -4,7 +4,7 @@ import MultimediaModal from '../MultimediaModal/MultimediaModal.jsx';
 import PointerTrail from './PointerTrail.jsx';
 import ToolRangeCircle from './ToolRangeCircle.jsx';
 
-const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker, activeEmoji, setActiveEmoji }) => {
+const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker, activeEmoji, setActiveEmoji, setActiveGif }) => {
   const [showShapes, setShowShapes] = useState({ visible: false, x: 0, y: 0 });
   const [showEmojis, setShowEmojis] = useState({ visible: false, x: 0, y: 0 });
   const [selectedShape, setSelectedShape] = useState(null);
@@ -494,7 +494,12 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
                         borderRadius: '6px',
                         cursor: 'pointer'
                       }}
-                      onClick={() => console.log('Wybrano GIF:', url)}
+                      onClick={() => {
+                        console.log('Wybrano GIF:', url);
+                        setActiveGif(url);      // Ustaw URL
+                        setTool('gif');         // Zmień narzędzie na 'gif'
+                        setShowGifs({ visible: false, x: 0, y: 0 }); // Zamknij popup
+                      }}
                     />
                   ))}
                 </div>
