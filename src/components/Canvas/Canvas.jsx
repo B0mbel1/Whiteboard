@@ -6,6 +6,7 @@ import Note from './Note';
 import Text from './Text';
 import Emoji from './Emoji';
 import Gif from './Gif'; // lub ścieżka gdzie go utworzyłeś
+import Shape from './Shape';
 
 const Canvas = ({
   tool,
@@ -31,7 +32,11 @@ const Canvas = ({
   activeGif,              // ✅ URL z toolbara
   onGifCreate,            // ✅
   onGifDelete,
-  onGifUpdate
+  onGifUpdate,
+  shapes: initialShapes,
+  activeShape,
+  onShapeCreate,
+  onShapeDelete,
 }) => {
   const [backgroundMode, setBackgroundMode] = useState('grid');
   const [remoteCursors, setRemoteCursors] = useState(new Map());
@@ -59,6 +64,10 @@ const Canvas = ({
   const [gifs, setGifs] = useState(initialGifs || []);
   const [selectedGifId, setSelectedGifId] = useState(null);
 
+  //Shapes
+  const [shapes, setShapes] = useState(initialShapes || []);
+  const [selectedShapeId, setSelectedShapeId] = useState(null);
+
   // 🔹 DODANE: Typy akcji dla historii
   const ACTION_TYPES = {
     DRAWING: 'drawing',
@@ -71,8 +80,12 @@ const Canvas = ({
     EMOJI_DELETE: 'emoji_delete',
 
     GIF_CREATE: 'gif_create', // ✅
-    GIF_DELETE: 'gif_delete'  // ✅
+    GIF_DELETE: 'gif_delete',  // ✅
+
+    SHAPE_CREATE: 'shape_create',
+    SHAPE_DELETE: 'shape_delete',
   };
+  useEffect(() => { setShapes(initialShapes || []); }, [initialShapes]);
 
   // 🔹 DODANE: Uproszczone funkcje do zarządzania historią
   const saveToHistory = (actionType, data) => {
@@ -188,9 +201,25 @@ const Canvas = ({
         setHistoryStep(currentStep - 1);
         break;
 
+      case ACTION_TYPES.SHAPE_CREATE:
+        setShapes(prev => prev.filter(s => s.id !== action.data.shape.id));
+        if (onShapeDelete) onShapeDelete(action.data.shape.id);
+        historyRef.current.step = currentStep - 1;
+        setHistoryStep(currentStep - 1);
+        break;
+
+      case ACTION_TYPES.SHAPE_DELETE:
+        setShapes(prev => [...prev, action.data.shape]);
+        if (onShapeCreate) onShapeCreate(action.data.shape);
+        historyRef.current.step = currentStep - 1;
+        setHistoryStep(currentStep - 1);
+        break;
+
       default:
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
+      //Dodał do gemini?
+      // if (action.type === ACTION_TYPES.DRAWING) { clearCanvas(); redrawCanvas(); }
     }
   };
 
@@ -273,9 +302,25 @@ const Canvas = ({
         setHistoryStep(nextStep);
         break;
 
+      case ACTION_TYPES.SHAPE_CREATE:
+        setShapes(prev => [...prev, action.data.shape]);
+        if (onShapeCreate) onShapeCreate(action.data.shape);
+        historyRef.current.step = nextStep;
+        setHistoryStep(nextStep);
+        break;
+
+      case ACTION_TYPES.SHAPE_DELETE:
+        setShapes(prev => prev.filter(s => s.id !== action.data.shape.id));
+        if (onShapeDelete) onShapeDelete(action.data.shape.id);
+        historyRef.current.step = nextStep;
+        setHistoryStep(nextStep);
+        break;
+
       default:
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
+      //Dodał to gemini?
+      // if(action.type === ACTION_TYPES.DRAWING) { clearCanvas(); redrawCanvas(); }
     }
   };
 
@@ -299,6 +344,16 @@ const Canvas = ({
       setGifs(prev => prev.filter(g => g.id !== id));
       if (selectedGifId === id) setSelectedGifId(null);
       if (onGifDelete) onGifDelete(id);
+    }
+  };
+
+  const removeShape = (id) => {
+    const shapeToDelete = shapes.find(s => s.id === id);
+    if (shapeToDelete) {
+      saveToHistory(ACTION_TYPES.SHAPE_DELETE, { shapeId: id, shape: shapeToDelete });
+      setShapes(prev => prev.filter(s => s.id !== id));
+      if (selectedShapeId === id) setSelectedShapeId(null);
+      if (onShapeDelete) onShapeDelete(id);
     }
   };
 
@@ -661,6 +716,8 @@ const Canvas = ({
     setSelectedNoteId(null);
     setSelectedTextBoxId(null);
     setSelectedEmojiId(null);
+    setSelectedGifId(null);
+    setSelectedShapeId(null);
     if (tool === 'notes') {
       const rect = canvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -767,6 +824,31 @@ const Canvas = ({
       // Zmień na kursor
       if (setTool) setTool('cursor');
     }
+    if (tool === 'shape' && activeShape) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      const newShape = {
+        id: `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        x,
+        y,
+        type: activeShape // 'square', 'star', etc.
+      };
+
+      // Dodaj lokalnie
+      setShapes(prev => [...prev, newShape]);
+
+      // Historia
+      saveToHistory(ACTION_TYPES.SHAPE_CREATE, { shape: newShape });
+
+      // Wyślij socketem
+      if (onShapeCreate) onShapeCreate(newShape);
+
+      // Zmień na kursor
+      if (setTool) setTool('cursor');
+    }
+
   };
 
   // 🔹 DODANE: Uproszczona funkcja removeNote z historią
@@ -963,6 +1045,8 @@ const Canvas = ({
 
           return newNotes;
         });
+
+
       };
 
       const handleNoteDelete = (data) => {
@@ -1029,6 +1113,25 @@ const Canvas = ({
     return () => {
       // ... cleanup innych ...
       socket.off('gif-update', handleGifUpdateSocket);
+    };
+
+    const handleShapeCreateSocket = (data) => {
+      setShapes(prev => {
+        const exists = prev.some(s => s.id === data.shape.id);
+        return exists ? prev : [...prev, data.shape];
+      });
+    };
+    const handleShapeDeleteSocket = (data) => {
+      setShapes(prev => prev.filter(s => s.id !== data.id));
+    };
+
+    socket.on('shape-create', handleShapeCreateSocket);
+    socket.on('shape-delete', handleShapeDeleteSocket);
+
+    return () => {
+      socket.off('shape-create', handleShapeCreateSocket);
+      socket.off('shape-delete', handleShapeDeleteSocket);
+      // ... cleanup reszty
     };
   }, [socket]);
 
@@ -1208,6 +1311,17 @@ const Canvas = ({
             onSelect={setSelectedGifId}
             onUpdate={handleGifUpdate} // ✅ PRZEKAŻ FUNKCJĘ UPDATE          
           />
+
+          
+        ))}
+        {shapes.map(shape => (
+            <Shape
+                key={shape.id}
+                {...shape}
+                selected={selectedShapeId === shape.id}
+                onSelect={setSelectedShapeId}
+                onRemove={removeShape}
+            />
         ))}
 
         {remoteCursorsArray.map((cursor) => (

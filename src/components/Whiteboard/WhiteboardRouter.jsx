@@ -29,6 +29,10 @@ const WhiteboardRouter = () => {
   const [gifs, setGifs] = useState([]);
   const [activeGif, setActiveGif] = useState(null); // URL wybranego gifa
 
+  //Shapes
+  const [shapes, setShapes] = useState([]);
+  const [activeShape, setActiveShape] = useState(null);
+
 
   const [currentUser] = useState(() => {
     const userId = 'user_' + Math.random().toString(36).substring(2, 15);
@@ -113,9 +117,8 @@ const WhiteboardRouter = () => {
       if (data.textBoxes) setTextBoxes(data.textBoxes);
       if (data.notes) setNotes(data.notes);
       if (data.emojis) setEmojis(data.emojis);
-
-      // ✅ DODAJ TO:
       if (data.gifs) setGifs(data.gifs);
+      if (data.shapes) setShapes(data.shapes);
     });
 
     newSocket.on('gif-update', (data) => {
@@ -140,6 +143,14 @@ const WhiteboardRouter = () => {
       setEmojis(prev => prev.filter(e => e.id !== data.id));
     });
 
+    //Shapes
+    newSocket.on('shape-create', (data) => {
+      setShapes(prev => [...prev, data.shape]);
+    });
+
+    newSocket.on('shape-delete', (data) => {
+      setShapes(prev => prev.filter(s => s.id !== data.id));
+    });
 
     // Obsługa tekstu
     newSocket.on('text-create', (data) => {
@@ -174,6 +185,20 @@ const WhiteboardRouter = () => {
       setGifs(prev => prev.filter(g => g.id !== data.id));
     });
   };
+
+  //Shapes
+  const handleShapeCreate = (shape) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('shape-create', { whiteboardId, shape });
+    }
+  };
+
+  const handleShapeDelete = (id) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('shape-delete', { whiteboardId, id });
+    }
+  };
+
 
   //Gif
   const handleGifCreate = (gif) => {
@@ -321,6 +346,7 @@ const WhiteboardRouter = () => {
           activeEmoji={activeEmoji}
           setActiveEmoji={setActiveEmoji}
           setActiveGif={setActiveGif}
+          setActiveShape={setActiveShape}
         />
 
         <PointerTrail active={tool === 'pointer'} />
@@ -350,6 +376,10 @@ const WhiteboardRouter = () => {
           activeGif={activeGif}           // ✅ Przekazujemy wybrany URL
           onGifCreate={handleGifCreate}   // ✅ Funkcja tworzenia
           onGifDelete={handleGifDelete}   // ✅ Funkcja usuwania
+          shapes={shapes}
+          activeShape={activeShape}
+          onShapeCreate={handleShapeCreate}
+          onShapeDelete={handleShapeDelete}
         />
 
         <Sidebar

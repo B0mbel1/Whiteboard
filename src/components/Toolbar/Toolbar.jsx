@@ -4,7 +4,7 @@ import MultimediaModal from '../MultimediaModal/MultimediaModal.jsx';
 import PointerTrail from './PointerTrail.jsx';
 import ToolRangeCircle from './ToolRangeCircle.jsx';
 
-const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker, activeEmoji, setActiveEmoji, setActiveGif }) => {
+const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker, activeEmoji, setActiveEmoji, setActiveGif, setActiveShape }) => {
   const [showShapes, setShowShapes] = useState({ visible: false, x: 0, y: 0 });
   const [showEmojis, setShowEmojis] = useState({ visible: false, x: 0, y: 0 });
   const [selectedShape, setSelectedShape] = useState(null);
@@ -188,8 +188,12 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
     setShowColorPicker(prev => !prev);
   };
 
-  const handleSelectShape = (shape) => {
-    setSelectedShape(shape);
+  const handleSelectShape = (shapeObj) => {
+    setSelectedShape(shapeObj.name);
+    if (setActiveShape) {
+      setActiveShape(shapeObj.type); // Przekazujemy typ (np. 'star') wyżej
+    }
+    setTool('shape'); // Ustawiamy narzędzie na 'shape'
     setShowShapes({ visible: false, x: 0, y: 0 });
   };
 
@@ -291,13 +295,13 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
   ];
 
   const shapes = [
-    { label: '⬛', name: 'Kwadrat' },
-    { label: '▭', name: 'Prostokąt' },
-    { label: '➡️', name: 'Strzałka' },
-    { label: '⚪', name: 'Koło' },
-    { label: '⭐', name: 'Gwiazda' },
-    { label: '✅', name: 'Zatwierdzenie' },
-    { label: '❌', name: 'Zaprzeczenie' },
+    { label: '⬛', name: 'Kwadrat', type: 'square' },
+    { label: '▭', name: 'Prostokąt', type: 'rectangle_outline' },
+    { label: '➡️', name: 'Strzałka', type: 'arrow' },
+    { label: '⚪', name: 'Koło', type: 'circle' },
+    { label: '⭐', name: 'Gwiazda', type: 'star' },
+    { label: '✅', name: 'Zatwierdzenie', type: 'check' },
+    { label: '❌', name: 'Zaprzeczenie', type: 'cross' },
   ];
 
   const emojis = ['😀', '😁', '😂', '🤣', '😊', '😍', '😎', '😢', '😡', '👍', '👎', '❤️', '🔥', '🎉', '💡'];
@@ -430,7 +434,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
                 key={i}
                 className={`shape-btn ${selectedShape === shape.name ? 'selected' : ''}`}
                 title={shape.name}
-                onClick={() => handleSelectShape(shape.name)}
+                onClick={() => handleSelectShape(shape)}
                 style={{ cursor: 'default' }}
               >
                 {shape.label}
