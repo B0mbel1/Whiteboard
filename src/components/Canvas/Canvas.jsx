@@ -4,14 +4,15 @@ import { getStandardizedSize, getDisplaySize, getToolEffects } from '../../utils
 import { drawCompletePath, drawPathSegment } from '../../utils/drawingUtils';
 import Note from './Note';
 import Text from './Text';
+import Emoji from './Emoji';
 
-const Canvas = ({ 
-  tool, 
-  color, 
-  size, 
-  setShowColorPicker, 
-  whiteboardId, 
-  socket, 
+const Canvas = ({
+  tool,
+  color,
+  size,
+  setShowColorPicker,
+  whiteboardId,
+  socket,
   setTool,
   currentUser,
   onDrawing,
@@ -20,7 +21,11 @@ const Canvas = ({
   notes: initialNotes,
   onNoteCreate,
   onNoteUpdate,
-  onNoteDelete
+  onNoteDelete,
+  emojis: initialEmojis,
+  activeEmoji, // To jest emoji wybrane z Toolbara (np. "🔥")
+  onEmojiCreate,
+  onEmojiDelete
 }) => {
   const [backgroundMode, setBackgroundMode] = useState('grid');
   const [remoteCursors, setRemoteCursors] = useState(new Map());
@@ -31,14 +36,19 @@ const Canvas = ({
   const currentDrawingRef = useRef(null);
   const [notes, setNotes] = useState(initialNotes || []);
   const [textBoxes, setTextBoxes] = useState(initialTextBoxes || []);
-  
+
   // 🔹 DODANE: Uproszczona historia undo/redo
   const [history, setHistory] = useState([]);
   const [historyStep, setHistoryStep] = useState(-1);
   const historyRef = useRef({ history: [], step: -1 });
-  
+
   const [selectedTextBoxId, setSelectedTextBoxId] = useState(null);
   const [selectedNoteId, setSelectedNoteId] = useState(null);
+
+  //Emojis
+  const [emojis, setEmojis] = useState(initialEmojis || []);
+  const [selectedEmojiId, setSelectedEmojiId] = useState(null);
+
 
   // 🔹 DODANE: Typy akcji dla historii
   const ACTION_TYPES = {
@@ -46,41 +56,44 @@ const Canvas = ({
     NOTE_CREATE: 'note_create',
     NOTE_DELETE: 'note_delete',
     TEXT_CREATE: 'text_create',
-    TEXT_DELETE: 'text_delete'
+    TEXT_DELETE: 'text_delete',
+
+    EMOJI_CREATE: 'emoji_create',
+    EMOJI_DELETE: 'emoji_delete'
   };
 
   // 🔹 DODANE: Uproszczone funkcje do zarządzania historią
   const saveToHistory = (actionType, data) => {
     const newHistory = historyRef.current.history.slice(0, historyRef.current.step + 1);
-    
+
     const historyItem = {
       type: actionType,
       data: data,
       timestamp: Date.now()
     };
-    
+
     newHistory.push(historyItem);
-    
+
     // Ogranicz historię do 50 kroków
     if (newHistory.length > 50) {
       newHistory.shift();
     }
-    
+
     historyRef.current = {
       history: newHistory,
       step: newHistory.length - 1
     };
-    
+
     setHistory(newHistory);
     setHistoryStep(newHistory.length - 1);
   };
 
   const undo = () => {
     if (historyRef.current.step < 0) return;
-    
+
     const currentStep = historyRef.current.step;
     const action = historyRef.current.history[currentStep];
-    
+
     // Cofnij akcję w zależności od typu
     switch (action.type) {
       case ACTION_TYPES.DRAWING:
@@ -90,7 +103,7 @@ const Canvas = ({
         clearCanvas();
         redrawCanvas();
         break;
-        
+
       case ACTION_TYPES.NOTE_CREATE:
         // Cofnięcie tworzenia = usunięcie notatki
         setNotes(prev => prev.filter(note => note.id !== action.data.note.id));
@@ -100,7 +113,7 @@ const Canvas = ({
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
         break;
-        
+
       case ACTION_TYPES.NOTE_DELETE:
         // Cofnięcie usunięcia = przywrócenie notatki
         setNotes(prev => [...prev, action.data.note]);
@@ -110,7 +123,7 @@ const Canvas = ({
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
         break;
-        
+
       case ACTION_TYPES.TEXT_CREATE:
         // Cofnięcie tworzenia = usunięcie textboxa
         setTextBoxes(prev => prev.filter(textBox => textBox.id !== action.data.textBox.id));
@@ -120,7 +133,7 @@ const Canvas = ({
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
         break;
-        
+
       case ACTION_TYPES.TEXT_DELETE:
         // Cofnięcie usunięcia = przywrócenie textboxa
         setTextBoxes(prev => [...prev, action.data.textBox]);
@@ -130,7 +143,25 @@ const Canvas = ({
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
         break;
-        
+
+      case ACTION_TYPES.EMOJI_CREATE:
+        setEmojis(prev => prev.filter(e => e.id !== action.data.emoji.id));
+        if (onEmojiDelete && action.data.emoji.id) {
+          onEmojiDelete(action.data.emoji.id);
+        }
+        historyRef.current.step = currentStep - 1;
+        setHistoryStep(currentStep - 1);
+        break;
+
+      case ACTION_TYPES.EMOJI_DELETE:
+        setEmojis(prev => [...prev, action.data.emoji]);
+        if (onEmojiCreate && action.data.emoji) {
+          onEmojiCreate(action.data.emoji);
+        }
+        historyRef.current.step = currentStep - 1;
+        setHistoryStep(currentStep - 1);
+        break;
+
       default:
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
@@ -139,10 +170,10 @@ const Canvas = ({
 
   const redo = () => {
     if (historyRef.current.step >= historyRef.current.history.length - 1) return;
-    
+
     const nextStep = historyRef.current.step + 1;
     const action = historyRef.current.history[nextStep];
-    
+
     // Ponów akcję w zależności od typu
     switch (action.type) {
       case ACTION_TYPES.DRAWING:
@@ -151,7 +182,7 @@ const Canvas = ({
         clearCanvas();
         redrawCanvas();
         break;
-        
+
       case ACTION_TYPES.NOTE_CREATE:
         setNotes(prev => [...prev, action.data.note]);
         if (onNoteCreate) {
@@ -160,7 +191,7 @@ const Canvas = ({
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
         break;
-        
+
       case ACTION_TYPES.NOTE_DELETE:
         setNotes(prev => prev.filter(note => note.id !== action.data.note.id));
         if (onNoteDelete && action.data.note.id) {
@@ -169,7 +200,7 @@ const Canvas = ({
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
         break;
-        
+
       case ACTION_TYPES.TEXT_CREATE:
         setTextBoxes(prev => [...prev, action.data.textBox]);
         if (socket && action.data.textBox) {
@@ -178,7 +209,7 @@ const Canvas = ({
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
         break;
-        
+
       case ACTION_TYPES.TEXT_DELETE:
         setTextBoxes(prev => prev.filter(textBox => textBox.id !== action.data.textBox.id));
         if (socket && action.data.textBox.id) {
@@ -187,7 +218,21 @@ const Canvas = ({
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
         break;
-        
+
+      case ACTION_TYPES.EMOJI_CREATE:
+        setEmojis(prev => [...prev, action.data.emoji]);
+        if (onEmojiCreate) onEmojiCreate(action.data.emoji);
+        historyRef.current.step = nextStep;
+        setHistoryStep(nextStep);
+        break;
+
+      case ACTION_TYPES.EMOJI_DELETE:
+        setEmojis(prev => prev.filter(e => e.id !== action.data.emoji.id));
+        if (onEmojiDelete) onEmojiDelete(action.data.emoji.id);
+        historyRef.current.step = nextStep;
+        setHistoryStep(nextStep);
+        break;
+
       default:
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
@@ -197,7 +242,7 @@ const Canvas = ({
   const redrawCanvas = () => {
     const context = contextRef.current;
     if (!context) return;
-    
+
     // Narysuj wszystkie kroki do aktualnego punktu w historii
     for (let i = 0; i <= historyRef.current.step; i++) {
       const action = historyRef.current.history[i];
@@ -206,6 +251,23 @@ const Canvas = ({
       }
     }
   };
+
+  const removeEmoji = (id) => {
+    const emojiToDelete = emojis.find(e => e.id === id);
+    if (emojiToDelete) {
+      saveToHistory(ACTION_TYPES.EMOJI_DELETE, { emojiId: id, emoji: emojiToDelete });
+
+      setEmojis(prev => prev.filter(e => e.id !== id));
+      if (selectedEmojiId === id) setSelectedEmojiId(null);
+
+      if (onEmojiDelete) onEmojiDelete(id);
+    }
+  };
+
+  useEffect(() => {
+    setEmojis(initialEmojis || []);
+  }, [initialEmojis]);
+
 
   // 🔹 DODANE: Przekaż funkcje undo/redo do Toolbar
   useEffect(() => {
@@ -234,7 +296,7 @@ const Canvas = ({
         e.preventDefault();
         undo();
       }
-      
+
       // Ctrl+Y lub Ctrl+Shift+Z - Redo
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
         e.preventDefault();
@@ -305,17 +367,17 @@ const Canvas = ({
       // Handle initial whiteboard state - REDRAW EVERYTHING
       const handleWhiteboardState = (data) => {
         console.log("🎨 Redrawing", data.drawingData.length, "existing drawings");
-        
+
         // Clear canvas first
         clearCanvas();
-        
+
         // Redraw ALL existing drawings with a small delay to ensure canvas is ready
         setTimeout(() => {
           data.drawingData.forEach(drawing => {
             drawRemote(drawing);
           });
         }, 100);
-        
+
         // Initialize cursors for OTHER users only
         const otherUsers = data.users.filter(user => user.id !== socket.id);
         const cursorsMap = new Map();
@@ -366,7 +428,7 @@ const Canvas = ({
     if (!context || !canvas) return;
 
     context.clearRect(0, 0, canvas.width, canvas.height);
-    
+
     // Użyj aktualnego backgroundMode
     if (backgroundMode === 'white') {
       context.fillStyle = 'white';
@@ -422,10 +484,10 @@ const Canvas = ({
   };
 
   const getToolSize = () => {
-    const base = (typeof size === "object" && size?.[tool]) 
-      ? size[tool] 
+    const base = (typeof size === "object" && size?.[tool])
+      ? size[tool]
       : (typeof size === "number" ? size : 3);
-    
+
     return getDisplaySize(tool, base);
   };
 
@@ -459,18 +521,18 @@ const Canvas = ({
   const startDrawing = ({ nativeEvent }) => {
     // ❗ Nie rysujemy, gdy tool NIE jest rysujący
     if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
-    
+
     if (setShowColorPicker) {
       setShowColorPicker(false);
     }
-    
+
     const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
-    
+
     contextRef.current.beginPath();
     contextRef.current.moveTo(x, y);
 
     setIsDrawing(true);
-    
+
     currentDrawingRef.current = {
       tool,
       color,
@@ -487,26 +549,26 @@ const Canvas = ({
       setIsDrawing(false);
       return;
     }
-    
+
     contextRef.current.closePath();
     setIsDrawing(false);
-    
+
     if (currentDrawingRef.current && onDrawing) {
       onDrawing(currentDrawingRef.current);
-      
+
       // 🔹 DODANE: Zapisz do historii
       saveToHistory(ACTION_TYPES.DRAWING, currentDrawingRef.current);
     }
-    
+
     currentDrawingRef.current = null;
   };
 
   const draw = ({ nativeEvent }) => {
     if (!isDrawing || !contextRef.current) return;
     if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
-    
+
     const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
-    
+
     if (currentDrawingRef.current) {
       const points = currentDrawingRef.current.points;
       const previousPoint = points[points.length - 1];
@@ -520,28 +582,29 @@ const Canvas = ({
   const handleCanvasClick = (e) => {
     setSelectedNoteId(null);
     setSelectedTextBoxId(null);
+    setSelectedEmojiId(null);
     if (tool === 'notes') {
       const rect = canvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
-      const newNote = { 
+      const newNote = {
         id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        x, 
-        y, 
+        x,
+        y,
         text: '',
         width: 180,
         height: 120
       };
 
       setNotes(prev => {
-    const exists = prev.some(note => note.id === newNote.id);
-    return exists ? prev : [...prev, newNote];
-  });
-      
+        const exists = prev.some(note => note.id === newNote.id);
+        return exists ? prev : [...prev, newNote];
+      });
+
       // 🔹 DODANE: Zapisz do historii przed utworzeniem
       saveToHistory(ACTION_TYPES.NOTE_CREATE, { note: newNote });
-      
+
 
       if (onNoteCreate) {
         onNoteCreate(newNote);
@@ -551,22 +614,53 @@ const Canvas = ({
       const rect = canvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      const newTextBox = { 
-        id: Date.now(), 
-        x, 
-        y, 
+      const newTextBox = {
+        id: Date.now(),
+        x,
+        y,
         text: '',
         width: 200,
         height: 100
       };
-      
+
       // 🔹 DODANE: Zapisz do historii przed utworzeniem
       saveToHistory(ACTION_TYPES.TEXT_CREATE, { textBox: newTextBox });
-      
+
       setTextBoxes(prev => [...prev, newTextBox]);
       if (socket) {
         socket.emit('text-create', { whiteboardId, textBox: newTextBox });
       }
+      if (setTool) setTool('cursor');
+    }
+
+    if (tool === 'emoji' && activeEmoji) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      const newEmoji = {
+        id: `emoji_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        x,
+        y,
+        emoji: activeEmoji,
+        size: 48 // Możesz to sparametryzować
+      };
+
+      // Dodaj lokalnie
+      setEmojis(prev => [...prev, newEmoji]);
+
+      // Zapisz historię
+      saveToHistory(ACTION_TYPES.EMOJI_CREATE, { emoji: newEmoji });
+
+      // Zapisz historię
+      if (typeof saveToHistory === 'function') {
+        saveToHistory(ACTION_TYPES.EMOJI_CREATE, { emoji: newEmoji });
+      }
+
+      // Wyślij socketem
+      if (onEmojiCreate) onEmojiCreate(newEmoji);
+
+      // ✅ DODANO: Zmiana narzędzia na kursor po postawieniu
       if (setTool) setTool('cursor');
     }
   };
@@ -577,40 +671,54 @@ const Canvas = ({
     if (noteToDelete) {
       // 🔹 DODANE: Zapisz do historii przed usunięciem
       saveToHistory(ACTION_TYPES.NOTE_DELETE, { noteId: id, note: noteToDelete });
-      
+
       setNotes(prev => prev.filter(n => n.id !== id));
       if (selectedNoteId === id) setSelectedNoteId(null);
-      
+
       if (onNoteDelete) {
         onNoteDelete(id);
       }
     }
   };
 
-  // 🔹 DODANE: Uproszczona funkcja handleNoteUpdate (bez historii)
-// Canvas.jsx - ZASTĄP funkcję handleNoteUpdate TYM:
-const handleNoteUpdate = (id, updates) => {
-  console.log("🔄 Local handleNoteUpdate called:", id, updates);
-  
-  // NIE aktualizuj lokalnego stanu tutaj!
-  // Tylko wyślij do serwera
-  if (onNoteUpdate) {
-    // Przygotuj dane do wysłania
-    const dataToSend = { ...updates };
-    
-    // Jeśli updates zawiera position, upewnij się że x i y też są
-    if (updates.position) {
-      dataToSend.x = updates.position.x;
-      dataToSend.y = updates.position.y;
+  const handleEmojiUpdate = (id, updates) => {
+    // Aktualizuj lokalnie
+    setEmojis(prev => prev.map(e =>
+      e.id === id ? { ...e, ...updates } : e
+    ));
+
+    // Wyślij przez socket
+    if (socket) {
+      socket.emit('emoji-update', { whiteboardId, id, ...updates });
     }
-    
-    console.log("📤 Sending note update to server:", id, dataToSend);
-    onNoteUpdate(id, dataToSend);
-  }
-  
-  // WAŻNE: NIE wywołuj setNotes tutaj!
-  // Socket.io listener zaktualizuje stan po otrzymaniu odpowiedzi
-};
+    // Uwaga: Na razie nie dodajemy tego do historii undo/redo, 
+    // bo generowałoby to setki wpisów podczas jednego przeciągnięcia.
+  };
+
+  // 🔹 DODANE: Uproszczona funkcja handleNoteUpdate (bez historii)
+  // Canvas.jsx - ZASTĄP funkcję handleNoteUpdate TYM:
+  const handleNoteUpdate = (id, updates) => {
+    console.log("🔄 Local handleNoteUpdate called:", id, updates);
+
+    // NIE aktualizuj lokalnego stanu tutaj!
+    // Tylko wyślij do serwera
+    if (onNoteUpdate) {
+      // Przygotuj dane do wysłania
+      const dataToSend = { ...updates };
+
+      // Jeśli updates zawiera position, upewnij się że x i y też są
+      if (updates.position) {
+        dataToSend.x = updates.position.x;
+        dataToSend.y = updates.position.y;
+      }
+
+      console.log("📤 Sending note update to server:", id, dataToSend);
+      onNoteUpdate(id, dataToSend);
+    }
+
+    // WAŻNE: NIE wywołuj setNotes tutaj!
+    // Socket.io listener zaktualizuje stan po otrzymaniu odpowiedzi
+  };
 
   const handleNoteDelete = (id) => {
     removeNote(id);
@@ -622,10 +730,10 @@ const handleNoteUpdate = (id, updates) => {
     if (textBoxToDelete) {
       // 🔹 DODANE: Zapisz do historii przed usunięciem
       saveToHistory(ACTION_TYPES.TEXT_DELETE, { textBoxId: id, textBox: textBoxToDelete });
-      
+
       setTextBoxes(prev => prev.filter(tb => tb.id !== id));
       if (selectedTextBoxId === id) setSelectedTextBoxId(null);
-      
+
       if (socket) {
         socket.emit('text-delete', { whiteboardId, id });
       }
@@ -633,26 +741,26 @@ const handleNoteUpdate = (id, updates) => {
   };
 
   // 🔹 DODANE: Uproszczona funkcja handleTextUpdate (bez historii)
-// Canvas.jsx - ZASTĄP obecną funkcję handleTextUpdate tym:
-const handleTextUpdate = (id, newProps) => {
-  console.log("🔄 Updating textbox:", id, newProps);
-  
-  setTextBoxes(prev => {
-    const exists = prev.some(tb => tb.id === id);
-    console.log("📦 Textbox exists before update:", exists);
-    
-    const updated = prev.map(textBox =>
-      textBox.id === id ? { ...textBox, ...newProps } : textBox
-    );
-    
-    console.log("📦 Textboxes after update:", updated.length);
-    return updated;
-  });
-  
-  if (socket) {
-    socket.emit('text-update', { whiteboardId, id, ...newProps });
-  }
-};
+  // Canvas.jsx - ZASTĄP obecną funkcję handleTextUpdate tym:
+  const handleTextUpdate = (id, newProps) => {
+    console.log("🔄 Updating textbox:", id, newProps);
+
+    setTextBoxes(prev => {
+      const exists = prev.some(tb => tb.id === id);
+      console.log("📦 Textbox exists before update:", exists);
+
+      const updated = prev.map(textBox =>
+        textBox.id === id ? { ...textBox, ...newProps } : textBox
+      );
+
+      console.log("📦 Textboxes after update:", updated.length);
+      return updated;
+    });
+
+    if (socket) {
+      socket.emit('text-update', { whiteboardId, id, ...newProps });
+    }
+  };
 
   // 🔹 DODANE: Obsługa Backspace/Delete dla zaznaczonej notatki z historią
   useEffect(() => {
@@ -672,10 +780,13 @@ const handleTextUpdate = (id, newProps) => {
       if (selectedTextBoxId && (e.key === 'Backspace' || e.key === 'Delete')) {
         removeTextBox(selectedTextBoxId);
       }
+      if (selectedEmojiId && (e.key === 'Backspace' || e.key === 'Delete')) {
+        removeEmoji(selectedEmojiId);
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedNoteId, selectedTextBoxId]);
+  }, [selectedNoteId, selectedTextBoxId], [selectedEmojiId]);
 
   // DODANE: obsługa socket dla notatek
   useEffect(() => {
@@ -683,59 +794,59 @@ const handleTextUpdate = (id, newProps) => {
       const handleNoteCreate = (data) => {
         setNotes(prev => [...prev, data.note]);
       };
-      
-       const handleNoteUpdate = (data) => {
-      console.log("📝 Socket: note-update received:", { 
-        id: data.id, 
-        hasPosition: !!data.position,
-        hasX: data.x !== undefined,
-        hasY: data.y !== undefined 
-      });
-      
-      setNotes(prev => {
-        const noteIndex = prev.findIndex(note => note.id === data.id);
-        
-        if (noteIndex === -1) {
-          console.log("❌ Socket: note not found locally, cannot update");
-          return prev;
-        }
-        
-        // Pobierz istniejącą notatkę
-        const existingNote = prev[noteIndex];
-        
-        // Przygotuj update - NIE nadpisuj całej notatki, tylko zaktualizuj pola
-        const updates = { ...data };
-        
-        // Jeśli jest position, rozbij na x, y
-        if (data.position) {
-          updates.x = data.position.x;
-          updates.y = data.position.y;
-        }
-        
-        // Usuń position z updates (użyjemy tylko x, y)
-        delete updates.position;
-        
-        // Stwórz zaktualizowaną notatkę - zachowaj wszystkie istniejące pola
-        const updatedNote = {
-          ...existingNote,
-          ...updates
-        };
-        
-        console.log("📝 Socket: updating note:", {
-          oldId: existingNote.id,
-          newId: updatedNote.id,
-          oldX: existingNote.x,
-          newX: updatedNote.x
+
+      const handleNoteUpdate = (data) => {
+        console.log("📝 Socket: note-update received:", {
+          id: data.id,
+          hasPosition: !!data.position,
+          hasX: data.x !== undefined,
+          hasY: data.y !== undefined
         });
-        
-        // Zamień tylko tę jedną notatkę
-        const newNotes = [...prev];
-        newNotes[noteIndex] = updatedNote;
-        
-        return newNotes;
-      });
-    };
-      
+
+        setNotes(prev => {
+          const noteIndex = prev.findIndex(note => note.id === data.id);
+
+          if (noteIndex === -1) {
+            console.log("❌ Socket: note not found locally, cannot update");
+            return prev;
+          }
+
+          // Pobierz istniejącą notatkę
+          const existingNote = prev[noteIndex];
+
+          // Przygotuj update - NIE nadpisuj całej notatki, tylko zaktualizuj pola
+          const updates = { ...data };
+
+          // Jeśli jest position, rozbij na x, y
+          if (data.position) {
+            updates.x = data.position.x;
+            updates.y = data.position.y;
+          }
+
+          // Usuń position z updates (użyjemy tylko x, y)
+          delete updates.position;
+
+          // Stwórz zaktualizowaną notatkę - zachowaj wszystkie istniejące pola
+          const updatedNote = {
+            ...existingNote,
+            ...updates
+          };
+
+          console.log("📝 Socket: updating note:", {
+            oldId: existingNote.id,
+            newId: updatedNote.id,
+            oldX: existingNote.x,
+            newX: updatedNote.x
+          });
+
+          // Zamień tylko tę jedną notatkę
+          const newNotes = [...prev];
+          newNotes[noteIndex] = updatedNote;
+
+          return newNotes;
+        });
+      };
+
       const handleNoteDelete = (data) => {
         setNotes(prev => prev.filter(note => note.id !== data.id));
       };
@@ -743,18 +854,37 @@ const handleTextUpdate = (id, newProps) => {
       socket.on('note-create', handleNoteCreate);
       socket.on('note-update', handleNoteUpdate);
       socket.on('note-delete', handleNoteDelete);
-      
+
       return () => {
         socket.off('note-create', handleNoteCreate);
         socket.off('note-update', handleNoteUpdate);
         socket.off('note-delete', handleNoteDelete);
+      };
+
+      const handleEmojiCreateSocket = (data) => {
+        setEmojis(prev => {
+          const exists = prev.some(e => e.id === data.emoji.id);
+          return exists ? prev : [...prev, data.emoji];
+        });
+      };
+      const handleEmojiDeleteSocket = (data) => {
+        setEmojis(prev => prev.filter(e => e.id !== data.id));
+      };
+
+      socket.on('emoji-create', handleEmojiCreateSocket);
+      socket.on('emoji-delete', handleEmojiDeleteSocket);
+
+      return () => {
+        socket.off('emoji-create', handleEmojiCreateSocket);
+        socket.off('emoji-delete', handleEmojiDeleteSocket);
+        // ... cleanup innych
       };
     }
   }, [socket]);
 
   const handleMouseMove = (e) => {
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
-    
+
     // Send cursor position continuously
     if (onCursorMove) {
       onCursorMove({ x, y });
@@ -769,9 +899,9 @@ const handleTextUpdate = (id, newProps) => {
     const currentIndex = backgroundModes.findIndex(mode => mode.id === backgroundMode);
     const nextIndex = (currentIndex + 1) % backgroundModes.length;
     const newBackgroundMode = backgroundModes[nextIndex].id;
-    
+
     setBackgroundMode(newBackgroundMode);
-    
+
     // Natychmiastowe wyczyszczenie i ustawienie nowego tła
     clearCanvas();
   };
@@ -905,6 +1035,17 @@ const handleTextUpdate = (id, newProps) => {
             socket={socket}
           />
         ))}
+        {/* 🆕 RENDEROWANIE EMOJI */}
+        {emojis.map(emojiData => (
+          <Emoji
+            key={emojiData.id}
+            {...emojiData}
+            selected={selectedEmojiId === emojiData.id}
+            onSelect={setSelectedEmojiId}
+            onRemove={removeEmoji}
+            onUpdate={handleEmojiUpdate} // 🆕 Dodajemy ten prop
+          />
+        ))}
 
         {remoteCursorsArray.map((cursor) => (
           cursor.position && (
@@ -949,8 +1090,8 @@ const handleTextUpdate = (id, newProps) => {
             </div>
           )
         ))}
-        
-        <button 
+
+        <button
           className="background-toggle"
           onClick={toggleBackground}
           title={`Tło: ${backgroundModes.find(mode => mode.id === backgroundMode)?.name}`}
