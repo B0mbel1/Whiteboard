@@ -851,21 +851,35 @@ const Canvas = ({
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
+      // 🆕 Domyślne wymiary zależne od typu
+      let defaultWidth = 100;
+      let defaultHeight = 100;
+      let startX = x - 50; // Centrowanie dla pudełek
+      let startY = y - 50;
+
+      if (activeShape === 'arrow') {
+        // Dla strzałki kliknięcie to początek (ogonek)
+        startX = x;
+        startY = y;
+        // Domyślnie strzałka w prawo o długości 150px
+        defaultWidth = 150;
+        defaultHeight = 0;
+      }
+
       const newShape = {
         id: `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        x: x - 50, // Centrowanie: przesuwamy o połowę domyślnego rozmiaru
-        y: y - 50,
-        width: 100, // Domyślna szerokość
-        height: 100, // Domyślna wysokość
+        x: startX,
+        y: startY,
+        width: defaultWidth,
+        height: defaultHeight,
         type: activeShape
       };
 
+      // ... (reszta bez zmian: setShapes, saveToHistory, onShapeCreate, setTool)
       setShapes(prev => [...prev, newShape]);
       saveToHistory(ACTION_TYPES.SHAPE_CREATE, { shape: newShape });
       if (onShapeCreate) onShapeCreate(newShape);
-      if (setTool) {
-        setTool('cursor');
-      }
+      if (setTool) setTool('cursor');
     }
 
   };
@@ -1010,7 +1024,7 @@ const Canvas = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedNoteId, selectedTextBoxId, selectedEmojiId, selectedGifId,selectedShapeId]);
+  }, [selectedNoteId, selectedTextBoxId, selectedEmojiId, selectedGifId, selectedShapeId]);
 
   // DODANE: obsługa socket dla notatek
   useEffect(() => {
