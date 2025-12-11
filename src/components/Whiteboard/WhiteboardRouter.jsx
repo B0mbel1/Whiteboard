@@ -130,9 +130,6 @@ const WhiteboardRouter = () => {
       if (data.shapes) setShapes(data.shapes);
     });
 
-    newSocket.on('gif-update', (data) => {
-      setGifs(prev => prev.map(g => g.id === data.id ? { ...g, ...data } : g));
-    });
 
     //emojis
     newSocket.on('whiteboard-data', (data) => {
@@ -144,28 +141,6 @@ const WhiteboardRouter = () => {
       if (data.emojis) setEmojis(data.emojis);
       if (data.shapes) setShapes(data.shapes);
       if(data.gifs) setGifs(data.gifs);
-    });
-
-    newSocket.on('emoji-create', (data) => {
-      setEmojis(prev => [...prev, data.emoji]);
-    });
-
-    newSocket.on('emoji-delete', (data) => {
-      setEmojis(prev => prev.filter(e => e.id !== data.id));
-    });
-
-    //Shapes
-    newSocket.on('shape-create', (data) => {
-      setShapes(prev => [...prev, data.shape]);
-    });
-
-    newSocket.on('shape-delete', (data) => {
-      setShapes(prev => prev.filter(s => s.id !== data.id));
-    });
-    newSocket.on('shape-update', (data) => {
-      setShapes(prev => prev.map(s =>
-        s.id === data.id ? { ...s, ...data } : s
-      ));
     });
 
     // Obsługa tekstu
@@ -249,6 +224,16 @@ const WhiteboardRouter = () => {
       socketRef.current.emit('emoji-create', { whiteboardId, emoji });
     }
   };
+
+  const handleEmojiUpdate = (id, updates) => {
+  if (socketRef.current && whiteboardId) {
+    socketRef.current.emit('emoji-update', {
+      whiteboardId,
+      id,
+      ...updates
+    });
+  }
+};
 
   const handleEmojiDelete = (id) => {
     if (socketRef.current && whiteboardId) {
@@ -396,11 +381,13 @@ const WhiteboardRouter = () => {
           emojis={emojis}
           activeEmoji={activeEmoji} // Aktualnie wybrane emoji do postawienia
           onEmojiCreate={handleEmojiCreate}
+          onEmojiUpdate={handleEmojiUpdate}
           onEmojiDelete={handleEmojiDelete}
           gifs={gifs}                     // ✅ Przekazujemy listę
           activeGif={activeGif}           // ✅ Przekazujemy wybrany URL
           onGifCreate={handleGifCreate}   // ✅ Funkcja tworzenia
           onGifDelete={handleGifDelete}   // ✅ Funkcja usuwania
+          onGifUpdate={handleGifUpdate}
           shapes={shapes}
           activeShape={activeShape}
           onShapeCreate={handleShapeCreate}

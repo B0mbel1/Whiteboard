@@ -1,4 +1,3 @@
-// src/components/Canvas/DraggableResizableWrapper.jsx
 import React, { useState, useEffect, useRef } from 'react';
 
 const DraggableResizableWrapper = ({
@@ -11,95 +10,104 @@ const DraggableResizableWrapper = ({
   onUpdate,
   children,
   minWidth = 50,
-  aspectRatioLocked = true // Dla obrazów chcemy zachować proporcje
+  aspectRatioLocked = true
 }) => {
+  const [localPos, setLocalPos] = useState({ x, y });
+  const [localWidth, setLocalWidth] = useState(width);
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  
+  const dragStartRef = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
+  const resizeStartRef = useRef({ x: 0, y: 0, startWidth: 0 });
   const wrapperRef = useRef(null);
-  const dragStartPos = useRef({ x: 0, y: 0 });
-  const initialRect = useRef({ x: 0, y: 0, width: 0, height: 0 });
 
-  // Uchwyty do zmiany rozmiaru
-  const handles = ['nw', 'ne', 'sw', 'se'];
+  // Synchronizacja z propsami
+  useEffect(() => {
+    if (!isDragging && !isResizing) {
+      setLocalPos({ x, y });
+      setLocalWidth(width);
+    }
+  }, [x, y, width, isDragging, isResizing]);
 
   const handleMouseDown = (e) => {
-    if (e.target.classList.contains('resize-handle')) return; // Nie zaczynaj drag, jeśli kliknięto resize
-    e.stopPropagation(); // Ważne: zapobiega rysowaniu na canvasie pod spodem
+    if (e.target.classList.contains('resize-handle')) return;
+    e.stopPropagation();
     onSelect(id);
     
-    if(e.button === 0) { // Lewy przycisk myszy
-        setIsDragging(true);
-        dragStartPos.current = { x: e.clientX, y: e.clientY };
+    if (e.button === 0) {
+      setIsDragging(true);
+      dragStartRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        startX: localPos.x,
+        startY: localPos.y
+      };
     }
   };
 
   const handleResizeMouseDown = (e, handleType) => {
     e.stopPropagation();
     setIsResizing(handleType);
-    dragStartPos.current = { x: e.clientX, y: e.clientY };
-    const rect = wrapperRef.current.getBoundingClientRect();
-    initialRect.current = { x, y, width, height: rect.height };
+    resizeStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      startWidth: localWidth
+    };
   };
 
+  // Obsługa przeciągania i zmiany rozmiaru
   useEffect(() => {
     if (!isDragging && !isResizing) return;
 
     const handleMouseMove = (e) => {
-      const dx = e.clientX - dragStartPos.current.x;
-      const dy = e.clientY - dragStartPos.current.y;
-
       if (isDragging) {
-        onUpdate(id, { x: x + dx, y: y + dy });
-        // Aktualizujemy punkt startowy, żeby ruch był płynny
-        dragStartPos.current = { x: e.clientX, y: e.clientY };
-      } 
+        const dx = e.clientX - dragStartRef.current.x;
+        const dy = e.clientY - dragStartRef.current.y;
+        
+        const newX = dragStartRef.current.startX + dx;
+        const newY = dragStartRef.current.startY + dy;
+        
+        setLocalPos({ x: newX, y: newY });
+        
+        // ✅ WYŚLIJ UPDATE NATYCHMIAST dla real-time
+        if (onUpdate) {
+          onUpdate(id, { x: newX, y: newY });
+        }
+      }
       
       if (isResizing) {
-        let newWidth = initialRect.current.width;
-        // let newHeight = initialRect.current.height; // (opcjonalne jeśli nie blokujemy aspektu)
-        let newX = initialRect.current.x;
-        let newY = initialRect.current.y;
-
-        // Logika zmiany rozmiaru zależnie od narożnika
-        if (isResizing.includes('e')) newWidth += dx;
-        if (isResizing.includes('w')) {
-            newWidth -= dx;
-            newX += dx;
-        }
+        const dx = e.clientX - resizeStartRef.current.x;
+        let newWidth = resizeStartRef.current.startWidth + dx;
         
-        // Dla obrazów (aspectRatioLocked=true) wysokość dostosuje się sama, 
-        // musimy tylko obsłużyć pozycję Y przy skalowaniu od góry ('n')
-        if (aspectRatioLocked) {
-           if (isResizing.includes('n')) {
-               // To jest trudniejsze przy zachowaniu proporcji bez znanej wysokości.
-               // Dla uproszczenia w tym przykładzie skupimy się na szerokości,
-               // a przeglądarka dostosuje wysokość obrazka automatycznie.
-               // Jeśli skalujemy od góry (n), musielibyśmy znać nową wysokość, żeby przesunąć Y.
-               // W najprostszej wersji: skalowanie działa najlepiej ciągnąc za dolne rogi (se, sw).
-           }
-        }
-
-        // Zabezpieczenie minimalnej szerokości
         if (newWidth < minWidth) newWidth = minWidth;
-
-        // Wysyłamy update tylko jeśli coś się zmieniło
-        const updates = {};
-        if(newWidth !== width) updates.width = newWidth;
-        if(newX !== x) updates.x = newX;
-        // if(newY !== y) updates.y = newY; // Odkomentuj jeśli implementujesz pełne skalowanie Y
-
-        if(Object.keys(updates).length > 0) {
-             onUpdate(id, updates);
+        
+        setLocalWidth(newWidth);
+        
+        // ✅ WYŚLIJ UPDATE NATYCHMIAST dla real-time
+        if (onUpdate) {
+          const updates = { width: newWidth };
+          
+          // Jeśli zmieniamy rozmiar od lewej strony (zachodni uchwyt)
+          if (isResizing.includes('w')) {
+            const deltaX = resizeStartRef.current.startWidth - newWidth;
+            const newX = localPos.x + deltaX;
+            updates.x = newX;
+            setLocalPos(prev => ({ ...prev, x: newX }));
+          }
+          
+          onUpdate(id, updates);
         }
       }
     };
 
     const handleMouseUp = () => {
-      setIsDragging(false);
-      setIsResizing(false);
+      if (isDragging || isResizing) {
+        // Możesz tutaj wysłać finalny update jeśli chcesz
+        setIsDragging(false);
+        setIsResizing(false);
+      }
     };
 
-    // Nasłuchujemy na całym oknie, żeby nie zgubić kursora przy szybkim ruchu
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
 
@@ -107,8 +115,9 @@ const DraggableResizableWrapper = ({
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, isResizing, x, y, width, id, onUpdate]);
+  }, [isDragging, isResizing, id, onUpdate, localPos.x, localPos.y, minWidth]);
 
+  const handles = ['nw', 'ne', 'sw', 'se'];
 
   return (
     <div
@@ -117,10 +126,9 @@ const DraggableResizableWrapper = ({
       onMouseDown={handleMouseDown}
       style={{
         position: 'absolute',
-        left: x,
-        top: y,
-        width: `${width}px`,
-        // height: height ? `${height}px` : 'auto', // Dla GIFów height jest auto
+        left: localPos.x,
+        top: localPos.y,
+        width: `${localWidth}px`,
         cursor: isDragging ? 'grabbing' : 'grab',
         border: isSelected ? '2px solid #3498db' : '2px solid transparent',
         zIndex: isSelected ? 100 : 10,
@@ -130,7 +138,7 @@ const DraggableResizableWrapper = ({
     >
       {children}
 
-      {/* Uchwyty do zmiany rozmiaru (widoczne tylko gdy zaznaczone) */}
+      {/* Uchwyty do zmiany rozmiaru */}
       {isSelected && handles.map(handle => (
         <div
           key={handle}
