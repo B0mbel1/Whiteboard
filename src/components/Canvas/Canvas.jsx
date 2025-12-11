@@ -27,6 +27,7 @@ const Canvas = ({
   emojis: initialEmojis,
   activeEmoji, // To jest emoji wybrane z Toolbara (np. "🔥")
   onEmojiCreate,
+  onEmojiUpdate,
   onEmojiDelete,
   gifs: initialGifs,      // ✅
   activeGif,              // ✅ URL z toolbara
@@ -907,9 +908,9 @@ const Canvas = ({
     ));
 
     // Wyślij przez socket
-    if (socket) {
-      socket.emit('emoji-update', { whiteboardId, id, ...updates });
-    }
+    if (onEmojiUpdate) {
+    onEmojiUpdate(id, updates);
+  }
     // Uwaga: Na razie nie dodajemy tego do historii undo/redo, 
     // bo generowałoby to setki wpisów podczas jednego przeciągnięcia.
   };
@@ -1091,17 +1092,25 @@ const Canvas = ({
         setNotes(prev => prev.filter(note => note.id !== data.id));
       };
 
-      socket.on('note-create', handleNoteCreate);
-      socket.on('note-update', handleNoteUpdate);
-      socket.on('note-delete', handleNoteDelete);
+    const handleEmojiUpdate = (data) => {
+      setEmojis(prev => prev.map(e => 
+        e.id === data.id ? { ...e, ...data } : e
+      ));
+    };
+    
+    const handleGifUpdate = (data) => {
+      setGifs(prev => prev.map(g => 
+        g.id === data.id ? { ...g, ...data } : g
+      ));
+    };
+    
+    const handleShapeUpdate = (data) => {
+      setShapes(prev => prev.map(s => 
+        s.id === data.id ? { ...s, ...data } : s
+      ));
+    };
 
-      return () => {
-        socket.off('note-create', handleNoteCreate);
-        socket.off('note-update', handleNoteUpdate);
-        socket.off('note-delete', handleNoteDelete);
-      };
-
-      const handleEmojiCreateSocket = (data) => {
+    const handleEmojiCreateSocket = (data) => {
         setEmojis(prev => {
           const exists = prev.some(e => e.id === data.emoji.id);
           return exists ? prev : [...prev, data.emoji];
@@ -1109,15 +1118,6 @@ const Canvas = ({
       };
       const handleEmojiDeleteSocket = (data) => {
         setEmojis(prev => prev.filter(e => e.id !== data.id));
-      };
-
-      socket.on('emoji-create', handleEmojiCreateSocket);
-      socket.on('emoji-delete', handleEmojiDeleteSocket);
-
-      return () => {
-        socket.off('emoji-create', handleEmojiCreateSocket);
-        socket.off('emoji-delete', handleEmojiDeleteSocket);
-        // ... cleanup innych
       };
 
       const handleGifCreateSocket = (data) => {
@@ -1130,30 +1130,7 @@ const Canvas = ({
         setGifs(prev => prev.filter(g => g.id !== data.id));
       };
 
-      socket.on('gif-create', handleGifCreateSocket);
-      socket.on('gif-delete', handleGifDeleteSocket);
-
-      return () => {
-        // ... cleanup innych ...
-        socket.off('gif-create', handleGifCreateSocket);
-        socket.off('gif-delete', handleGifDeleteSocket);
-      };
-    }
-    const handleGifUpdateSocket = (data) => {
-      console.log("📡 Socket: gif-update received:", data);
-      setGifs(prev => prev.map(gif =>
-        gif.id === data.id ? { ...gif, ...data } : gif
-      ));
-    };
-
-    socket.on('gif-update', handleGifUpdateSocket);
-
-    return () => {
-      // ... cleanup innych ...
-      socket.off('gif-update', handleGifUpdateSocket);
-    };
-
-    const handleShapeCreateSocket = (data) => {
+      const handleShapeCreateSocket = (data) => {
       setShapes(prev => {
         const exists = prev.some(s => s.id === data.shape.id);
         return exists ? prev : [...prev, data.shape];
@@ -1163,14 +1140,34 @@ const Canvas = ({
       setShapes(prev => prev.filter(s => s.id !== data.id));
     };
 
-    socket.on('shape-create', handleShapeCreateSocket);
+      socket.on('note-create', handleNoteCreate);
+      socket.on('note-update', handleNoteUpdate);
+      socket.on('note-delete', handleNoteDelete);
+      socket.on('emoji-update', handleEmojiUpdate);
+      socket.on('gif-update', handleGifUpdate);
+      socket.on('shape-update', handleShapeUpdate);
+      socket.on('emoji-create', handleEmojiCreateSocket);
+      socket.on('emoji-delete', handleEmojiDeleteSocket);
+      socket.on('gif-create', handleGifCreateSocket);
+      socket.on('gif-delete', handleGifDeleteSocket);
+      socket.on('shape-create', handleShapeCreateSocket);
     socket.on('shape-delete', handleShapeDeleteSocket);
 
-    return () => {
-      socket.off('shape-create', handleShapeCreateSocket);
+      return () => {
+        socket.off('note-create', handleNoteCreate);
+        socket.off('note-update', handleNoteUpdate);
+        socket.off('note-delete', handleNoteDelete);
+        socket.off('emoji-update', handleEmojiUpdate);
+        socket.off('gif-update', handleGifUpdate);
+        socket.off('shape-update', handleShapeUpdate);
+        socket.off('emoji-create', handleEmojiCreateSocket);
+        socket.off('emoji-delete', handleEmojiDeleteSocket);
+        socket.off('gif-create', handleGifCreateSocket);
+        socket.off('gif-delete', handleGifDeleteSocket);
+        socket.off('shape-create', handleShapeCreateSocket);
       socket.off('shape-delete', handleShapeDeleteSocket);
-      // ... cleanup reszty
-    };
+      };
+    }
   }, [socket]);
 
   const handleMouseMove = (e) => {
