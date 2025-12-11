@@ -1098,7 +1098,7 @@ const Canvas = ({
       ));
     };
     
-    const handleGifUpdateSocket = (data) => {
+    const handleGifUpdate = (data) => {
       setGifs(prev => prev.map(g => 
         g.id === data.id ? { ...g, ...data } : g
       ));
@@ -1144,7 +1144,7 @@ const Canvas = ({
       socket.on('note-update', handleNoteUpdate);
       socket.on('note-delete', handleNoteDelete);
       socket.on('emoji-update', handleEmojiUpdate);
-      socket.on('gif-update', handleGifUpdateSocket);
+      socket.on('gif-update', handleGifUpdate);
       socket.on('shape-update', handleShapeUpdate);
       socket.on('emoji-create', handleEmojiCreateSocket);
       socket.on('emoji-delete', handleEmojiDeleteSocket);
@@ -1158,7 +1158,7 @@ const Canvas = ({
         socket.off('note-update', handleNoteUpdate);
         socket.off('note-delete', handleNoteDelete);
         socket.off('emoji-update', handleEmojiUpdate);
-        socket.off('gif-update', handleGifUpdateSocket);
+        socket.off('gif-update', handleGifUpdate);
         socket.off('shape-update', handleShapeUpdate);
         socket.off('emoji-create', handleEmojiCreateSocket);
         socket.off('emoji-delete', handleEmojiDeleteSocket);

@@ -119,62 +119,11 @@ const WhiteboardRouter = () => {
       }
     });
 
-
-    //Gif
-    newSocket.on('whiteboard-data', (data) => {
-      // ... istniejące
-      if (data.textBoxes) setTextBoxes(data.textBoxes);
-      if (data.notes) setNotes(data.notes);
-      if (data.emojis) setEmojis(data.emojis);
-      if (data.gifs) setGifs(data.gifs);
-      if (data.shapes) setShapes(data.shapes);
-    });
-
-
-    //emojis
-    newSocket.on('whiteboard-data', (data) => {
-      // ... istniejące
-      if (data.textBoxes) setTextBoxes(data.textBoxes);
-      if (data.notes) setNotes(data.notes);
-
-      // 🆕 Odbierz emoji przy wejściu
-      if (data.emojis) setEmojis(data.emojis);
-      if (data.shapes) setShapes(data.shapes);
-      if(data.gifs) setGifs(data.gifs);
-    });
-
-    // Obsługa tekstu
-    newSocket.on('text-create', (data) => {
-      setTextBoxes(prev => [...prev, data.textBox]);
-    });
-
-    newSocket.on('text-delete', (data) => {
-      setTextBoxes(prev => prev.filter(tb => tb.id !== data.id));
-    });
-
-    // ✅ DODAJ OBSŁUGĘ NOTATEK
-    newSocket.on('note-create', (data) => {
-      setNotes(prev => [...prev, data.note]);
-    });
-
-
-    newSocket.on('note-delete', (data) => {
-      setNotes(prev => prev.filter(note => note.id !== data.id));
-    });
-
     newSocket.on('connect_error', (error) => {
       console.error("❌ Connection error:", error);
       setIsLoading(false);
     });
 
-    //Gif
-    newSocket.on('gif-create', (data) => {
-      setGifs(prev => [...prev, data.gif]);
-    });
-
-    newSocket.on('gif-delete', (data) => {
-      setGifs(prev => prev.filter(g => g.id !== data.id));
-    });
   };
 
   //Shapes
