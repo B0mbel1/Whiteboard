@@ -101,7 +101,10 @@ io.on("connection", (socket) => {
         users: new Map(),
         drawingData: [],
         textBoxes: [],
-        notes:[]
+        notes:[],
+        gifs:[],
+        shapes:[],
+        emojis: []
       });
       console.log(`📝 Created whiteboard on join: ${whiteboardId}`);
     }
@@ -142,7 +145,10 @@ io.on("connection", (socket) => {
     users: Array.from(whiteboard.users.values()),
     drawingData: whiteboard.drawingData || [],
     textBoxes: whiteboard.textBoxes || [],
-    notes: whiteboard.notes || []
+    notes: whiteboard.notes || [],
+    gifs: whiteboard.gifs || [],
+    shapes: whiteboard.shapes || [],
+    emojis: whiteboard.emojis || []
   };
   
   console.log(`📤 Sending whiteboard data to new user:`, {
@@ -322,6 +328,113 @@ socket.on("note-update", (data) => {
       socket.to(whiteboardId).emit("note-delete", { id });
     }
   });
+
+  // DODAJ PO handlerach dla notes (~linia 240):
+
+// ========== OBSŁUGA EMOJI ==========
+socket.on("emoji-create", (data) => {
+  const { whiteboardId, emoji } = data;
+  const whiteboard = whiteboards.get(whiteboardId);
+  
+  if (whiteboard) {
+    if (!whiteboard.emojis) whiteboard.emojis = [];
+    whiteboard.emojis.push(emoji);
+    socket.to(whiteboardId).emit("emoji-create", { emoji });
+  }
+});
+
+socket.on("emoji-update", (data) => {
+  const { whiteboardId, id, ...updates } = data;
+  const whiteboard = whiteboards.get(whiteboardId);
+  
+  if (whiteboard && whiteboard.emojis) {
+    const emoji = whiteboard.emojis.find(e => e.id === id);
+    if (emoji) {
+      Object.assign(emoji, updates);
+      socket.to(whiteboardId).emit("emoji-update", { id, ...updates });
+    }
+  }
+});
+
+socket.on("emoji-delete", (data) => {
+  const { whiteboardId, id } = data;
+  const whiteboard = whiteboards.get(whiteboardId);
+  
+  if (whiteboard && whiteboard.emojis) {
+    whiteboard.emojis = whiteboard.emojis.filter(e => e.id !== id);
+    socket.to(whiteboardId).emit("emoji-delete", { id });
+  }
+});
+
+// ========== OBSŁUGA GIFÓW ==========
+socket.on("gif-create", (data) => {
+  const { whiteboardId, gif } = data;
+  const whiteboard = whiteboards.get(whiteboardId);
+  
+  if (whiteboard) {
+    if (!whiteboard.gifs) whiteboard.gifs = [];
+    whiteboard.gifs.push(gif);
+    socket.to(whiteboardId).emit("gif-create", { gif });
+  }
+});
+
+socket.on("gif-update", (data) => {
+  const { whiteboardId, id, ...updates } = data;
+  const whiteboard = whiteboards.get(whiteboardId);
+  
+  if (whiteboard && whiteboard.gifs) {
+    const gif = whiteboard.gifs.find(g => g.id === id);
+    if (gif) {
+      Object.assign(gif, updates);
+      socket.to(whiteboardId).emit("gif-update", { id, ...updates });
+    }
+  }
+});
+
+socket.on("gif-delete", (data) => {
+  const { whiteboardId, id } = data;
+  const whiteboard = whiteboards.get(whiteboardId);
+  
+  if (whiteboard && whiteboard.gifs) {
+    whiteboard.gifs = whiteboard.gifs.filter(g => g.id !== id);
+    socket.to(whiteboardId).emit("gif-delete", { id });
+  }
+});
+
+// ========== OBSŁUGA KSZTAŁTÓW ==========
+socket.on("shape-create", (data) => {
+  const { whiteboardId, shape } = data;
+  const whiteboard = whiteboards.get(whiteboardId);
+  
+  if (whiteboard) {
+    if (!whiteboard.shapes) whiteboard.shapes = [];
+    whiteboard.shapes.push(shape);
+    socket.to(whiteboardId).emit("shape-create", { shape });
+  }
+});
+
+socket.on("shape-update", (data) => {
+  const { whiteboardId, id, ...updates } = data;
+  const whiteboard = whiteboards.get(whiteboardId);
+  
+  if (whiteboard && whiteboard.shapes) {
+    const shape = whiteboard.shapes.find(s => s.id === id);
+    if (shape) {
+      Object.assign(shape, updates);
+      socket.to(whiteboardId).emit("shape-update", { id, ...updates });
+    }
+  }
+});
+
+socket.on("shape-delete", (data) => {
+  const { whiteboardId, id } = data;
+  const whiteboard = whiteboards.get(whiteboardId);
+  
+  if (whiteboard && whiteboard.shapes) {
+    whiteboard.shapes = whiteboard.shapes.filter(s => s.id !== id);
+    socket.to(whiteboardId).emit("shape-delete", { id });
+  }
+});
 
   // Handle drawing events
   socket.on("drawing", (data) => {

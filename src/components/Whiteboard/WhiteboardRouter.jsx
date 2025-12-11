@@ -108,6 +108,15 @@ const WhiteboardRouter = () => {
       if (data.notes) {
         setNotes(data.notes);
       }
+      if(data.gifs){
+        setGifs(data.gifs);
+      }
+      if(data.shapes){
+        setShapes(data.shapes);
+      }
+      if(data.emojis){
+        setEmojis(data.emojis);
+      }
     });
 
 
@@ -133,6 +142,8 @@ const WhiteboardRouter = () => {
 
       // 🆕 Odbierz emoji przy wejściu
       if (data.emojis) setEmojis(data.emojis);
+      if (data.shapes) setShapes(data.shapes);
+      if(data.gifs) setGifs(data.gifs);
     });
 
     newSocket.on('emoji-create', (data) => {
