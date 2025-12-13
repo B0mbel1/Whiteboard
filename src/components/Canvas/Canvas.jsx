@@ -492,6 +492,10 @@ const Canvas = ({
   }, [color, size, tool]);
 
   const startDrawing = ({ nativeEvent }) => {
+    // ✅ ZMIANA: Sprawdzamy, czy wciśnięty przycisk to lewy (0).
+    // Jeśli to prawy (2) lub środkowy (1), przerywamy funkcję.
+    if (nativeEvent.button !== 0) return;
+
     if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
     if (setShowColorPicker) setShowColorPicker(false);
     const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
@@ -533,6 +537,9 @@ const Canvas = ({
   };
 
   const handleCanvasClick = (e) => {
+    // ✅ ZMIANA: Blokujemy stawianie elementów (tekst, notatki, gify) prawym przyciskiem.
+    if (e.button !== 0) return;
+
     if (e.target.closest('.shape-item') || e.target.closest('.emoji-item')) return;
     setSelectedNoteId(null); setSelectedTextBoxId(null); setSelectedEmojiId(null); setSelectedGifId(null); setSelectedShapeId(null);
 
@@ -549,7 +556,6 @@ const Canvas = ({
       const rect = canvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      // FIX: Lepsze generowanie ID dla tekstu aby uniknąć duplikatów
       const newTextBox = { id: `text_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x, y, text: '', width: 200, height: 100 };
       saveToHistory(ACTION_TYPES.TEXT_CREATE, { textBox: newTextBox });
       setTextBoxes(prev => [...prev, newTextBox]);
