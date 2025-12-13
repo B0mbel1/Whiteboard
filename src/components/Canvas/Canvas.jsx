@@ -670,13 +670,21 @@ const Canvas = ({
     contextRef.current.beginPath();
     contextRef.current.moveTo(x, y);
 
+    // ✅ ZMIANA 1: Rysujemy kropkę natychmiast po kliknięciu.
+    // Dzięki temu, że lineCap jest 'round', linia o długości 0 robi idealne kółko.
+    contextRef.current.lineTo(x, y);
+    contextRef.current.stroke();
+
     setIsDrawing(true);
 
     currentDrawingRef.current = {
       tool,
       color,
       size,
-      points: [{ x, y }]
+      // ✅ ZMIANA 2: Zapisujemy punkt startowy podwójnie.
+      // Jest to kluczowe, aby 'drawRemote' (który wymaga min. 2 punktów)
+      // w ogóle przetworzył to kliknięcie i wysłał je do innych.
+      points: [{ x, y }, { x, y }]
     };
   };
 
@@ -909,8 +917,8 @@ const Canvas = ({
 
     // Wyślij przez socket
     if (onEmojiUpdate) {
-    onEmojiUpdate(id, updates);
-  }
+      onEmojiUpdate(id, updates);
+    }
     // Uwaga: Na razie nie dodajemy tego do historii undo/redo, 
     // bo generowałoby to setki wpisów podczas jednego przeciągnięcia.
   };
@@ -1092,25 +1100,25 @@ const Canvas = ({
         setNotes(prev => prev.filter(note => note.id !== data.id));
       };
 
-    const handleEmojiUpdate = (data) => {
-      setEmojis(prev => prev.map(e => 
-        e.id === data.id ? { ...e, ...data } : e
-      ));
-    };
-    
-    const handleGifUpdate = (data) => {
-      setGifs(prev => prev.map(g => 
-        g.id === data.id ? { ...g, ...data } : g
-      ));
-    };
-    
-    const handleShapeUpdate = (data) => {
-      setShapes(prev => prev.map(s => 
-        s.id === data.id ? { ...s, ...data } : s
-      ));
-    };
+      const handleEmojiUpdate = (data) => {
+        setEmojis(prev => prev.map(e =>
+          e.id === data.id ? { ...e, ...data } : e
+        ));
+      };
 
-    const handleEmojiCreateSocket = (data) => {
+      const handleGifUpdate = (data) => {
+        setGifs(prev => prev.map(g =>
+          g.id === data.id ? { ...g, ...data } : g
+        ));
+      };
+
+      const handleShapeUpdate = (data) => {
+        setShapes(prev => prev.map(s =>
+          s.id === data.id ? { ...s, ...data } : s
+        ));
+      };
+
+      const handleEmojiCreateSocket = (data) => {
         setEmojis(prev => {
           const exists = prev.some(e => e.id === data.emoji.id);
           return exists ? prev : [...prev, data.emoji];
@@ -1131,14 +1139,14 @@ const Canvas = ({
       };
 
       const handleShapeCreateSocket = (data) => {
-      setShapes(prev => {
-        const exists = prev.some(s => s.id === data.shape.id);
-        return exists ? prev : [...prev, data.shape];
-      });
-    };
-    const handleShapeDeleteSocket = (data) => {
-      setShapes(prev => prev.filter(s => s.id !== data.id));
-    };
+        setShapes(prev => {
+          const exists = prev.some(s => s.id === data.shape.id);
+          return exists ? prev : [...prev, data.shape];
+        });
+      };
+      const handleShapeDeleteSocket = (data) => {
+        setShapes(prev => prev.filter(s => s.id !== data.id));
+      };
 
       socket.on('note-create', handleNoteCreate);
       socket.on('note-update', handleNoteUpdate);
@@ -1151,7 +1159,7 @@ const Canvas = ({
       socket.on('gif-create', handleGifCreateSocket);
       socket.on('gif-delete', handleGifDeleteSocket);
       socket.on('shape-create', handleShapeCreateSocket);
-    socket.on('shape-delete', handleShapeDeleteSocket);
+      socket.on('shape-delete', handleShapeDeleteSocket);
 
       return () => {
         socket.off('note-create', handleNoteCreate);
@@ -1165,7 +1173,7 @@ const Canvas = ({
         socket.off('gif-create', handleGifCreateSocket);
         socket.off('gif-delete', handleGifDeleteSocket);
         socket.off('shape-create', handleShapeCreateSocket);
-      socket.off('shape-delete', handleShapeDeleteSocket);
+        socket.off('shape-delete', handleShapeDeleteSocket);
       };
     }
   }, [socket]);
