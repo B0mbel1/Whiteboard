@@ -5,7 +5,7 @@ import { drawCompletePath, drawPathSegment } from '../../utils/drawingUtils';
 import Note from './Note';
 import Text from './Text';
 import Emoji from './Emoji';
-import Gif from './Gif'; // lub ścieżka gdzie go utworzyłeś
+import Gif from './Gif'; 
 import Shape from './Shape';
 
 const Canvas = ({
@@ -25,13 +25,13 @@ const Canvas = ({
   onNoteUpdate,
   onNoteDelete,
   emojis: initialEmojis,
-  activeEmoji, // To jest emoji wybrane z Toolbara (np. "🔥")
+  activeEmoji, 
   onEmojiCreate,
   onEmojiUpdate,
   onEmojiDelete,
-  gifs: initialGifs,      // ✅
-  activeGif,              // ✅ URL z toolbara
-  onGifCreate,            // ✅
+  gifs: initialGifs,      
+  activeGif,              
+  onGifCreate,            
   onGifDelete,
   onGifUpdate,
   shapes: initialShapes,
@@ -50,7 +50,7 @@ const Canvas = ({
   const [notes, setNotes] = useState(initialNotes || []);
   const [textBoxes, setTextBoxes] = useState(initialTextBoxes || []);
 
-  // 🔹 DODANE: Uproszczona historia undo/redo
+  // Historia undo/redo
   const [history, setHistory] = useState([]);
   const [historyStep, setHistoryStep] = useState(-1);
   const historyRef = useRef({ history: [], step: -1 });
@@ -58,180 +58,129 @@ const Canvas = ({
   const [selectedTextBoxId, setSelectedTextBoxId] = useState(null);
   const [selectedNoteId, setSelectedNoteId] = useState(null);
 
-  //Emojis
+  // Emojis
   const [emojis, setEmojis] = useState(initialEmojis || []);
   const [selectedEmojiId, setSelectedEmojiId] = useState(null);
 
-  //Gif
+  // Gif
   const [gifs, setGifs] = useState(initialGifs || []);
   const [selectedGifId, setSelectedGifId] = useState(null);
 
-  //Shapes
+  // Shapes
   const [shapes, setShapes] = useState(initialShapes || []);
   const [selectedShapeId, setSelectedShapeId] = useState(null);
 
-  // 🔹 DODANE: Typy akcji dla historii
   const ACTION_TYPES = {
     DRAWING: 'drawing',
     NOTE_CREATE: 'note_create',
     NOTE_DELETE: 'note_delete',
     TEXT_CREATE: 'text_create',
     TEXT_DELETE: 'text_delete',
-
     EMOJI_CREATE: 'emoji_create',
     EMOJI_DELETE: 'emoji_delete',
-
-    GIF_CREATE: 'gif_create', // ✅
-    GIF_DELETE: 'gif_delete',  // ✅
-
+    GIF_CREATE: 'gif_create',
+    GIF_DELETE: 'gif_delete',
     SHAPE_CREATE: 'shape_create',
     SHAPE_DELETE: 'shape_delete',
   };
+
   useEffect(() => { setShapes(initialShapes || []); }, [initialShapes]);
 
-  // 🔹 DODANE: Uproszczone funkcje do zarządzania historią
+  // Funkcje historii
   const saveToHistory = (actionType, data) => {
     const newHistory = historyRef.current.history.slice(0, historyRef.current.step + 1);
-
-    const historyItem = {
-      type: actionType,
-      data: data,
-      timestamp: Date.now()
-    };
-
+    const historyItem = { type: actionType, data: data, timestamp: Date.now() };
     newHistory.push(historyItem);
+    if (newHistory.length > 50) newHistory.shift();
 
-    // Ogranicz historię do 50 kroków
-    if (newHistory.length > 50) {
-      newHistory.shift();
-    }
-
-    historyRef.current = {
-      history: newHistory,
-      step: newHistory.length - 1
-    };
-
+    historyRef.current = { history: newHistory, step: newHistory.length - 1 };
     setHistory(newHistory);
     setHistoryStep(newHistory.length - 1);
   };
 
   const undo = () => {
     if (historyRef.current.step < 0) return;
-
     const currentStep = historyRef.current.step;
     const action = historyRef.current.history[currentStep];
 
-    // Cofnij akcję w zależności od typu
     switch (action.type) {
       case ACTION_TYPES.DRAWING:
-        // Dla rysowania po prostu cofamy się o krok
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
         clearCanvas();
         redrawCanvas();
         break;
-
       case ACTION_TYPES.NOTE_CREATE:
-        // Cofnięcie tworzenia = usunięcie notatki
         setNotes(prev => prev.filter(note => note.id !== action.data.note.id));
-        if (onNoteDelete && action.data.note.id) {
-          onNoteDelete(action.data.note.id);
-        }
+        if (onNoteDelete && action.data.note.id) onNoteDelete(action.data.note.id);
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
         break;
-
       case ACTION_TYPES.NOTE_DELETE:
-        // Cofnięcie usunięcia = przywrócenie notatki
         setNotes(prev => [...prev, action.data.note]);
-        if (onNoteCreate && action.data.note) {
-          onNoteCreate(action.data.note);
-        }
+        if (onNoteCreate && action.data.note) onNoteCreate(action.data.note);
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
         break;
-
       case ACTION_TYPES.TEXT_CREATE:
-        // Cofnięcie tworzenia = usunięcie textboxa
         setTextBoxes(prev => prev.filter(textBox => textBox.id !== action.data.textBox.id));
-        if (socket && action.data.textBox.id) {
-          socket.emit('text-delete', { whiteboardId, id: action.data.textBox.id });
-        }
+        if (socket && action.data.textBox.id) socket.emit('text-delete', { whiteboardId, id: action.data.textBox.id });
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
         break;
-
       case ACTION_TYPES.TEXT_DELETE:
-        // Cofnięcie usunięcia = przywrócenie textboxa
         setTextBoxes(prev => [...prev, action.data.textBox]);
-        if (socket && action.data.textBox) {
-          socket.emit('text-create', { whiteboardId, textBox: action.data.textBox });
-        }
+        if (socket && action.data.textBox) socket.emit('text-create', { whiteboardId, textBox: action.data.textBox });
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
         break;
-
       case ACTION_TYPES.EMOJI_CREATE:
         setEmojis(prev => prev.filter(e => e.id !== action.data.emoji.id));
-        if (onEmojiDelete && action.data.emoji.id) {
-          onEmojiDelete(action.data.emoji.id);
-        }
+        if (onEmojiDelete && action.data.emoji.id) onEmojiDelete(action.data.emoji.id);
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
         break;
-
       case ACTION_TYPES.EMOJI_DELETE:
         setEmojis(prev => [...prev, action.data.emoji]);
-        if (onEmojiCreate && action.data.emoji) {
-          onEmojiCreate(action.data.emoji);
-        }
+        if (onEmojiCreate && action.data.emoji) onEmojiCreate(action.data.emoji);
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
         break;
-
       case ACTION_TYPES.GIF_CREATE:
         setGifs(prev => prev.filter(g => g.id !== action.data.gif.id));
         if (onGifDelete && action.data.gif.id) onGifDelete(action.data.gif.id);
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
         break;
-
       case ACTION_TYPES.GIF_DELETE:
         setGifs(prev => [...prev, action.data.gif]);
         if (onGifCreate && action.data.gif) onGifCreate(action.data.gif);
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
         break;
-
       case ACTION_TYPES.SHAPE_CREATE:
         setShapes(prev => prev.filter(s => s.id !== action.data.shape.id));
         if (onShapeDelete) onShapeDelete(action.data.shape.id);
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
         break;
-
       case ACTION_TYPES.SHAPE_DELETE:
         setShapes(prev => [...prev, action.data.shape]);
         if (onShapeCreate) onShapeCreate(action.data.shape);
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
         break;
-
       default:
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
-      //Dodał do gemini?
-      // if (action.type === ACTION_TYPES.DRAWING) { clearCanvas(); redrawCanvas(); }
     }
   };
 
   const redo = () => {
     if (historyRef.current.step >= historyRef.current.history.length - 1) return;
-
     const nextStep = historyRef.current.step + 1;
     const action = historyRef.current.history[nextStep];
 
-    // Ponów akcję w zależności od typu
     switch (action.type) {
       case ACTION_TYPES.DRAWING:
         historyRef.current.step = nextStep;
@@ -239,98 +188,75 @@ const Canvas = ({
         clearCanvas();
         redrawCanvas();
         break;
-
       case ACTION_TYPES.NOTE_CREATE:
         setNotes(prev => [...prev, action.data.note]);
-        if (onNoteCreate) {
-          onNoteCreate(action.data.note);
-        }
+        if (onNoteCreate) onNoteCreate(action.data.note);
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
         break;
-
       case ACTION_TYPES.NOTE_DELETE:
         setNotes(prev => prev.filter(note => note.id !== action.data.note.id));
-        if (onNoteDelete && action.data.note.id) {
-          onNoteDelete(action.data.note.id);
-        }
+        if (onNoteDelete && action.data.note.id) onNoteDelete(action.data.note.id);
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
         break;
-
       case ACTION_TYPES.TEXT_CREATE:
         setTextBoxes(prev => [...prev, action.data.textBox]);
-        if (socket && action.data.textBox) {
-          socket.emit('text-create', { whiteboardId, textBox: action.data.textBox });
-        }
+        if (socket && action.data.textBox) socket.emit('text-create', { whiteboardId, textBox: action.data.textBox });
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
         break;
-
       case ACTION_TYPES.TEXT_DELETE:
         setTextBoxes(prev => prev.filter(textBox => textBox.id !== action.data.textBox.id));
-        if (socket && action.data.textBox.id) {
-          socket.emit('text-delete', { whiteboardId, id: action.data.textBox.id });
-        }
+        if (socket && action.data.textBox.id) socket.emit('text-delete', { whiteboardId, id: action.data.textBox.id });
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
         break;
-
       case ACTION_TYPES.EMOJI_CREATE:
         setEmojis(prev => [...prev, action.data.emoji]);
         if (onEmojiCreate) onEmojiCreate(action.data.emoji);
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
         break;
-
       case ACTION_TYPES.EMOJI_DELETE:
         setEmojis(prev => prev.filter(e => e.id !== action.data.emoji.id));
         if (onEmojiDelete) onEmojiDelete(action.data.emoji.id);
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
         break;
-
       case ACTION_TYPES.GIF_CREATE:
         setGifs(prev => [...prev, action.data.gif]);
         if (onGifCreate) onGifCreate(action.data.gif);
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
         break;
-
       case ACTION_TYPES.GIF_DELETE:
         setGifs(prev => prev.filter(g => g.id !== action.data.gif.id));
         if (onGifDelete) onGifDelete(action.data.gif.id);
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
         break;
-
       case ACTION_TYPES.SHAPE_CREATE:
         setShapes(prev => [...prev, action.data.shape]);
         if (onShapeCreate) onShapeCreate(action.data.shape);
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
         break;
-
       case ACTION_TYPES.SHAPE_DELETE:
         setShapes(prev => prev.filter(s => s.id !== action.data.shape.id));
         if (onShapeDelete) onShapeDelete(action.data.shape.id);
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
         break;
-
       default:
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
-      //Dodał to gemini?
-      // if(action.type === ACTION_TYPES.DRAWING) { clearCanvas(); redrawCanvas(); }
     }
   };
 
   const redrawCanvas = () => {
     const context = contextRef.current;
     if (!context) return;
-
-    // Narysuj wszystkie kroki do aktualnego punktu w historii
     for (let i = 0; i <= historyRef.current.step; i++) {
       const action = historyRef.current.history[i];
       if (action.type === ACTION_TYPES.DRAWING && action.data && action.data.points && action.data.points.length > 1) {
@@ -342,16 +268,9 @@ const Canvas = ({
   const removeShape = (id) => {
     const shapeToDelete = shapes.find(s => s.id === id);
     if (shapeToDelete) {
-      // 1. Zapisz do historii
       saveToHistory(ACTION_TYPES.SHAPE_DELETE, { shapeId: id, shape: shapeToDelete });
-
-      // 2. Usuń lokalnie
       setShapes(prev => prev.filter(s => s.id !== id));
-
-      // 3. Resetuj zaznaczenie
       if (selectedShapeId === id) setSelectedShapeId(null);
-
-      // 4. Wyślij przez socket
       if (onShapeDelete) onShapeDelete(id);
     }
   };
@@ -366,29 +285,19 @@ const Canvas = ({
     }
   };
 
-
   const removeEmoji = (id) => {
     const emojiToDelete = emojis.find(e => e.id === id);
     if (emojiToDelete) {
       saveToHistory(ACTION_TYPES.EMOJI_DELETE, { emojiId: id, emoji: emojiToDelete });
-
       setEmojis(prev => prev.filter(e => e.id !== id));
       if (selectedEmojiId === id) setSelectedEmojiId(null);
-
       if (onEmojiDelete) onEmojiDelete(id);
     }
   };
 
-  useEffect(() => {
-    setGifs(initialGifs || []);
-  }, [initialGifs]);
+  useEffect(() => { setGifs(initialGifs || []); }, [initialGifs]);
+  useEffect(() => { setEmojis(initialEmojis || []); }, [initialEmojis]);
 
-  useEffect(() => {
-    setEmojis(initialEmojis || []);
-  }, [initialEmojis]);
-
-
-  // 🔹 DODANE: Przekaż funkcje undo/redo do Toolbar
   useEffect(() => {
     const toolbar = document.querySelector('.toolbar');
     if (toolbar) {
@@ -399,7 +308,6 @@ const Canvas = ({
     }
   }, []);
 
-  // 🔹 DODANE: Aktualizuj przyciski undo/redo gdy zmienia się historia
   useEffect(() => {
     const toolbar = document.querySelector('.toolbar');
     if (toolbar) {
@@ -407,33 +315,17 @@ const Canvas = ({
     }
   }, [historyStep, history]);
 
-  // 🔹 DODANE: Skróty klawiaturowe
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Ctrl+Z - Undo
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        undo();
-      }
-
-      // Ctrl+Y lub Ctrl+Shift+Z - Redo
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
-        e.preventDefault();
-        redo();
-      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  useEffect(() => {
-    setTextBoxes(initialTextBoxes || []);
-  }, [initialTextBoxes]);
-
-  useEffect(() => {
-    setNotes(initialNotes || []);
-  }, [initialNotes]);
+  useEffect(() => { setTextBoxes(initialTextBoxes || []); }, [initialTextBoxes]);
+  useEffect(() => { setNotes(initialNotes || []); }, [initialNotes]);
 
   const backgroundModes = [
     { id: 'white', name: 'Białe tło', icon: '🌕' },
@@ -445,29 +337,19 @@ const Canvas = ({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const container = canvas.parentElement;
     canvas.width = container.clientWidth;
     canvas.height = container.clientHeight;
-
     const context = canvas.getContext('2d');
     context.lineCap = 'round';
     context.strokeStyle = color;
     context.lineWidth = size;
     contextRef.current = context;
-
-    // Clear canvas
     clearCanvas();
 
     if (socket) {
       console.log("📡 Setting up canvas listeners");
-
-      // Handle drawing from other users
-      const handleRemoteDrawing = (data) => {
-        drawRemote(data);
-      };
-
-      // Handle cursor movement from OTHER users only
+      const handleRemoteDrawing = (data) => { drawRemote(data); };
       const handleRemoteCursorMove = (data) => {
         if (data.userId !== socket.id) {
           setRemoteCursors(prev => {
@@ -482,22 +364,12 @@ const Canvas = ({
           });
         }
       };
-
-      // Handle initial whiteboard state - REDRAW EVERYTHING
       const handleWhiteboardState = (data) => {
         console.log("🎨 Redrawing", data.drawingData.length, "existing drawings");
-
-        // Clear canvas first
         clearCanvas();
-
-        // Redraw ALL existing drawings with a small delay to ensure canvas is ready
         setTimeout(() => {
-          data.drawingData.forEach(drawing => {
-            drawRemote(drawing);
-          });
+          data.drawingData.forEach(drawing => { drawRemote(drawing); });
         }, 100);
-
-        // Initialize cursors for OTHER users only
         const otherUsers = data.users.filter(user => user.id !== socket.id);
         const cursorsMap = new Map();
         otherUsers.forEach(user => {
@@ -510,8 +382,6 @@ const Canvas = ({
         });
         setRemoteCursors(cursorsMap);
       };
-
-      // Handle users updated - remove cursors for users who left
       const handleUsersUpdated = (data) => {
         setRemoteCursors(prev => {
           const newMap = new Map();
@@ -524,7 +394,6 @@ const Canvas = ({
         });
       };
 
-      // Set up listeners
       socket.on('drawing', handleRemoteDrawing);
       socket.on('cursor-move', handleRemoteCursorMove);
       socket.on('whiteboard-data', handleWhiteboardState);
@@ -545,10 +414,7 @@ const Canvas = ({
     const context = contextRef.current;
     const canvas = canvasRef.current;
     if (!context || !canvas) return;
-
     context.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Użyj aktualnego backgroundMode
     if (backgroundMode === 'white') {
       context.fillStyle = 'white';
       context.fillRect(0, 0, canvas.width, canvas.height);
@@ -556,65 +422,41 @@ const Canvas = ({
       context.fillStyle = 'black';
       context.fillRect(0, 0, canvas.width, canvas.height);
     }
-    // Dla 'grid' i 'lines' - CSS zajmie się tłem
   };
 
   const drawRemote = (data) => {
     const context = contextRef.current;
     if (!context || !data.points || data.points.length < 2) return;
-
-    // UŻYJ drawCompletePath dla spójności
     drawCompletePath(context, data.tool, data.color, data.size, data.points);
   };
 
   const getCanvasCoordinates = (clientX, clientY) => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
-    return {
-      x: clientX - rect.left,
-      y: clientY - rect.top
-    };
+    return { x: clientX - rect.left, y: clientY - rect.top };
   };
-  //GIF
+
   const handleGifUpdate = (id, updates) => {
-    console.log("🔄 Updating GIF:", id, updates);
-
-    // Aktualizuj lokalnie dla płynności
-    setGifs(prev => prev.map(gif =>
-      gif.id === id ? { ...gif, ...updates } : gif
-    ));
-
-    // Wyślij na serwer
-    if (onGifUpdate) {
-      onGifUpdate(id, updates);
-    }
-    // Uwaga: Na razie nie dodajemy przesuwania/skalowania do historii Undo/Redo,
-    // bo generuje to setki zdarzeń na sekundę.
+    setGifs(prev => prev.map(gif => gif.id === id ? { ...gif, ...updates } : gif));
+    if (onGifUpdate) onGifUpdate(id, updates);
   };
 
-
-
-
-
-  // Funkcja do bezpiecznego zmiany rozmiaru canvas bez utraty zawartości
   const updateCanvasSize = () => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
     const ctx = contextRef.current;
     if (!canvas || !container || !ctx) return;
-
     const rect = container.getBoundingClientRect();
     if (canvas.width === rect.width && canvas.height === rect.height) return;
-
-    // Zapisujemy aktualną zawartość
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
+    
+    let imageData = null;
+    if (canvas.width > 0 && canvas.height > 0) {
+      try { imageData = ctx.getImageData(0, 0, canvas.width, canvas.height); } 
+      catch (e) { console.warn("Nie udało się pobrać danych canvas:", e); }
+    }
     canvas.width = rect.width;
     canvas.height = rect.height;
-
-    // Przywracamy zawartość
-    ctx.putImageData(imageData, 0, 0);
-
+    if (imageData) ctx.putImageData(imageData, 0, 0);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.strokeStyle = color;
@@ -623,179 +465,95 @@ const Canvas = ({
   };
 
   const getToolSize = () => {
-    const base = (typeof size === "object" && size?.[tool])
-      ? size[tool]
-      : (typeof size === "number" ? size : 3);
-
+    const base = (typeof size === "object" && size?.[tool]) ? size[tool] : (typeof size === "number" ? size : 3);
     return getDisplaySize(tool, base);
   };
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext('2d');
     contextRef.current = ctx;
-
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.strokeStyle = color;
     ctx.lineWidth = getToolSize();
-
     updateCanvasSize();
     window.addEventListener('resize', updateCanvasSize);
     return () => window.removeEventListener('resize', updateCanvasSize);
   }, []);
 
-  // Aktualizacja koloru i grubości
   useEffect(() => {
     const ctx = contextRef.current;
     if (!ctx) return;
-
     ctx.strokeStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : color;
     ctx.lineWidth = getToolSize();
     ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
   }, [color, size, tool]);
 
   const startDrawing = ({ nativeEvent }) => {
-    // ❗ Nie rysujemy, gdy tool NIE jest rysujący
     if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
-
-    if (setShowColorPicker) {
-      setShowColorPicker(false);
-    }
-
+    if (setShowColorPicker) setShowColorPicker(false);
     const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
-
     contextRef.current.beginPath();
     contextRef.current.moveTo(x, y);
-
-    // ✅ ZMIANA 1: Rysujemy kropkę natychmiast po kliknięciu.
-    // Dzięki temu, że lineCap jest 'round', linia o długości 0 robi idealne kółko.
     contextRef.current.lineTo(x, y);
     contextRef.current.stroke();
-
     setIsDrawing(true);
-
-    currentDrawingRef.current = {
-      tool,
-      color,
-      size,
-      // ✅ ZMIANA 2: Zapisujemy punkt startowy podwójnie.
-      // Jest to kluczowe, aby 'drawRemote' (który wymaga min. 2 punktów)
-      // w ogóle przetworzył to kliknięcie i wysłał je do innych.
-      points: [{ x, y }, { x, y }]
-    };
+    currentDrawingRef.current = { tool, color, size, points: [{ x, y }, { x, y }] };
   };
 
   const stopDrawing = () => {
     if (!isDrawing) return;
-
-    // ❗ zablokuj NIE-rysujące tool'e
-    if (!['pencil', 'brush', 'eraser'].includes(tool)) {
-      setIsDrawing(false);
-      return;
-    }
-
+    if (!['pencil', 'brush', 'eraser'].includes(tool)) { setIsDrawing(false); return; }
     contextRef.current.closePath();
     setIsDrawing(false);
-
     if (currentDrawingRef.current && onDrawing) {
       onDrawing(currentDrawingRef.current);
-
-      // 🔹 DODANE: Zapisz do historii
       saveToHistory(ACTION_TYPES.DRAWING, currentDrawingRef.current);
     }
-
     currentDrawingRef.current = null;
   };
 
   const draw = ({ nativeEvent }) => {
     if (!isDrawing || !contextRef.current) return;
     if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
-
     const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
-
     if (currentDrawingRef.current) {
       const points = currentDrawingRef.current.points;
       const previousPoint = points[points.length - 1];
       points.push({ x, y });
-
-      // Rysuj tylko NOWY segment używając drawPathSegment
       drawPathSegment(contextRef.current, tool, color, size, previousPoint, { x, y });
     }
   };
 
   const handleShapeUpdate = (id, newProps) => {
-    // Aktualizuj lokalny stan natychmiast dla płynności
-    setShapes(prev => prev.map(shape =>
-      shape.id === id ? { ...shape, ...newProps } : shape
-    ));
-
-    // Wyślij do serwera (WhiteboardRouter)
-    if (onShapeUpdate) {
-      onShapeUpdate(id, newProps);
-    }
+    setShapes(prev => prev.map(shape => shape.id === id ? { ...shape, ...newProps } : shape));
+    if (onShapeUpdate) onShapeUpdate(id, newProps);
   };
 
   const handleCanvasClick = (e) => {
-    if (e.target.closest('.shape-item') || e.target.closest('.emoji-item')) {
-      return;
-    }
-    setSelectedNoteId(null);
-    setSelectedTextBoxId(null);
-    setSelectedEmojiId(null);
-    setSelectedGifId(null);
-    setSelectedShapeId(null);
-
+    if (e.target.closest('.shape-item') || e.target.closest('.emoji-item')) return;
+    setSelectedNoteId(null); setSelectedTextBoxId(null); setSelectedEmojiId(null); setSelectedGifId(null); setSelectedShapeId(null);
 
     if (tool === 'notes') {
       const rect = canvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-
-      const newNote = {
-        id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        x,
-        y,
-        text: '',
-        width: 180,
-        height: 120
-      };
-
-      setNotes(prev => {
-        const exists = prev.some(note => note.id === newNote.id);
-        return exists ? prev : [...prev, newNote];
-      });
-
-      // 🔹 DODANE: Zapisz do historii przed utworzeniem
+      const newNote = { id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x, y, text: '', width: 180, height: 120 };
+      setNotes(prev => prev.some(note => note.id === newNote.id) ? prev : [...prev, newNote]);
       saveToHistory(ACTION_TYPES.NOTE_CREATE, { note: newNote });
-
-
-      if (onNoteCreate) {
-        onNoteCreate(newNote);
-      }
+      if (onNoteCreate) onNoteCreate(newNote);
       if (setTool) setTool('cursor');
     } else if (tool === 'text') {
       const rect = canvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      const newTextBox = {
-        id: Date.now(),
-        x,
-        y,
-        text: '',
-        width: 200,
-        height: 100
-      };
-
-      // 🔹 DODANE: Zapisz do historii przed utworzeniem
+      // FIX: Lepsze generowanie ID dla tekstu aby uniknąć duplikatów
+      const newTextBox = { id: `text_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x, y, text: '', width: 200, height: 100 };
       saveToHistory(ACTION_TYPES.TEXT_CREATE, { textBox: newTextBox });
-
       setTextBoxes(prev => [...prev, newTextBox]);
-      if (socket) {
-        socket.emit('text-create', { whiteboardId, textBox: newTextBox });
-      }
+      if (socket) socket.emit('text-create', { whiteboardId, textBox: newTextBox });
       if (setTool) setTool('cursor');
     }
 
@@ -803,30 +561,10 @@ const Canvas = ({
       const rect = canvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-
-      const newEmoji = {
-        id: `emoji_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        x,
-        y,
-        emoji: activeEmoji,
-        size: 48 // Możesz to sparametryzować
-      };
-
-      // Dodaj lokalnie
+      const newEmoji = { id: `emoji_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x, y, emoji: activeEmoji, size: 48 };
       setEmojis(prev => [...prev, newEmoji]);
-
-      // Zapisz historię
       saveToHistory(ACTION_TYPES.EMOJI_CREATE, { emoji: newEmoji });
-
-      // Zapisz historię
-      if (typeof saveToHistory === 'function') {
-        saveToHistory(ACTION_TYPES.EMOJI_CREATE, { emoji: newEmoji });
-      }
-
-      // Wyślij socketem
       if (onEmojiCreate) onEmojiCreate(newEmoji);
-
-      // ✅ DODANO: Zmiana narzędzia na kursor po postawieniu
       if (setTool) setTool('cursor');
     }
 
@@ -834,319 +572,108 @@ const Canvas = ({
       const rect = canvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-
-      const newGif = {
-        id: `gif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        x: x - 75, // Centrowanie (połowa szerokości 150px)
-        y: y - 75,
-        url: activeGif,
-        width: 150
-      };
-
-      // Dodaj lokalnie
+      const newGif = { id: `gif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: x - 75, y: y - 75, url: activeGif, width: 150 };
       setGifs(prev => [...prev, newGif]);
-
-      // Zapisz historię
       saveToHistory(ACTION_TYPES.GIF_CREATE, { gif: newGif });
-
-      // Wyślij socketem
       if (onGifCreate) onGifCreate(newGif);
-
-      // Zmień na kursor
       if (setTool) setTool('cursor');
     }
     if (tool === 'shape' && activeShape) {
       const rect = canvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-
-      // 🆕 Domyślne wymiary zależne od typu
-      let defaultWidth = 100;
-      let defaultHeight = 100;
-      let startX = x - 50; // Centrowanie dla pudełek
-      let startY = y - 50;
-
-      if (activeShape === 'arrow') {
-        // Dla strzałki kliknięcie to początek (ogonek)
-        startX = x;
-        startY = y;
-        // Domyślnie strzałka w prawo o długości 150px
-        defaultWidth = 150;
-        defaultHeight = 0;
-      }
-
-      const newShape = {
-        id: `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        x: startX,
-        y: startY,
-        width: defaultWidth,
-        height: defaultHeight,
-        type: activeShape
-      };
-
-      // ... (reszta bez zmian: setShapes, saveToHistory, onShapeCreate, setTool)
+      let defaultWidth = 100, defaultHeight = 100, startX = x - 50, startY = y - 50;
+      if (activeShape === 'arrow') { startX = x; startY = y; defaultWidth = 150; defaultHeight = 0; }
+      const newShape = { id: `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: startX, y: startY, width: defaultWidth, height: defaultHeight, type: activeShape };
       setShapes(prev => [...prev, newShape]);
       saveToHistory(ACTION_TYPES.SHAPE_CREATE, { shape: newShape });
       if (onShapeCreate) onShapeCreate(newShape);
       if (setTool) setTool('cursor');
     }
-
   };
 
-  // 🔹 DODANE: Uproszczona funkcja removeNote z historią
   const removeNote = (id) => {
     const noteToDelete = notes.find(note => note.id === id);
     if (noteToDelete) {
-      // 🔹 DODANE: Zapisz do historii przed usunięciem
       saveToHistory(ACTION_TYPES.NOTE_DELETE, { noteId: id, note: noteToDelete });
-
       setNotes(prev => prev.filter(n => n.id !== id));
       if (selectedNoteId === id) setSelectedNoteId(null);
-
-      if (onNoteDelete) {
-        onNoteDelete(id);
-      }
+      if (onNoteDelete) onNoteDelete(id);
     }
   };
 
   const handleEmojiUpdate = (id, updates) => {
-    // Aktualizuj lokalnie
-    setEmojis(prev => prev.map(e =>
-      e.id === id ? { ...e, ...updates } : e
-    ));
-
-    // Wyślij przez socket
-    if (onEmojiUpdate) {
-      onEmojiUpdate(id, updates);
-    }
-    // Uwaga: Na razie nie dodajemy tego do historii undo/redo, 
-    // bo generowałoby to setki wpisów podczas jednego przeciągnięcia.
+    setEmojis(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
+    if (onEmojiUpdate) onEmojiUpdate(id, updates);
   };
 
-  // 🔹 DODANE: Uproszczona funkcja handleNoteUpdate (bez historii)
-  // Canvas.jsx - ZASTĄP funkcję handleNoteUpdate TYM:
   const handleNoteUpdate = (id, updates) => {
-    console.log("🔄 Local handleNoteUpdate called:", id, updates);
-
-    // NIE aktualizuj lokalnego stanu tutaj!
-    // Tylko wyślij do serwera
     if (onNoteUpdate) {
-      // Przygotuj dane do wysłania
       const dataToSend = { ...updates };
-
-      // Jeśli updates zawiera position, upewnij się że x i y też są
-      if (updates.position) {
-        dataToSend.x = updates.position.x;
-        dataToSend.y = updates.position.y;
-      }
-
-      console.log("📤 Sending note update to server:", id, dataToSend);
+      if (updates.position) { dataToSend.x = updates.position.x; dataToSend.y = updates.position.y; }
       onNoteUpdate(id, dataToSend);
     }
-
-    // WAŻNE: NIE wywołuj setNotes tutaj!
-    // Socket.io listener zaktualizuje stan po otrzymaniu odpowiedzi
   };
 
-  const handleNoteDelete = (id) => {
-    removeNote(id);
-  };
+  const handleNoteDelete = (id) => { removeNote(id); };
 
-  // 🔹 DODANE: Uproszczona funkcja removeTextBox z historią
   const removeTextBox = (id) => {
     const textBoxToDelete = textBoxes.find(textBox => textBox.id === id);
     if (textBoxToDelete) {
-      // 🔹 DODANE: Zapisz do historii przed usunięciem
       saveToHistory(ACTION_TYPES.TEXT_DELETE, { textBoxId: id, textBox: textBoxToDelete });
-
       setTextBoxes(prev => prev.filter(tb => tb.id !== id));
       if (selectedTextBoxId === id) setSelectedTextBoxId(null);
-
-      if (socket) {
-        socket.emit('text-delete', { whiteboardId, id });
-      }
+      if (socket) socket.emit('text-delete', { whiteboardId, id });
     }
   };
 
-  // 🔹 DODANE: Uproszczona funkcja handleTextUpdate (bez historii)
-  // Canvas.jsx - ZASTĄP obecną funkcję handleTextUpdate tym:
   const handleTextUpdate = (id, newProps) => {
-    console.log("🔄 Updating textbox:", id, newProps);
-
-    setTextBoxes(prev => {
-      const exists = prev.some(tb => tb.id === id);
-      console.log("📦 Textbox exists before update:", exists);
-
-      const updated = prev.map(textBox =>
-        textBox.id === id ? { ...textBox, ...newProps } : textBox
-      );
-
-      console.log("📦 Textboxes after update:", updated.length);
-      return updated;
-    });
-
-    if (socket) {
-      socket.emit('text-update', { whiteboardId, id, ...newProps });
-    }
+    setTextBoxes(prev => prev.map(textBox => textBox.id === id ? { ...textBox, ...newProps } : textBox));
+    if (socket) socket.emit('text-update', { whiteboardId, id, ...newProps });
   };
 
-  // 🔹 DODANE: Obsługa Backspace/Delete dla zaznaczonej notatki z historią
   useEffect(() => {
     const handleKeyDown = (e) => {
       const activeElement = document.activeElement;
-      if (
-        activeElement &&
-        (activeElement.tagName.toLowerCase() === 'input' ||
-          activeElement.tagName.toLowerCase() === 'textarea')
-      ) {
-        return;
-      }
+      if (activeElement && (activeElement.tagName.toLowerCase() === 'input' || activeElement.tagName.toLowerCase() === 'textarea')) return;
       if (e.key === 'Backspace' || e.key === 'Delete') {
-        console.log("Kasowanie - aktualnie zaznaczone:", {
-          Note: selectedNoteId,
-          Text: selectedTextBoxId,
-          Emoji: selectedEmojiId,
-          Gif: selectedGifId,
-          Shape: selectedShapeId // <-- Logujemy też kształt
-        });
-
-        if (selectedEmojiId) {
-          console.log("Próbuję usunąć emoji o ID:", selectedEmojiId);
-          removeEmoji(selectedEmojiId);
-        }
-      }
-      if (selectedNoteId && (e.key === 'Backspace' || e.key === 'Delete')) {
-        removeNote(selectedNoteId);
-      }
-      if (selectedTextBoxId && (e.key === 'Backspace' || e.key === 'Delete')) {
-        removeTextBox(selectedTextBoxId);
-      }
-      if (selectedEmojiId && (e.key === 'Backspace' || e.key === 'Delete')) {
-        removeEmoji(selectedEmojiId);
-      }
-      if (selectedGifId && (e.key === 'Backspace' || e.key === 'Delete')) {
-        removeGif(selectedGifId);
-      }
-      if (selectedShapeId) {
-        removeShape(selectedShapeId);
+        if (selectedNoteId) removeNote(selectedNoteId);
+        if (selectedTextBoxId) removeTextBox(selectedTextBoxId);
+        if (selectedEmojiId) removeEmoji(selectedEmojiId);
+        if (selectedGifId) removeGif(selectedGifId);
+        if (selectedShapeId) removeShape(selectedShapeId);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedNoteId, selectedTextBoxId, selectedEmojiId, selectedGifId, selectedShapeId]);
 
-  // DODANE: obsługa socket dla notatek
   useEffect(() => {
     if (socket) {
-      const handleNoteCreate = (data) => {
-        setNotes(prev => [...prev, data.note]);
-      };
-
+      const handleNoteCreate = (data) => setNotes(prev => [...prev, data.note]);
       const handleNoteUpdate = (data) => {
-        console.log("📝 Socket: note-update received:", {
-          id: data.id,
-          hasPosition: !!data.position,
-          hasX: data.x !== undefined,
-          hasY: data.y !== undefined
-        });
-
         setNotes(prev => {
           const noteIndex = prev.findIndex(note => note.id === data.id);
-
-          if (noteIndex === -1) {
-            console.log("❌ Socket: note not found locally, cannot update");
-            return prev;
-          }
-
-          // Pobierz istniejącą notatkę
-          const existingNote = prev[noteIndex];
-
-          // Przygotuj update - NIE nadpisuj całej notatki, tylko zaktualizuj pola
+          if (noteIndex === -1) return prev;
           const updates = { ...data };
-
-          // Jeśli jest position, rozbij na x, y
-          if (data.position) {
-            updates.x = data.position.x;
-            updates.y = data.position.y;
-          }
-
-          // Usuń position z updates (użyjemy tylko x, y)
-          delete updates.position;
-
-          // Stwórz zaktualizowaną notatkę - zachowaj wszystkie istniejące pola
-          const updatedNote = {
-            ...existingNote,
-            ...updates
-          };
-
-          console.log("📝 Socket: updating note:", {
-            oldId: existingNote.id,
-            newId: updatedNote.id,
-            oldX: existingNote.x,
-            newX: updatedNote.x
-          });
-
-          // Zamień tylko tę jedną notatkę
+          if (data.position) { updates.x = data.position.x; updates.y = data.position.y; delete updates.position; }
+          const updatedNote = { ...prev[noteIndex], ...updates };
           const newNotes = [...prev];
           newNotes[noteIndex] = updatedNote;
-
           return newNotes;
         });
-
-
       };
-
-      const handleNoteDelete = (data) => {
-        setNotes(prev => prev.filter(note => note.id !== data.id));
-      };
-
-      const handleEmojiUpdate = (data) => {
-        setEmojis(prev => prev.map(e =>
-          e.id === data.id ? { ...e, ...data } : e
-        ));
-      };
-
-      const handleGifUpdate = (data) => {
-        setGifs(prev => prev.map(g =>
-          g.id === data.id ? { ...g, ...data } : g
-        ));
-      };
-
-      const handleShapeUpdate = (data) => {
-        setShapes(prev => prev.map(s =>
-          s.id === data.id ? { ...s, ...data } : s
-        ));
-      };
-
-      const handleEmojiCreateSocket = (data) => {
-        setEmojis(prev => {
-          const exists = prev.some(e => e.id === data.emoji.id);
-          return exists ? prev : [...prev, data.emoji];
-        });
-      };
-      const handleEmojiDeleteSocket = (data) => {
-        setEmojis(prev => prev.filter(e => e.id !== data.id));
-      };
-
-      const handleGifCreateSocket = (data) => {
-        setGifs(prev => {
-          const exists = prev.some(g => g.id === data.gif.id);
-          return exists ? prev : [...prev, data.gif];
-        });
-      };
-      const handleGifDeleteSocket = (data) => {
-        setGifs(prev => prev.filter(g => g.id !== data.id));
-      };
-
-      const handleShapeCreateSocket = (data) => {
-        setShapes(prev => {
-          const exists = prev.some(s => s.id === data.shape.id);
-          return exists ? prev : [...prev, data.shape];
-        });
-      };
-      const handleShapeDeleteSocket = (data) => {
-        setShapes(prev => prev.filter(s => s.id !== data.id));
-      };
+      const handleNoteDelete = (data) => setNotes(prev => prev.filter(note => note.id !== data.id));
+      const handleEmojiUpdate = (data) => setEmojis(prev => prev.map(e => e.id === data.id ? { ...e, ...data } : e));
+      const handleGifUpdate = (data) => setGifs(prev => prev.map(g => g.id === data.id ? { ...g, ...data } : g));
+      const handleShapeUpdate = (data) => setShapes(prev => prev.map(s => s.id === data.id ? { ...s, ...data } : s));
+      
+      const handleEmojiCreateSocket = (data) => setEmojis(prev => prev.some(e => e.id === data.emoji.id) ? prev : [...prev, data.emoji]);
+      const handleEmojiDeleteSocket = (data) => setEmojis(prev => prev.filter(e => e.id !== data.id));
+      const handleGifCreateSocket = (data) => setGifs(prev => prev.some(g => g.id === data.gif.id) ? prev : [...prev, data.gif]);
+      const handleGifDeleteSocket = (data) => setGifs(prev => prev.filter(g => g.id !== data.id));
+      const handleShapeCreateSocket = (data) => setShapes(prev => prev.some(s => s.id === data.shape.id) ? prev : [...prev, data.shape]);
+      const handleShapeDeleteSocket = (data) => setShapes(prev => prev.filter(s => s.id !== data.id));
 
       socket.on('note-create', handleNoteCreate);
       socket.on('note-update', handleNoteUpdate);
@@ -1180,84 +707,48 @@ const Canvas = ({
 
   const handleMouseMove = (e) => {
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
-
-    // Send cursor position continuously
-    if (onCursorMove) {
-      onCursorMove({ x, y });
-    }
-
-    if (isDrawing) {
-      draw(e);
-    }
+    if (onCursorMove) onCursorMove({ x, y });
+    if (isDrawing) draw(e);
   };
 
   const toggleBackground = () => {
     const currentIndex = backgroundModes.findIndex(mode => mode.id === backgroundMode);
     const nextIndex = (currentIndex + 1) % backgroundModes.length;
-    const newBackgroundMode = backgroundModes[nextIndex].id;
-
-    setBackgroundMode(newBackgroundMode);
-
-    // Natychmiastowe wyczyszczenie i ustawienie nowego tła
+    setBackgroundMode(backgroundModes[nextIndex].id);
     clearCanvas();
   };
 
-  // Zmień useEffect, aby reagował na zmianę backgroundMode
-  useEffect(() => {
-    clearCanvas();
-  }, [backgroundMode]);
-
-  const getCurrentBackgroundIcon = () =>
-    backgroundModes.find(mode => mode.id === backgroundMode)?.icon;
+  useEffect(() => { clearCanvas(); }, [backgroundMode]);
+  const getCurrentBackgroundIcon = () => backgroundModes.find(mode => mode.id === backgroundMode)?.icon;
 
   const handleMouseLeave = () => {
-    if (tool === 'pointer') {
-      const canvas = canvasRef.current;
-      if (canvas) canvas.style.cursor = 'default';
-    }
+    if (tool === 'pointer' && canvasRef.current) canvasRef.current.style.cursor = 'default';
+    stopDrawing();
   };
 
   const handleMouseEnter = () => {
-    if (tool === 'pointer') {
-      const canvas = canvasRef.current;
-      if (canvas) canvas.style.cursor = 'pointer';
-    }
+    if (tool === 'pointer' && canvasRef.current) canvasRef.current.style.cursor = 'pointer';
   };
 
-  // Clean up old cursors periodically
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
       setRemoteCursors(prev => {
         const newMap = new Map();
         for (const [userId, cursor] of prev) {
-          // Remove cursors that haven't been updated in 5 seconds
-          if (now - cursor.lastUpdate < 5000) {
-            newMap.set(userId, cursor);
-          }
+          if (now - cursor.lastUpdate < 5000) newMap.set(userId, cursor);
         }
         return newMap;
       });
     }, 2000);
-
     return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
     if (socket) {
-      const handleTextCreate = (data) => {
-        setTextBoxes(prev => [...prev, data.textBox]);
-      };
-      const handleTextUpdate = (data) => {
-        setTextBoxes(prev =>
-          prev.map(textBox =>
-            textBox.id === data.id ? { ...textBox, ...data } : textBox
-          )
-        );
-      };
-      const handleTextDelete = (data) => {
-        setTextBoxes(prev => prev.filter(tb => tb.id !== data.id));
-      };
+      const handleTextCreate = (data) => setTextBoxes(prev => [...prev, data.textBox]);
+      const handleTextUpdate = (data) => setTextBoxes(prev => prev.map(textBox => textBox.id === data.id ? { ...textBox, ...data } : textBox));
+      const handleTextDelete = (data) => setTextBoxes(prev => prev.filter(tb => tb.id !== data.id));
       socket.on('text-create', handleTextCreate);
       socket.on('text-update', handleTextUpdate);
       socket.on('text-delete', handleTextDelete);
@@ -1269,39 +760,24 @@ const Canvas = ({
     }
   }, [socket]);
 
-  // 🔹 DODANE: Wyczyść historię przy zmianie whiteboard
   useEffect(() => {
     historyRef.current = { history: [], step: -1 };
     setHistory([]);
     setHistoryStep(-1);
   }, [whiteboardId]);
 
-  // Convert Map to array for rendering
   const remoteCursorsArray = Array.from(remoteCursors.values());
-
-  console.log("🎨 Canvas rendering:", {
-    notesCount: notes.length,
-    textBoxesCount: textBoxes.length,
-    selectedNoteId: selectedNoteId,
-    selectedTextBoxId: selectedTextBoxId,
-    emojis: emojis.length,         // <-- Dodane
-    selEmoji: selectedEmojiId      // <-- Dodane (najważniejsze)
-  });
-
-
 
   return (
     <div className="canvas-container" ref={containerRef}>
-      <div className={`canvas-area background-${backgroundMode}`}
-        onClick={handleCanvasClick}
-      >
+      <div className={`canvas-area background-${backgroundMode}`} onClick={handleCanvasClick}>
         <canvas
           ref={canvasRef}
           onMouseDown={startDrawing}
           onMouseUp={stopDrawing}
           onMouseMove={handleMouseMove}
-          onMouseLeave={stopDrawing}
-          style={{}}
+          onMouseLeave={handleMouseLeave}
+          onMouseEnter={handleMouseEnter}
         />
         {notes.map(note => (
           <Note
@@ -1335,7 +811,6 @@ const Canvas = ({
             socket={socket}
           />
         ))}
-        {/* 🆕 RENDEROWANIE EMOJI */}
         {emojis.map(emojiData => (
           <Emoji
             key={emojiData.id}
@@ -1343,7 +818,7 @@ const Canvas = ({
             selected={selectedEmojiId === emojiData.id}
             onSelect={setSelectedEmojiId}
             onRemove={removeEmoji}
-            onUpdate={handleEmojiUpdate} // 🆕 Dodajemy ten prop
+            onUpdate={handleEmojiUpdate}
           />
         ))}
         {gifs.map(gif => (
@@ -1352,10 +827,8 @@ const Canvas = ({
             {...gif}
             selected={selectedGifId === gif.id}
             onSelect={setSelectedGifId}
-            onUpdate={handleGifUpdate} // ✅ PRZEKAŻ FUNKCJĘ UPDATE          
+            onUpdate={handleGifUpdate}
           />
-
-
         ))}
         {shapes.map(shape => (
           <Shape
@@ -1364,14 +837,15 @@ const Canvas = ({
             selected={selectedShapeId === shape.id}
             onSelect={setSelectedShapeId}
             onRemove={removeShape}
-            onUpdate={handleShapeUpdate} // <--- WAŻNE
+            onUpdate={handleShapeUpdate}
           />
         ))}
-
-        {remoteCursorsArray.map((cursor) => (
+        
+        {/* FIX: Dodano klucz fall-back dla kursorów */}
+        {remoteCursorsArray.map((cursor, index) => (
           cursor.position && (
             <div
-              key={cursor.userId}
+              key={cursor.userId || `cursor_${index}`}
               className="remote-cursor"
               style={{
                 position: 'absolute',
