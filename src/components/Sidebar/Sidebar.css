@@ -1,13 +1,105 @@
 .sidebar {
+  /* Overlay positioning */
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  z-index: 20;
+  
   width: 300px;
   background: #ecf0f1;
   display: flex;
   flex-direction: column;
   border-left: 1px solid #ccc;
   overflow-y: auto;
+  overflow-x: hidden;
+  box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+  
+  /* Animacje */
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateX(0); /* Domyślnie widoczny */
+  
+  will-change: transform;
+  
+  /* Overflow visible pozwala cieniom wychodzić poza obrys */
+  overflow: visible;
 }
 
-/* Sekcja lokalnej kamery */
+/* Stan zwinięty - wyjeżdża w prawo */
+.sidebar.collapsed {
+  transform: translateX(100%);
+}
+
+/* Fix dla zawartości */
+.sidebar > div {
+  min-width: 300px;
+}
+
+/* 🔹 PRZYCISK ZWIJANIA - IDEALNA SYMETRIA Z TOOLBAREM */
+.sidebar-toggle {
+  /* Używamy fixed, tak jak w Toolbarze, aby odnosił się do okna */
+  position: fixed; 
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 21;
+
+  /* POZYCJONOWANIE (OTWARTY): 
+     Sidebar ma 300px. Chcemy, żeby przycisk nachodził tak samo jak w toolbarze.
+     300px - 8px = 292px.
+  */
+  right: 292px; 
+  left: auto; 
+
+  /* WYGLĄD: Koło (jak w Toolbarze) */
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  
+  background: #3498db;
+  color: white;
+  
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  
+  /* Cień */
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+  
+  /* Animacja pozycji */
+  transition: right 0.35s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s;
+  
+  font-size: 12px;
+  font-weight: bold;
+}
+
+/* Hover */
+.sidebar-toggle:hover {
+  background: #2980b9;
+  transform: translateY(-50%) scale(1.1);
+}
+
+/* 🟢 POZYCJONOWANIE (ZWINIĘTY): 
+   Taka sama przerwa od krawędzi jak w Toolbarze (8px)
+*/
+.sidebar-toggle.collapsed {
+  right: 8px;
+}
+
+/* 🔹 Animacja strzałki */
+.sidebar-toggle .arrow {
+  display: inline-block;
+  transition: transform 0.35s ease;
+  transform: rotate(0deg); /* Strzałka w prawo (schowaj) */
+}
+
+/* Obrót strzałki przy zwinięciu */
+.sidebar-toggle.collapsed .arrow {
+  transform: rotate(180deg); /* Strzałka w lewo (pokaż) */
+}
+
+
+/* --- Reszta stylów bez zmian --- */
 .local-camera {
   padding: 10px;
   background: #dfe6e9;
@@ -19,7 +111,8 @@
   border-radius: 6px;
   background: #000;
   margin-bottom: 8px;
-  transform: scaleX(-1); /* Lustrzane odbicie dla lokalnej kamery */
+  transform: scaleX(-1);
+  display: block;
 }
 
 .camera-toggle-btn {
@@ -38,7 +131,6 @@
   background: #34495e;
 }
 
-/* Sekcja zdalnych kamer */
 .remote-users-section {
   padding: 10px;
   flex: 1;
@@ -50,7 +142,6 @@
   color: #7f8c8d;
 }
 
-/* GRID: Dwie kolumny jak w Teams */
 .remote-videos-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -60,7 +151,7 @@
 .remote-video-wrapper {
   position: relative;
   width: 100%;
-  aspect-ratio: 4/3; /* Proporcje wideo */
+  aspect-ratio: 4/3;
   background: #000;
   border-radius: 6px;
   overflow: hidden;
@@ -73,7 +164,6 @@
   object-fit: cover;
 }
 
-/* Placeholder gdy brak wideo lub łączenie */
 .video-placeholder {
   width: 100%;
   height: 100%;
@@ -85,7 +175,6 @@
   font-size: 10px;
 }
 
-/* Podpis użytkownika na wideo */
 .remote-user-name {
   position: absolute;
   bottom: 4px;

@@ -6,6 +6,9 @@ const Sidebar = ({ socket, currentUser }) => {
   const [remoteStreams, setRemoteStreams] = useState({});
   const [connectionStates, setConnectionStates] = useState({});
   
+  // 🔹 Stan zwinięcia panelu
+  const [collapsed, setCollapsed] = useState(false);
+  
   const videoRef = useRef(null);
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraError, setCameraError] = useState(null);
@@ -21,7 +24,7 @@ const Sidebar = ({ socket, currentUser }) => {
     ]
   };
 
-  // 1. Inicjalizacja kamery (na start)
+  // 1. Inicjalizacja kamery
   useEffect(() => {
     let mounted = true;
     
@@ -35,7 +38,6 @@ const Sidebar = ({ socket, currentUser }) => {
             return;
         }
 
-        // Wycisz lokalnie
         mediaStream.getAudioTracks().forEach(track => track.enabled = false);
         mediaStream.getVideoTracks().forEach(track => track.enabled = false);
 
@@ -46,7 +48,6 @@ const Sidebar = ({ socket, currentUser }) => {
           videoRef.current.muted = true;
         }
 
-        // Jeśli połączenia już trwają, podmień ścieżki (dla płynności)
         Object.keys(peerConnections.current).forEach(socketId => {
           const pc = peerConnections.current[socketId];
           const videoTrack = mediaStream.getVideoTracks()[0];
@@ -119,14 +120,12 @@ const Sidebar = ({ socket, currentUser }) => {
     };
 
     const createPeerConnection = (socketId) => {
-      // Unikaj duplikatów
       if (peerConnections.current[socketId]) return peerConnections.current[socketId];
 
       console.log(`🛠️ Tworzenie PeerConnection dla ${socketId}`);
       const pc = new RTCPeerConnection(rtcConfig);
 
       pc.oniceconnectionstatechange = () => {
-        console.log(`🧊 ICE State [${socketId}]: ${pc.iceConnectionState}`);
         setConnectionStates(prev => ({...prev, [socketId]: pc.iceConnectionState}));
       };
 
@@ -140,9 +139,6 @@ const Sidebar = ({ socket, currentUser }) => {
       };
 
       pc.ontrack = (event) => {
-        console.log(`🎥 Otrzymano Track od ${socketId}:`, event.track.kind);
-        
-        // Tworzymy strumień od razu, żeby React mógł go "zapiąć" do video
         const remoteStream = (event.streams && event.streams[0]) 
             ? event.streams[0] 
             : new MediaStream([event.track]);
@@ -153,7 +149,6 @@ const Sidebar = ({ socket, currentUser }) => {
         }));
       };
 
-      // Dodajemy tracki lub puste transceivery (rezerwacja miejsca)
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => pc.addTrack(track, streamRef.current));
       } else {
@@ -175,24 +170,14 @@ const Sidebar = ({ socket, currentUser }) => {
         } catch (err) { console.error("Offer Error:", err); }
     };
 
-    // --- Listenery Socketowe ---
-
-    // 1. Gdy wchodzimy: pobieramy listę i DZWONIMY do wszystkich
     const handleWhiteboardData = (data) => {
         const others = data.users.filter(u => u.id !== socket.id);
         setUsers(others);
-
-        // Ty (nowy) dzwonisz do starych. Dzięki temu połączenie nawiązuje się od razu.
-        others.forEach(user => {
-            initiateCall(user.id);
-        });
+        others.forEach(user => initiateCall(user.id));
     };
 
-    // 2. Gdy ktoś inny wchodzi: tylko dodajemy go do listy UI (on zadzwoni do nas)
     const handleUserJoined = async (data) => {
-      console.log("👤 User joined:", data.user.id);
       if (data.user.id === socket.id) return;
-
       setUsers(prev => {
          const exists = prev.find(u => u.id === data.user.id);
          if(exists) return prev;
@@ -200,7 +185,6 @@ const Sidebar = ({ socket, currentUser }) => {
       });
     };
 
-    // 3. Gdy ktoś wychodzi: sprzątamy
     const handleUserLeft = (data) => {
       const leftUserId = data.userId;
       setUsers(data.users.filter(u => u.id !== socket.id));
@@ -280,86 +264,86 @@ const Sidebar = ({ socket, currentUser }) => {
   }, []);
 
   return (
-    <div className="sidebar">
-      <div className="user-camera local-camera">
-        <div className="video-container" style={{ position: 'relative', minHeight: '150px', background: '#000', borderRadius: '6px' }}>
-            <video 
-              ref={videoRef} 
-              autoPlay 
-              playsInline 
-              muted 
-              className="camera-video"
-              style={{ display: cameraError ? 'none' : 'block' }}
-            />
-            {cameraError && (
-                <div style={{
-                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: '#e74c3c', padding: '10px', textAlign: 'center', fontSize: '12px',
-                    flexDirection: 'column'
-                }}>
-                    <span style={{ fontSize: '20px', marginBottom: '5px' }}>🚫</span>
-                    {cameraError}
-                </div>
-            )}
-        </div>
-        <button 
-            className="camera-toggle-btn" 
-            onClick={toggleCamera}
-            disabled={!!cameraError}
-            style={{ opacity: cameraError ? 0.5 : 1 }}
-        >
-          {cameraError ? 'Kamera niedostępna' : (cameraOn ? 'Wyłącz kamerę' : 'Włącz kamerę')}
-        </button>
+    <>
+      {/* 🔹 PRZYCISK ZWIJANIA (ZAKŁADKA) */}
+      <div 
+        className={`sidebar-toggle ${collapsed ? 'collapsed' : ''}`}
+        onClick={() => setCollapsed(!collapsed)}
+        title={collapsed ? 'Pokaż kamery' : 'Ukryj kamery'}
+      >
+        <span className="arrow">➤</span>
       </div>
 
-      <div className="remote-users-section">
-        <h4>Inni uczestnicy ({users.length})</h4>
-        <div className="remote-videos-grid">
-          {users.map((user) => (
-            <div key={user.id} className="remote-video-wrapper">
-              {remoteStreams[user.id] ? (
-                 <RemoteVideo stream={remoteStreams[user.id]} />
-              ) : (
-                <div className="video-placeholder">
-                   <div style={{display:'flex', flexDirection:'column', alignItems:'center'}}>
-                      <span>Łączenie...</span>
-                      <span style={{fontSize:'10px', marginTop:'5px', color:'#95a5a6'}}>
-                        Stan: {connectionStates[user.id] || 'init'}
-                      </span>
-                   </div>
-                </div>
+      <div className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
+        <div className="user-camera local-camera">
+          <div className="video-container" style={{ position: 'relative', minHeight: '150px', background: '#000', borderRadius: '6px' }}>
+              <video 
+                ref={videoRef} 
+                autoPlay 
+                playsInline 
+                muted 
+                className="camera-video"
+                style={{ display: cameraError ? 'none' : 'block' }}
+              />
+              {cameraError && (
+                  <div style={{
+                      position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: '#e74c3c', padding: '10px', textAlign: 'center', fontSize: '12px',
+                      flexDirection: 'column'
+                  }}>
+                      <span style={{ fontSize: '20px', marginBottom: '5px' }}>🚫</span>
+                      {cameraError}
+                  </div>
               )}
-              <span className="remote-user-name">{user.name}</span>
-            </div>
-          ))}
+          </div>
+          <button 
+              className="camera-toggle-btn" 
+              onClick={toggleCamera}
+              disabled={!!cameraError}
+              style={{ opacity: cameraError ? 0.5 : 1 }}
+          >
+            {cameraError ? 'Kamera niedostępna' : (cameraOn ? 'Wyłącz kamerę' : 'Włącz kamerę')}
+          </button>
+        </div>
+
+        <div className="remote-users-section">
+          <h4>Inni uczestnicy ({users.length})</h4>
+          <div className="remote-videos-grid">
+            {users.map((user) => (
+              <div key={user.id} className="remote-video-wrapper">
+                {remoteStreams[user.id] ? (
+                   <RemoteVideo stream={remoteStreams[user.id]} />
+                ) : (
+                  <div className="video-placeholder">
+                     <div style={{display:'flex', flexDirection:'column', alignItems:'center'}}>
+                        <span>Łączenie...</span>
+                        <span style={{fontSize:'10px', marginTop:'5px', color:'#95a5a6'}}>
+                          Stan: {connectionStates[user.id] || 'init'}
+                        </span>
+                     </div>
+                  </div>
+                )}
+                <span className="remote-user-name">{user.name}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 };
 
-// Komponent Video - Wymusza odtwarzanie i aktualizację
 const RemoteVideo = ({ stream }) => {
   const ref = useRef();
-  
   useEffect(() => {
     if (ref.current && stream) {
       ref.current.srcObject = stream;
-      // Wymuszamy play, w razie gdyby przeglądarka zatrzymała autoplay
-      ref.current.play().catch(e => console.log("Play error (expected if background):", e));
+      ref.current.play().catch(e => console.log("Play error:", e));
     }
   }, [stream]);
 
-  return (
-    <video 
-      ref={ref} 
-      autoPlay 
-      playsInline 
-      className="remote-video"
-      key={stream.id} // Klucz wymusza re-render przy zmianie ID strumienia
-    />
-  );
+  return <video ref={ref} autoPlay playsInline className="remote-video" key={stream.id} />;
 };
 
 export default Sidebar;
