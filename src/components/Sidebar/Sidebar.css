@@ -1,132 +1,191 @@
 .sidebar {
+  /* Overlay positioning */
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  z-index: 20;
+  
   width: 300px;
   background: #ecf0f1;
   display: flex;
   flex-direction: column;
+  border-left: 1px solid #ccc;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+  
+  /* Animacje */
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateX(0); /* Domyślnie widoczny */
+  
+  will-change: transform;
+  
+  /* Overflow visible pozwala cieniom wychodzić poza obrys */
+  overflow: visible;
 }
 
-.user-camera {
-  padding: 10px;
-  border-bottom: 1px solid #bdc3c7;
+/* Stan zwinięty - wyjeżdża w prawo */
+.sidebar.collapsed {
+  transform: translateX(100%);
 }
 
-.camera-placeholder {
-  background: #34495e;
+/* Fix dla zawartości */
+.sidebar > div {
+  min-width: 300px;
+}
+
+/* 🔹 PRZYCISK ZWIJANIA - IDEALNA SYMETRIA Z TOOLBAREM */
+.sidebar-toggle {
+  /* Używamy fixed, tak jak w Toolbarze, aby odnosił się do okna */
+  position: fixed; 
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 21;
+
+  /* POZYCJONOWANIE (OTWARTY): 
+     Sidebar ma 300px. Chcemy, żeby przycisk nachodził tak samo jak w toolbarze.
+     300px - 8px = 292px.
+  */
+  right: 292px; 
+  left: auto; 
+
+  /* WYGLĄD: Koło (jak w Toolbarze) */
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  
+  background: #3498db;
   color: white;
-  padding: 40px 20px;
-  text-align: center;
-  border-radius: 5px;
-}
-
-.users-list, .chat-section {
-  padding: 10px;
-  border-bottom: 1px solid #bdc3c7;
-  flex: 1;
-}
-
-.user-item {
+  
   display: flex;
   align-items: center;
-  margin: 5px 0;
-}
-
-.user-color {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  margin-right: 8px;
-}
-
-/* Chat container */
-.chat-messages {
-  max-height: 250px;
-  overflow-y: auto;
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* Bubble wrapper */
-.message-bubble {
-  display: flex;
-  justify-content: flex-start; /* Układanie do lewej */
-}
-
-/* Przesuniecie wiadomości obecnego usera do prawej */
-/*.message-bubble.mine {
-  justify-content: flex-end;
-} */
-
-/* Actual bubble */
-.bubble-content {
-  max-width: 75%;
-  background: #505050;
-  padding: 8px 12px;
-  border-radius: 12px;
-  border: 1px solid #000000;
-  font-size: 14px;
-  line-height: 1.3;
-  word-break: break-word;
-  color: white;
-}
-
-/* Minimalna rużnica w wiadomości */
-.message-bubble.mine .bubble-content {
-  background: #2b5581; /* możesz zmienić na inny odcień */
-  color: white;
-}
-
-/* Nazwa urzytkownika w wiadomości */
-.message-user {
-  display: block;
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-
-/* teks wiadomości */
-.message-text {
-  white-space: pre-wrap;
-}
-
-/* Chat input area */
-.chat-input {
-  display: flex;
-  gap: 6px;
-  padding: 8px;
-}
-
-.chat-input input {
-  flex: 1;
-  padding: 8px;
-  border-radius: 8px;
-  border: 1px solid #ccc;
-}
-
-.chat-input button {
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: none;
+  justify-content: center;
   cursor: pointer;
+  
+  /* Cień */
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+  
+  /* Animacja pozycji */
+  transition: right 0.35s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s;
+  
+  font-size: 12px;
+  font-weight: bold;
+}
+
+/* Hover */
+.sidebar-toggle:hover {
+  background: #2980b9;
+  transform: translateY(-50%) scale(1.1);
+}
+
+/* 🟢 POZYCJONOWANIE (ZWINIĘTY): 
+   Taka sama przerwa od krawędzi jak w Toolbarze (8px)
+*/
+.sidebar-toggle.collapsed {
+  right: 8px;
+}
+
+/* 🔹 Animacja strzałki */
+.sidebar-toggle .arrow {
+  display: inline-block;
+  transition: transform 0.35s ease;
+  transform: rotate(0deg); /* Strzałka w prawo (schowaj) */
+}
+
+/* Obrót strzałki przy zwinięciu */
+.sidebar-toggle.collapsed .arrow {
+  transform: rotate(180deg); /* Strzałka w lewo (pokaż) */
+}
+
+
+/* --- Reszta stylów bez zmian --- */
+.local-camera {
+  padding: 10px;
+  background: #dfe6e9;
+  border-bottom: 2px solid #bdc3c7;
 }
 
 .camera-video {
   width: 100%;
-  border-radius: 5px;
+  border-radius: 6px;
   background: #000;
-  margin-bottom: 5px;
+  margin-bottom: 8px;
+  transform: scaleX(-1);
+  display: block;
 }
 
 .camera-toggle-btn {
   width: 100%;
-  padding: 5px;
+  padding: 8px;
   background: #2c3e50;
   color: white;
   border: none;
-  border-radius: 5px;
+  border-radius: 4px;
   cursor: pointer;
+  font-weight: bold;
+  transition: background 0.2s;
 }
 
 .camera-toggle-btn:hover {
   background: #34495e;
+}
+
+.remote-users-section {
+  padding: 10px;
+  flex: 1;
+}
+
+.remote-users-section h4 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  color: #7f8c8d;
+}
+
+.remote-videos-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.remote-video-wrapper {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4/3;
+  background: #000;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.remote-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.video-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #2d3436;
+  color: #636e72;
+  font-size: 10px;
+}
+
+.remote-user-name {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  max-width: 90%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

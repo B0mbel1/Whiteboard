@@ -142,3 +142,11 @@
   position: relative;
   overflow: hidden;
 }
+
+.selection-overlay {
+  position: absolute;
+  border: 2px dashed #3498db;
+  background-color: rgba(52, 152, 219, 0.1);
+  pointer-events: none; /* Kliknięcia przechodzą przez niego */
+  z-index: 1000;
+}

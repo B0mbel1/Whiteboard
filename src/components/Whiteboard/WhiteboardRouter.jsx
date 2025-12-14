@@ -308,7 +308,12 @@ const WhiteboardRouter = () => {
           setActiveShape={setActiveShape}
         />
 
-        <PointerTrail active={tool === 'pointer'} />
+        {/* 🔹 Przekazujemy socket i whiteboardId do PointerTrail */}
+        <PointerTrail 
+          active={tool === 'pointer'} 
+          socket={socketRef.current}
+          whiteboardId={whiteboardId}
+        />
 
         {/* ✅ PRZEKAŻ NOTATKI DO CANVAS - to najważniejsze! */}
         <Canvas
