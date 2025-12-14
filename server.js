@@ -306,8 +306,12 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ========== KURSOR ==========
+  // ========== KURSOR I WSKAŹNIK (POINTER) ==========
   socket.on("cursor-move", (d) => broadcast(d.whiteboardId, "cursor-move", d));
+  
+  // 🔹 NOWE: Obsługa pointera (szlak i kliknięcia) dla innych użytkowników
+  socket.on("pointer-move", (d) => broadcast(d.whiteboardId, "pointer-move", d));
+  socket.on("pointer-click", (d) => broadcast(d.whiteboardId, "pointer-click", d));
 
   // ========== CZAT ==========
   socket.on("chat-message", (d) => io.to(d.whiteboardId).emit("chat-message", d.message));

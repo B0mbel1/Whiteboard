@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 
-const PointerTrail = ({ active }) => {
+const PointerTrail = ({ active, socket, whiteboardId }) => {
   const canvasRef = useRef(null);
   const trailRef = useRef([]);
   const clicksRef = useRef([]);
@@ -18,19 +18,14 @@ const PointerTrail = ({ active }) => {
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
-    const mainCanvas = document.querySelector('.canvas-area');
-    if (!mainCanvas) return;
-
     const draw = () => {
-      if (!active) return;
-
       const now = Date.now();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // 🔹 smuga pointera
+      // 🔹 1. Rysowanie smugi (zarówno lokalnej, jak i zdalnej)
       for (let i = 0; i < trailRef.current.length; i++) {
         const p = trailRef.current[i];
-        const age = (now - p.time) / 300;
+        const age = (now - p.time) / 300; // Czas życia punktu (300ms)
         if (age > 1) continue;
 
         const alpha = 1 - age;
@@ -47,18 +42,18 @@ const PointerTrail = ({ active }) => {
         ctx.fill();
       }
 
-      // 🔴 kliknięcia = czerwone okręgi
+      // 🔴 2. Rysowanie kliknięć (lokalne i zdalne)
       for (let i = clicksRef.current.length - 1; i >= 0; i--) {
         const c = clicksRef.current[i];
         const elapsed = now - c.time;
-        const progress = elapsed / 500; // trwa 0.5s
+        const progress = elapsed / 500; // Animacja trwa 500ms
 
         if (progress >= 1) {
           clicksRef.current.splice(i, 1);
           continue;
         }
 
-        const radius = 10 + progress * 60; // rosnący promień
+        const radius = 10 + progress * 60; // Rosnący promień
         const alpha = 1 - progress;
         ctx.beginPath();
         ctx.arc(c.x, c.y, radius, 0, 2 * Math.PI);
@@ -67,22 +62,43 @@ const PointerTrail = ({ active }) => {
         ctx.stroke();
       }
 
-      // usuń stare punkty smugi
+      // Usuń stare punkty smugi
       trailRef.current = trailRef.current.filter((p) => now - p.time < 300);
 
       animationRef.current = requestAnimationFrame(draw);
     };
 
+    // Zawsze uruchamiaj pętlę rysowania, aby widzieć zdalne efekty
+    animationRef.current = requestAnimationFrame(draw);
+
+    return () => {
+      window.removeEventListener('resize', resizeCanvas);
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    };
+  }, []); // Uruchom tylko raz przy montowaniu
+
+  // 🔹 Obsługa zdarzeń lokalnych (myszka)
+  useEffect(() => {
+    const mainCanvas = document.querySelector('.canvas-area');
+    if (!mainCanvas) return;
+
     const handleMouseMove = (e) => {
       if (!active) return;
       const rect = mainCanvas.getBoundingClientRect();
+      // Sprawdź czy kursor jest nad obszarem roboczym
       if (
         e.clientX >= rect.left &&
         e.clientX <= rect.right &&
         e.clientY >= rect.top &&
         e.clientY <= rect.bottom
       ) {
+        // Dodaj do lokalnej tablicy
         trailRef.current.push({ x: e.clientX, y: e.clientY, time: Date.now() });
+
+        // Wyślij do serwera
+        if (socket && whiteboardId) {
+          socket.emit('pointer-move', { whiteboardId, x: e.clientX, y: e.clientY });
+        }
       }
     };
 
@@ -95,22 +111,52 @@ const PointerTrail = ({ active }) => {
         e.clientY >= rect.top &&
         e.clientY <= rect.bottom
       ) {
+        // Dodaj lokalnie
         clicksRef.current.push({ x: e.clientX, y: e.clientY, time: Date.now() });
+
+        // Wyślij do serwera
+        if (socket && whiteboardId) {
+          socket.emit('pointer-click', { whiteboardId, x: e.clientX, y: e.clientY });
+        }
       }
     };
 
     mainCanvas.addEventListener('mousemove', handleMouseMove);
     mainCanvas.addEventListener('mousedown', handleMouseDown);
 
-    if (active) animationRef.current = requestAnimationFrame(draw);
-
     return () => {
       mainCanvas.removeEventListener('mousemove', handleMouseMove);
       mainCanvas.removeEventListener('mousedown', handleMouseDown);
-      window.removeEventListener('resize', resizeCanvas);
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [active]);
+  }, [active, socket, whiteboardId]);
+
+  // 🔹 Obsługa zdarzeń zdalnych (socket)
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleRemoteMove = (data) => {
+      // Ignoruj własne zdarzenia (dla pewności, choć serwer używa broadcast)
+      if (data.userId === socket.id) return;
+      
+      // Dodaj zdalny punkt do tablicy rysowania z aktualnym czasem
+      trailRef.current.push({ x: data.x, y: data.y, time: Date.now() });
+    };
+
+    const handleRemoteClick = (data) => {
+      if (data.userId === socket.id) return;
+      
+      // Dodaj zdalne kliknięcie
+      clicksRef.current.push({ x: data.x, y: data.y, time: Date.now() });
+    };
+
+    socket.on('pointer-move', handleRemoteMove);
+    socket.on('pointer-click', handleRemoteClick);
+
+    return () => {
+      socket.off('pointer-move', handleRemoteMove);
+      socket.off('pointer-click', handleRemoteClick);
+    };
+  }, [socket]);
 
   return (
     <canvas
