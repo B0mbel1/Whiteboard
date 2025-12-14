@@ -21,23 +21,32 @@ const Whiteboard = () => {
   const [textBoxes, setTextBoxes] = useState([]);
   const [notes, setNotes] = useState([]); 
   
+  // 🔥 STAN USERS (dla Sidebara)
+  const [users, setUsers] = useState([]);
+
+  // 🔥 UŻYTKOWNIK Z LOCALSTORAGE (TRWAŁOŚĆ)
   const [currentUser] = useState(() => {
-    // Generate a more unique user ID
+    const storedUser = localStorage.getItem('whiteboard_user');
+    if (storedUser) {
+      return JSON.parse(storedUser);
+    }
+
     const userId = 'user_' + Math.random().toString(36).substring(2, 15);
     const userName = 'User' + Math.floor(Math.random() * 1000);
-    const userColor = `hsl(${Math.random() * 360}, 80%, 60%)`;
+    const userColor = `hsl(${Math.random() * 360}, 80%, 45%)`;
     
-    console.log("👤 Generated user:", { id: userId, name: userName, color: userColor });
-    
-    return {
+    const newUser = {
       id: userId,
       name: userName,
       color: userColor
     };
+    
+    localStorage.setItem('whiteboard_user', JSON.stringify(newUser));
+    return newUser;
   });
   
   const socketRef = useRef(null);
-  const hasJoinedRef = useRef(false); // Track if we've already joined
+  const hasJoinedRef = useRef(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -116,9 +125,17 @@ const Whiteboard = () => {
       newSocket.on('whiteboard-data', (data) => {
           setTextBoxes(data.textBoxes || []);
           setNotes(data.notes || []); 
+          if(data.users) setUsers(data.users); // Update listy
       });
 
-       
+      // 🔥 AKTUALIZACJA LISTY UŻYTKOWNIKÓW
+      newSocket.on('user-joined', (data) => {
+        if (data.users) setUsers(data.users);
+      });
+
+      newSocket.on('user-left', (data) => {
+        if (data.users) setUsers(data.users);
+      });
 
       newSocket.on('connect_error', (error) => {
         console.error("❌ Socket connection error:", error);
@@ -131,7 +148,7 @@ const Whiteboard = () => {
     }
   };
 
-    // DODANE: funkcje do obsługi notatek
+    // Funkcje do obsługi notatek
   const handleNoteCreate = (note) => {
     if (socketRef.current && whiteboardId) {
       socketRef.current.emit('note-create', {
@@ -186,7 +203,6 @@ const Whiteboard = () => {
         alert('✅ Invite link copied to clipboard! Share it with others to collaborate!');
       } catch (err) {
         console.error('Failed to copy:', err);
-        // Fallback for browsers that don't support clipboard API
         const textArea = document.createElement('textarea');
         textArea.value = link;
         document.body.appendChild(textArea);
@@ -260,7 +276,9 @@ const Whiteboard = () => {
       <div className="whiteboard-header">
         <div className="whiteboard-info">
           <span className="whiteboard-id">Room: {whiteboardId}</span>
-          <span className="user-info">You: {currentUser.name}</span>
+          <span className="user-info" style={{borderLeft: `5px solid ${currentUser.color}`, paddingLeft: '10px'}}>
+            You: <b>{currentUser.name}</b>
+          </span>
         </div>
         <div className="header-controls">
           <button 
@@ -301,16 +319,18 @@ const Whiteboard = () => {
           onDrawing={handleDrawing}
           onCursorMove={handleCursorMove}
           textBoxes={textBoxes}
-          notes={notes} // DODANE: przekaż notatki
-          onNoteCreate={handleNoteCreate} // DODANE
-          onNoteUpdate={handleNoteUpdate} // DODANE
-          onNoteDelete={handleNoteDelete} // DODANE
+          notes={notes} 
+          onNoteCreate={handleNoteCreate} 
+          onNoteUpdate={handleNoteUpdate} 
+          onNoteDelete={handleNoteDelete} 
         />
         
+        {/* 🔥 Przekazanie users do Sidebar */}
         <Sidebar 
           whiteboardId={whiteboardId}
           socket={socketRef.current}
           currentUser={currentUser}
+          users={users}
         />
 
         {showColorPicker && (

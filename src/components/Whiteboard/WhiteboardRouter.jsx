@@ -17,35 +17,40 @@ const WhiteboardRouter = () => {
   const [socket, setSocket] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // ✅ DODAJ TE STANY - to najważniejsze!
+  // Stany obiektów
   const [textBoxes, setTextBoxes] = useState([]);
   const [notes, setNotes] = useState([]);
-
-  // Emojis
   const [emojis, setEmojis] = useState([]);
-  const [activeEmoji, setActiveEmoji] = useState(null); // Tutaj przechowamy np. "😎" wybrane z paska
-
-  //Gifs
+  const [activeEmoji, setActiveEmoji] = useState(null);
   const [gifs, setGifs] = useState([]);
-  const [activeGif, setActiveGif] = useState(null); // URL wybranego gifa
-
-  //Shapes
+  const [activeGif, setActiveGif] = useState(null);
   const [shapes, setShapes] = useState([]);
   const [activeShape, setActiveShape] = useState(null);
 
+  // 🔥 STAN LISTY UŻYTKOWNIKÓW (Dla Sidebara i kamer)
+  const [users, setUsers] = useState([]);
 
+  // 🔥 UŻYTKOWNIK Z LOCALSTORAGE (TRWAŁOŚĆ)
   const [currentUser] = useState(() => {
+    const storedUser = localStorage.getItem('whiteboard_user');
+    if (storedUser) {
+      console.log("👤 Loaded existing user:", JSON.parse(storedUser));
+      return JSON.parse(storedUser);
+    }
+
     const userId = 'user_' + Math.random().toString(36).substring(2, 15);
     const userName = 'User' + Math.floor(Math.random() * 1000);
-    const userColor = `hsl(${Math.random() * 360}, 80%, 60%)`;
+    const userColor = `hsl(${Math.random() * 360}, 80%, 45%)`; // Ciemniejszy dla kontrastu tekstu
 
-    console.log("👤 Generated user:", { id: userId, name: userName, color: userColor });
-
-    return {
+    const newUser = {
       id: userId,
       name: userName,
       color: userColor
     };
+
+    localStorage.setItem('whiteboard_user', JSON.stringify(newUser));
+    console.log("👤 Generated and saved new user:", newUser);
+    return newUser;
   });
 
   const socketRef = useRef(null);
@@ -93,29 +98,34 @@ const WhiteboardRouter = () => {
       setIsLoading(false);
     });
 
-    // ✅ DODAJ TE LISTENERY - to kluczowe dla notatek!
+    // 🔥 ODBIERANIE DANYCH I LISTY UŻYTKOWNIKÓW
     newSocket.on('whiteboard-data', (data) => {
-      console.log("📦 Received whiteboard data:", {
-        notes: data.notes?.length || 0,
-        textBoxes: data.textBoxes?.length || 0,
-        notesDetails: data.notes?.map(n => ({ id: n.id, x: n.x, y: n.y })) || []
-      });
+      if (data.textBoxes) setTextBoxes(data.textBoxes);
+      if (data.notes) setNotes(data.notes);
+      if (data.gifs) setGifs(data.gifs);
+      if (data.shapes) setShapes(data.shapes);
+      if (data.emojis) setEmojis(data.emojis);
+      
+      // Aktualizuj listę użytkowników przy pierwszym wejściu
+      if (data.users) {
+        console.log("👥 Initial users list:", data.users);
+        setUsers(data.users);
+      }
+    });
 
-      // ✅ UŻYJ danych z serwera, NIE initialNotes
-      if (data.textBoxes) {
-        setTextBoxes(data.textBoxes);
+    // 🔥 AKTUALIZACJA LISTY GDY KTOŚ DOŁĄCZY
+    newSocket.on('user-joined', (data) => {
+      console.log("👋 User joined:", data.user);
+      if (data.users) {
+        setUsers(data.users); // Serwer wysyła pełną, zaktualizowaną listę
       }
-      if (data.notes) {
-        setNotes(data.notes);
-      }
-      if(data.gifs){
-        setGifs(data.gifs);
-      }
-      if(data.shapes){
-        setShapes(data.shapes);
-      }
-      if(data.emojis){
-        setEmojis(data.emojis);
+    });
+
+    // 🔥 AKTUALIZACJA LISTY GDY KTOŚ WYJDZIE
+    newSocket.on('user-left', (data) => {
+      console.log("👋 User left:", data.userId);
+      if (data.users) {
+        setUsers(data.users); // Serwer wysyła pełną, zaktualizowaną listę
       }
     });
 
@@ -126,107 +136,25 @@ const WhiteboardRouter = () => {
 
   };
 
-  //Shapes
-  const handleShapeCreate = (shape) => {
-    if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('shape-create', { whiteboardId, shape });
-    }
-  };
+  // --- Handlery ---
 
-  const handleShapeDelete = (id) => {
-    if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('shape-delete', { whiteboardId, id });
-    }
-  };
-  const handleShapeUpdate = (id, updates) => {
-    if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('shape-update', {
-        whiteboardId,
-        id,
-        ...updates
-      });
-    }
-  };
+  const handleShapeCreate = (shape) => { if (socketRef.current && whiteboardId) socketRef.current.emit('shape-create', { whiteboardId, shape }); };
+  const handleShapeDelete = (id) => { if (socketRef.current && whiteboardId) socketRef.current.emit('shape-delete', { whiteboardId, id }); };
+  const handleShapeUpdate = (id, updates) => { if (socketRef.current && whiteboardId) socketRef.current.emit('shape-update', { whiteboardId, id, ...updates }); };
 
+  const handleGifCreate = (gif) => { if (socketRef.current && whiteboardId) socketRef.current.emit('gif-create', { whiteboardId, gif }); };
+  const handleGifDelete = (id) => { if (socketRef.current && whiteboardId) socketRef.current.emit('gif-delete', { whiteboardId, id }); };
+  const handleGifUpdate = (id, updates) => { if (socketRef.current && whiteboardId) socketRef.current.emit('gif-update', { whiteboardId, id, ...updates }); };
 
-  //Gif
-  const handleGifCreate = (gif) => {
-    if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('gif-create', { whiteboardId, gif });
-    }
-  };
+  const handleEmojiCreate = (emoji) => { if (socketRef.current && whiteboardId) socketRef.current.emit('emoji-create', { whiteboardId, emoji }); };
+  const handleEmojiUpdate = (id, updates) => { if (socketRef.current && whiteboardId) socketRef.current.emit('emoji-update', { whiteboardId, id, ...updates }); };
+  const handleEmojiDelete = (id) => { if (socketRef.current && whiteboardId) socketRef.current.emit('emoji-delete', { whiteboardId, id }); };
 
-  const handleGifDelete = (id) => {
-    if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('gif-delete', { whiteboardId, id });
-    }
-  };
-  const handleGifUpdate = (id, updates) => {
-    if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('gif-update', { whiteboardId, id, ...updates });
-    }
-  };
+  const handleNoteCreate = (note) => { if (socketRef.current && whiteboardId) socketRef.current.emit('note-create', { whiteboardId, note }); };
+  const handleNoteUpdate = (id, updates) => { if (socketRef.current && whiteboardId) socketRef.current.emit('note-update', { whiteboardId, id, ...updates }); };
+  const handleNoteDelete = (id) => { if (socketRef.current && whiteboardId) socketRef.current.emit('note-delete', { whiteboardId, id }); };
 
-  //emojis
-  const handleEmojiCreate = (emoji) => {
-    if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('emoji-create', { whiteboardId, emoji });
-    }
-  };
-
-  const handleEmojiUpdate = (id, updates) => {
-  if (socketRef.current && whiteboardId) {
-    socketRef.current.emit('emoji-update', {
-      whiteboardId,
-      id,
-      ...updates
-    });
-  }
-};
-
-  const handleEmojiDelete = (id) => {
-    if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('emoji-delete', { whiteboardId, id });
-    }
-  };
-
-  // ✅ DODAJ FUNKCJE OBSŁUGI NOTATEK
-  const handleNoteCreate = (note) => {
-    if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('note-create', {
-        whiteboardId,
-        note
-      });
-    }
-  };
-
-  const handleNoteUpdate = (id, updates) => {
-    if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('note-update', {
-        whiteboardId,
-        id,
-        ...updates
-      });
-    }
-  };
-
-  const handleNoteDelete = (id) => {
-    if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('note-delete', {
-        whiteboardId,
-        id
-      });
-    }
-  };
-
-  const handleDrawing = (drawingData) => {
-    if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('drawing', {
-        whiteboardId,
-        ...drawingData
-      });
-    }
-  };
+  const handleDrawing = (drawingData) => { if (socketRef.current && whiteboardId) socketRef.current.emit('drawing', { whiteboardId, ...drawingData }); };
 
   const handleCursorMove = (position) => {
     if (socketRef.current && whiteboardId) {
@@ -278,7 +206,9 @@ const WhiteboardRouter = () => {
       <div className="whiteboard-header">
         <div className="whiteboard-info">
           <span className="whiteboard-id">Room: {whiteboardId}</span>
-          <span className="user-info">You: {currentUser.name}</span>
+          <span className="user-info" style={{borderLeft: `5px solid ${currentUser.color}`, paddingLeft: '10px'}}>
+             You: <b>{currentUser.name}</b>
+          </span>
         </div>
         <div className="header-controls">
           <button
@@ -308,14 +238,12 @@ const WhiteboardRouter = () => {
           setActiveShape={setActiveShape}
         />
 
-        {/* 🔹 Przekazujemy socket i whiteboardId do PointerTrail */}
         <PointerTrail 
           active={tool === 'pointer'} 
           socket={socketRef.current}
           whiteboardId={whiteboardId}
         />
 
-        {/* ✅ PRZEKAŻ NOTATKI DO CANVAS - to najważniejsze! */}
         <Canvas
           tool={tool}
           color={color}
@@ -333,26 +261,28 @@ const WhiteboardRouter = () => {
           onNoteUpdate={handleNoteUpdate}
           onNoteDelete={handleNoteDelete}
           emojis={emojis}
-          activeEmoji={activeEmoji} // Aktualnie wybrane emoji do postawienia
+          activeEmoji={activeEmoji} 
           onEmojiCreate={handleEmojiCreate}
           onEmojiUpdate={handleEmojiUpdate}
           onEmojiDelete={handleEmojiDelete}
-          gifs={gifs}                     // ✅ Przekazujemy listę
-          activeGif={activeGif}           // ✅ Przekazujemy wybrany URL
-          onGifCreate={handleGifCreate}   // ✅ Funkcja tworzenia
-          onGifDelete={handleGifDelete}   // ✅ Funkcja usuwania
+          gifs={gifs}                     
+          activeGif={activeGif}           
+          onGifCreate={handleGifCreate}   
+          onGifDelete={handleGifDelete}   
           onGifUpdate={handleGifUpdate}
           shapes={shapes}
           activeShape={activeShape}
           onShapeCreate={handleShapeCreate}
           onShapeDelete={handleShapeDelete}
-          onShapeUpdate={handleShapeUpdate} // <--- Przekazujemy funkcję
+          onShapeUpdate={handleShapeUpdate}
         />
 
+        {/* 🔥 Przekazujemy listę 'users' do Sidebar, aby kamery działały poprawnie */}
         <Sidebar
           whiteboardId={whiteboardId}
           socket={socketRef.current}
           currentUser={currentUser}
+          users={users}
         />
 
         {showColorPicker && (
