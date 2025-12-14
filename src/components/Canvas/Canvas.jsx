@@ -5,7 +5,7 @@ import { drawCompletePath, drawPathSegment } from '../../utils/drawingUtils';
 import Note from './Note';
 import Text from './Text';
 import Emoji from './Emoji';
-import Gif from './Gif'; 
+import Gif from './Gif';
 import Shape from './Shape';
 
 const Canvas = ({
@@ -25,13 +25,13 @@ const Canvas = ({
   onNoteUpdate,
   onNoteDelete,
   emojis: initialEmojis,
-  activeEmoji, 
+  activeEmoji,
   onEmojiCreate,
   onEmojiUpdate,
   onEmojiDelete,
-  gifs: initialGifs,      
-  activeGif,              
-  onGifCreate,            
+  gifs: initialGifs,
+  activeGif,
+  onGifCreate,
   onGifDelete,
   onGifUpdate,
   shapes: initialShapes,
@@ -70,6 +70,11 @@ const Canvas = ({
   const [shapes, setShapes] = useState(initialShapes || []);
   const [selectedShapeId, setSelectedShapeId] = useState(null);
 
+  //Zaznaczenie
+  // 🔹 DODANE: Stan dla zaznaczania obszaru
+  const [selectionBox, setSelectionBox] = useState(null); // { x, y, width, height }
+  const [selectionStart, setSelectionStart] = useState(null); // { x, y }
+
   const ACTION_TYPES = {
     DRAWING: 'drawing',
     NOTE_CREATE: 'note_create',
@@ -82,6 +87,7 @@ const Canvas = ({
     GIF_DELETE: 'gif_delete',
     SHAPE_CREATE: 'shape_create',
     SHAPE_DELETE: 'shape_delete',
+    CLEAR_AREA: 'clear_area' // Opcjonalne: do historii
   };
 
   useEffect(() => { setShapes(initialShapes || []); }, [initialShapes]);
@@ -448,10 +454,10 @@ const Canvas = ({
     if (!canvas || !container || !ctx) return;
     const rect = container.getBoundingClientRect();
     if (canvas.width === rect.width && canvas.height === rect.height) return;
-    
+
     let imageData = null;
     if (canvas.width > 0 && canvas.height > 0) {
-      try { imageData = ctx.getImageData(0, 0, canvas.width, canvas.height); } 
+      try { imageData = ctx.getImageData(0, 0, canvas.width, canvas.height); }
       catch (e) { console.warn("Nie udało się pobrać danych canvas:", e); }
     }
     canvas.width = rect.width;
@@ -491,10 +497,35 @@ const Canvas = ({
     ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
   }, [color, size, tool]);
 
+  useEffect(() => {
+    if (socket) {
+      const handleEraseArea = (data) => {
+        const ctx = contextRef.current;
+        if (ctx) {
+          // Wyczyść piksele na canvasie
+          ctx.clearRect(data.x, data.y, data.width, data.height);
+        }
+      };
+
+      socket.on('erase-area', handleEraseArea);
+      return () => {
+        socket.off('erase-area', handleEraseArea);
+      };
+    }
+  }, [socket]);
+
   const startDrawing = ({ nativeEvent }) => {
     // ✅ ZMIANA: Sprawdzamy, czy wciśnięty przycisk to lewy (0).
     // Jeśli to prawy (2) lub środkowy (1), przerywamy funkcję.
     if (nativeEvent.button !== 0) return;
+
+    if (tool === 'select') {
+      const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
+      setSelectionStart({ x, y });
+      setSelectionBox({ x, y, width: 0, height: 0 });
+      setIsDrawing(true);
+      return;
+    }
 
     if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
     if (setShowColorPicker) setShowColorPicker(false);
@@ -509,6 +540,90 @@ const Canvas = ({
 
   const stopDrawing = () => {
     if (!isDrawing) return;
+
+    if (tool === 'select' && selectionBox) {
+      const { x, y, width, height } = selectionBox;
+
+      if (width > 5 && height > 5) { // Ignoruj mikroskopijne zaznaczenia
+
+        // 1. Usuń obiekty DOM (Notes, Shapes, Text, etc.)
+        const checkCollision = (objX, objY, objW, objH) => {
+          // Sprawdzenie czy obiekt koliduje/jest wewnątrz zaznaczenia
+          return (
+            objX < x + width &&
+            objX + objW > x &&
+            objY < y + height &&
+            objY + objH > y
+          );
+        };
+
+        // Batch delete lists
+        const notesToDelete = [];
+        const shapesToDelete = [];
+        const emojisToDelete = [];
+        const gifsToDelete = [];
+        const textToDelete = [];
+
+        // Notatki
+        notes.forEach(note => {
+          if (checkCollision(note.x, note.y, note.width, note.height)) {
+            removeNote(note.id);
+          }
+        });
+
+        // Kształty
+        shapes.forEach(shape => {
+          // Domyślne wymiary jeśli brak
+          const w = shape.width || 100;
+          const h = shape.height || 100;
+          if (checkCollision(shape.x, shape.y, w, h)) {
+            removeShape(shape.id);
+          }
+        });
+
+        // Teksty
+        textBoxes.forEach(tb => {
+          if (checkCollision(tb.x, tb.y, tb.width, tb.height)) {
+            removeTextBox(tb.id);
+          }
+        });
+
+        // Emojis
+        emojis.forEach(emoji => {
+          // Przyjmujemy ok. 48px dla emoji
+          if (checkCollision(emoji.x, emoji.y, 48, 48)) {
+            removeEmoji(emoji.id);
+          }
+        });
+
+        // Gify
+        gifs.forEach(gif => {
+          if (checkCollision(gif.x, gif.y, gif.width, gif.width)) { // Gify często kwadratowe
+            removeGif(gif.id);
+          }
+        });
+
+        // 2. Wyczyść rysunki na Canvas (Piksele)
+        if (contextRef.current) {
+          contextRef.current.clearRect(x, y, width, height);
+        }
+
+        // 3. Wyślij informację o wyczyszczeniu obszaru do innych
+        if (socket && whiteboardId) {
+          socket.emit('erase-area', {
+            whiteboardId,
+            x, y, width, height
+          });
+        }
+      }
+
+      // Reset
+      setSelectionBox(null);
+      setSelectionStart(null);
+      setIsDrawing(false);
+      return;
+    }
+
     if (!['pencil', 'brush', 'eraser'].includes(tool)) { setIsDrawing(false); return; }
     contextRef.current.closePath();
     setIsDrawing(false);
@@ -673,7 +788,7 @@ const Canvas = ({
       const handleEmojiUpdate = (data) => setEmojis(prev => prev.map(e => e.id === data.id ? { ...e, ...data } : e));
       const handleGifUpdate = (data) => setGifs(prev => prev.map(g => g.id === data.id ? { ...g, ...data } : g));
       const handleShapeUpdate = (data) => setShapes(prev => prev.map(s => s.id === data.id ? { ...s, ...data } : s));
-      
+
       const handleEmojiCreateSocket = (data) => setEmojis(prev => prev.some(e => e.id === data.emoji.id) ? prev : [...prev, data.emoji]);
       const handleEmojiDeleteSocket = (data) => setEmojis(prev => prev.filter(e => e.id !== data.id));
       const handleGifCreateSocket = (data) => setGifs(prev => prev.some(g => g.id === data.gif.id) ? prev : [...prev, data.gif]);
@@ -714,6 +829,21 @@ const Canvas = ({
   const handleMouseMove = (e) => {
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
     if (onCursorMove) onCursorMove({ x, y });
+
+    if (isDrawing && tool === 'select' && selectionStart) {
+      const newWidth = x - selectionStart.x;
+      const newHeight = y - selectionStart.y;
+
+      // Obliczamy znormalizowane koordynaty (obsługa ciągnięcia w lewo/górę)
+      setSelectionBox({
+        x: newWidth > 0 ? selectionStart.x : x,
+        y: newHeight > 0 ? selectionStart.y : y,
+        width: Math.abs(newWidth),
+        height: Math.abs(newHeight)
+      });
+      return;
+    }
+
     if (isDrawing) draw(e);
   };
 
@@ -785,6 +915,19 @@ const Canvas = ({
           onMouseLeave={handleMouseLeave}
           onMouseEnter={handleMouseEnter}
         />
+        {/* 🔹 DODANE: Renderowanie prostokąta zaznaczania */}
+        {selectionBox && (
+          <div
+            className="selection-overlay"
+            style={{
+              left: selectionBox.x,
+              top: selectionBox.y,
+              width: selectionBox.width,
+              height: selectionBox.height
+            }}
+          />
+        )}
+
         {notes.map(note => (
           <Note
             key={note.id}
@@ -846,7 +989,7 @@ const Canvas = ({
             onUpdate={handleShapeUpdate}
           />
         ))}
-        
+
         {/* FIX: Dodano klucz fall-back dla kursorów */}
         {remoteCursorsArray.map((cursor, index) => (
           cursor.position && (

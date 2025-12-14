@@ -68,7 +68,7 @@ app.get('/api/whiteboard/:id', (req, res) => {
 
 io.on("connection", (socket) => {
   console.log("✅ Socket connected:", socket.id);
-  
+
   // Zmienna lokalna dla socketa - przechowuje ID pokoju, w którym jest użytkownik
   // To jest KLUCZOWE dla poprawnego działania odświeżania
   let currentWhiteboardId = null;
@@ -79,15 +79,15 @@ io.on("connection", (socket) => {
     // 1. Safety check: Jeśli socket był już w innym pokoju (lub tym samym przy szybkim reconnect), usuń go stamtąd.
     // To zapobiega dublowaniu użytkowników ("duchom")
     if (currentWhiteboardId && whiteboards.has(currentWhiteboardId)) {
-       const prevWb = whiteboards.get(currentWhiteboardId);
-       if (prevWb.users.has(socket.id)) {
-           prevWb.users.delete(socket.id);
-           // Powiadom stary pokój, że wyszedłeś
-           socket.to(currentWhiteboardId).emit("user-left", {
-               userId: socket.id,
-               users: Array.from(prevWb.users.values())
-           });
-       }
+      const prevWb = whiteboards.get(currentWhiteboardId);
+      if (prevWb.users.has(socket.id)) {
+        prevWb.users.delete(socket.id);
+        // Powiadom stary pokój, że wyszedłeś
+        socket.to(currentWhiteboardId).emit("user-left", {
+          userId: socket.id,
+          users: Array.from(prevWb.users.values())
+        });
+      }
     }
 
     // 2. Utwórz tablicę jeśli nie istnieje
@@ -109,21 +109,21 @@ io.on("connection", (socket) => {
     // 3. TWORZENIE POPRAWNEGO UŻYTKOWNIKA (FIX WEBRTC)
     // Kopiujemy dane usera, ale USUWAMY jego stare ID z frontendu (user_...)
     const safeUser = { ...user };
-    if (safeUser.id) delete safeUser.id; 
-    
+    if (safeUser.id) delete safeUser.id;
+
     // Nadajemy ID socketa jako jedyne obowiązujące ID
     const userData = {
       ...safeUser,
-      id: socket.id, 
+      id: socket.id,
       position: { x: 0, y: 0 }
     };
 
     // Dodaj użytkownika do mapy
     whiteboard.users.set(socket.id, userData);
-    
+
     // Zapisz ID tablicy w zmiennej lokalnej socketa (dla disconnect)
     currentWhiteboardId = whiteboardId;
-    
+
     // Dołącz do pokoju socket.io
     socket.join(whiteboardId);
 
@@ -306,9 +306,16 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("erase-area", (d) => {
+    // Możemy tu opcjonalnie wyczyścić drawingData na serwerze, 
+    // ale to skomplikowane matematycznie.
+    // Najważniejsze, żeby rozesłać info do innych klientów.
+    broadcast(d.whiteboardId, "erase-area", d);
+  });
+
   // ========== KURSOR I WSKAŹNIK (POINTER) ==========
   socket.on("cursor-move", (d) => broadcast(d.whiteboardId, "cursor-move", d));
-  
+
   // 🔹 NOWE: Obsługa pointera (szlak i kliknięcia) dla innych użytkowników
   socket.on("pointer-move", (d) => broadcast(d.whiteboardId, "pointer-move", d));
   socket.on("pointer-click", (d) => broadcast(d.whiteboardId, "pointer-click", d));
@@ -346,7 +353,7 @@ io.on("connection", (socket) => {
     // Używamy zmiennej currentWhiteboardId, aby szybko znaleźć pokój i usunąć użytkownika
     if (currentWhiteboardId && whiteboards.has(currentWhiteboardId)) {
       const whiteboard = whiteboards.get(currentWhiteboardId);
-      
+
       // 1. Usuń użytkownika z mapy
       whiteboard.users.delete(socket.id);
 
