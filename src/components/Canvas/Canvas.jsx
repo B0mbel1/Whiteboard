@@ -42,15 +42,15 @@ const Canvas = ({
 }) => {
   const [backgroundMode, setBackgroundMode] = useState('grid');
   const [remoteCursors, setRemoteCursors] = useState(new Map());
-  
+
   // Dwa canvasy: tło i rysunek
   const backgroundCanvasRef = useRef(null);
   const drawingCanvasRef = useRef(null);
-  
+
   const containerRef = useRef(null);
   const backgroundContextRef = useRef(null);
   const drawingContextRef = useRef(null);
-  
+
   const [isDrawing, setIsDrawing] = useState(false);
   const currentDrawingRef = useRef(null);
   const [notes, setNotes] = useState(initialNotes || []);
@@ -79,6 +79,10 @@ const Canvas = ({
   // Zaznaczenie
   const [selectionBox, setSelectionBox] = useState(null);
   const [selectionStart, setSelectionStart] = useState(null);
+
+  const [selectionSnapshot, setSelectionSnapshot] = useState(null); // Stores the cut image URL
+  const [isDraggingSelection, setIsDraggingSelection] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
   const ACTION_TYPES = {
     DRAWING: 'drawing',
@@ -265,13 +269,38 @@ const Canvas = ({
     }
   };
 
+  const commitSelection = () => {
+    if (!selectionSnapshot || !selectionBox) return;
+
+    const ctx = drawingContextRef.current;
+    const img = new Image();
+    img.onload = () => {
+      // Restore drawing settings
+      setupDrawingContext();
+      // Draw image at current selection position
+      ctx.drawImage(img, selectionBox.x, selectionBox.y, selectionBox.width, selectionBox.height);
+
+      // Save to history
+      // Note: Ideally, you'd save the 'putImageData' or 'drawImage' action here
+      saveToHistory(ACTION_TYPES.DRAWING, {
+        tool: 'paste', // You might need to handle this in redrawCanvas specifically
+        // Simple fallback: just clear snapshot, we accept it's now rasterized
+      });
+    };
+    img.src = selectionSnapshot;
+
+    // Reset selection state
+    setSelectionSnapshot(null);
+    setSelectionBox(null);
+  };
+
   const redrawCanvas = () => {
     const context = drawingContextRef.current;
     if (!context) return;
-    
+
     // Najpierw wyczyść drawing canvas
     clearDrawingCanvas();
-    
+
     // Narysuj historię
     for (let i = 0; i <= historyRef.current.step; i++) {
       const action = historyRef.current.history[i];
@@ -355,69 +384,69 @@ const Canvas = ({
     const canvas = backgroundCanvasRef.current;
     const context = backgroundContextRef.current;
     if (!canvas || !context) return;
-    
+
     const width = canvas.width;
     const height = canvas.height;
-    
+
     // Wyczyść tło
     context.clearRect(0, 0, width, height);
-    
+
     switch (backgroundMode) {
       case 'white':
         context.fillStyle = 'white';
         context.fillRect(0, 0, width, height);
         break;
-        
+
       case 'grid':
         context.fillStyle = '#f0f0f0';
         context.fillRect(0, 0, width, height);
-        
+
         // Rysuj kratkę
         context.strokeStyle = '#d0d0d0';
         context.lineWidth = 1;
-        
+
         const gridSize = 20;
         context.beginPath();
-        
+
         // Pionowe linie
         for (let x = 0; x <= width; x += gridSize) {
           context.moveTo(x, 0);
           context.lineTo(x, height);
         }
-        
+
         // Poziome linie
         for (let y = 0; y <= height; y += gridSize) {
           context.moveTo(0, y);
           context.lineTo(width, y);
         }
-        
+
         context.stroke();
         break;
-        
+
       case 'lines':
         context.fillStyle = 'white';
         context.fillRect(0, 0, width, height);
-        
+
         // Rysuj linie jak w zeszycie
         context.strokeStyle = '#e0e0e0';
         context.lineWidth = 1;
-        
+
         const lineSpacing = 24;
         context.beginPath();
-        
+
         for (let y = lineSpacing; y < height; y += lineSpacing) {
           context.moveTo(0, y);
           context.lineTo(width, y);
         }
-        
+
         context.stroke();
         break;
-        
+
       case 'black':
         context.fillStyle = 'black';
         context.fillRect(0, 0, width, height);
         break;
-        
+
       default:
         context.fillStyle = 'white';
         context.fillRect(0, 0, width, height);
@@ -428,7 +457,7 @@ const Canvas = ({
   const setupDrawingContext = () => {
     const ctx = drawingContextRef.current;
     if (!ctx) return;
-    
+
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.strokeStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : color;
@@ -441,37 +470,37 @@ const Canvas = ({
     const backgroundCanvas = backgroundCanvasRef.current;
     const drawingCanvas = drawingCanvasRef.current;
     const container = containerRef.current;
-    
+
     if (!backgroundCanvas || !drawingCanvas || !container) return;
-    
+
     const updateCanvasSize = () => {
       const rect = container.getBoundingClientRect();
       const width = rect.width;
       const height = rect.height;
-      
+
       // Ustaw rozmiar dla obu canvasów
       backgroundCanvas.width = width;
       backgroundCanvas.height = height;
       drawingCanvas.width = width;
       drawingCanvas.height = height;
-      
+
       // Inicjalizuj konteksty
       backgroundContextRef.current = backgroundCanvas.getContext('2d');
       drawingContextRef.current = drawingCanvas.getContext('2d');
-      
+
       // Skonfiguruj kontekst rysowania
       setupDrawingContext();
-      
+
       // Narysuj tło
       drawBackground();
-      
+
       // Przerysuj historię na canvasie rysowania
       redrawCanvas();
     };
-    
+
     updateCanvasSize();
     window.addEventListener('resize', updateCanvasSize);
-    
+
     return () => {
       window.removeEventListener('resize', updateCanvasSize);
     };
@@ -580,40 +609,40 @@ const Canvas = ({
     const backgroundCanvas = backgroundCanvasRef.current;
     const drawingCanvas = drawingCanvasRef.current;
     const container = containerRef.current;
-    
+
     if (!backgroundCanvas || !drawingCanvas || !container) return;
-    
+
     const rect = container.getBoundingClientRect();
     const width = rect.width;
     const height = rect.height;
-    
+
     // Zapisz obraz z drawing canvas przed zmianą rozmiaru
     let imageData = null;
     if (drawingCanvas.width > 0 && drawingCanvas.height > 0) {
-      try { 
-        imageData = drawingContextRef.current?.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height); 
+      try {
+        imageData = drawingContextRef.current?.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height);
       }
       catch (e) { console.warn("Nie udało się pobrać danych canvas:", e); }
     }
-    
+
     // Ustaw nowe rozmiary
     backgroundCanvas.width = width;
     backgroundCanvas.height = height;
     drawingCanvas.width = width;
     drawingCanvas.height = height;
-    
+
     // Ponownie zainicjalizuj konteksty
     backgroundContextRef.current = backgroundCanvas.getContext('2d');
     drawingContextRef.current = drawingCanvas.getContext('2d');
-    
+
     // Skonfiguruj kontekst rysowania
     setupDrawingContext();
-    
+
     // Przywróć obraz na drawing canvas
     if (imageData && drawingContextRef.current) {
       drawingContextRef.current.putImageData(imageData, 0, 0);
     }
-    
+
     // Ponownie narysuj tło
     drawBackground();
   };
@@ -628,14 +657,14 @@ const Canvas = ({
     const backgroundCanvas = backgroundCanvasRef.current;
     const drawingCanvas = drawingCanvasRef.current;
     if (!backgroundCanvas || !drawingCanvas) return;
-    
+
     // Inicjalizuj konteksty
     backgroundContextRef.current = backgroundCanvas.getContext('2d');
     drawingContextRef.current = drawingCanvas.getContext('2d');
-    
+
     // Skonfiguruj drawing context
     setupDrawingContext();
-    
+
     updateCanvasSize();
     window.addEventListener('resize', updateCanvasSize);
     return () => window.removeEventListener('resize', updateCanvasSize);
@@ -659,128 +688,138 @@ const Canvas = ({
   }, [socket]);
 
   const startDrawing = ({ nativeEvent }) => {
-    // Sprawdzamy, czy wciśnięty przycisk to lewy (0)
     if (nativeEvent.button !== 0) return;
+    const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
 
+    // --- HANDLE SELECTION TOOL ---
     if (tool === 'select') {
-      const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
+      // 1. Check if we are clicking INSIDE an existing active selection to Move it
+      if (selectionBox &&
+        x >= selectionBox.x && x <= selectionBox.x + selectionBox.width &&
+        y >= selectionBox.y && y <= selectionBox.y + selectionBox.height) {
+
+        setIsDraggingSelection(true);
+        setDragOffset({
+          x: x - selectionBox.x,
+          y: y - selectionBox.y
+        });
+        return;
+      }
+
+      // 2. If we have an active snapshot but clicked OUTSIDE, commit (paste) it first
+      if (selectionSnapshot) {
+        commitSelection();
+        // Don't return, allow falling through to start a NEW selection below
+      }
+      // If we just had a box but no snapshot (rare case), clear it
+      else if (selectionBox) {
+        setSelectionBox(null);
+      }
+
+      // 3. Start a NEW Selection
       setSelectionStart({ x, y });
       setSelectionBox({ x, y, width: 0, height: 0 });
       setIsDrawing(true);
       return;
     }
+    // -----------------------------
 
     if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
+    // ... rest of your existing drawing logic ...
     if (setShowColorPicker) setShowColorPicker(false);
-    const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
     const ctx = drawingContextRef.current;
-    
-    // 🔹 DODANE: Upewnij się, że kontekst jest poprawnie skonfigurowany
     setupDrawingContext();
-    
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.lineTo(x, y);
     ctx.stroke();
-    
     setIsDrawing(true);
     currentDrawingRef.current = { tool, color, size, points: [{ x, y }, { x, y }] };
   };
 
+
   const stopDrawing = () => {
-    if (!isDrawing) return;
+    // --- OBSŁUGA NARZĘDZIA SELECT (ZAZNACZANIE) ---
+    if (tool === 'select') {
+      setIsDrawing(false);
 
-    if (tool === 'select' && selectionBox) {
-      const { x, y, width, height } = selectionBox;
+      // 1. Jeśli właśnie przesuwaliśmy "wycięty" kawałek -> po prostu przestań przesuwać
+      if (isDraggingSelection) {
+        setIsDraggingSelection(false);
+        return;
+      }
 
-      if (width > 5 && height > 5) { // Ignoruj mikroskopijne zaznaczenia
+      // 2. Jeśli właśnie skończyliśmy RYSOWAĆ ramkę zaznaczenia -> WYKONAJ "WITIĘCIE" (LIFT)
+      if (selectionBox) {
+        const { x, y, width, height } = selectionBox;
 
-        // 1. Usuń obiekty DOM (Notes, Shapes, Text, etc.)
-        const checkCollision = (objX, objY, objW, objH) => {
-          // Sprawdzenie czy obiekt koliduje/jest wewnątrz zaznaczenia
-          return (
-            objX < x + width &&
-            objX + objW > x &&
-            objY < y + height &&
-            objY + objH > y
-          );
-        };
+        // Ignoruj bardzo małe zaznaczenia (przypadkowe kliknięcia)
+        if (width > 5 && height > 5) {
 
-        // Batch delete lists
-        const notesToDelete = [];
-        const shapesToDelete = [];
-        const emojisToDelete = [];
-        const gifsToDelete = [];
-        const textToDelete = [];
+          // Jeśli nie mamy jeszcze "snapshota" (wyciętego obrazka), to go tworzymy
+          if (!selectionSnapshot) {
+            const ctx = drawingContextRef.current;
 
-        // Notatki
-        notes.forEach(note => {
-          if (checkCollision(note.x, note.y, note.width, note.height)) {
-            removeNote(note.id);
+            // A. Pobierz dane pikseli z zaznaczonego obszaru
+            const imageData = ctx.getImageData(x, y, width, height);
+
+            // B. Wyczyść ten obszar na oryginalnym canvasie (efekt "nożyczek")
+            ctx.clearRect(x, y, width, height);
+
+            // C. Skonwertuj piksele na obrazek (DataURL), aby wyświetlić go w ruchomym divie
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = width;
+            tempCanvas.height = height;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.putImageData(imageData, 0, 0);
+
+            const capturedImage = tempCanvas.toDataURL();
+            setSelectionSnapshot(capturedImage); // Zapisz obrazek do stanu
+
+            // D. Wyślij do innych użytkowników info, że ten kawałek zniknął (zrobiła się dziura)
+            if (socket && whiteboardId) {
+              socket.emit('erase-area', {
+                whiteboardId,
+                x, y, width, height
+              });
+            }
+
+            // Uwaga: Nie usuwamy tutaj notatek/kształtów DOM, 
+            // Paint zazwyczaj przenosi tylko piksele (rastry). 
+            // Jeśli chcesz też przenosić obiekty, logika musiałaby być bardziej złożona.
           }
-        });
-
-        // Kształty
-        shapes.forEach(shape => {
-          // Domyślne wymiary jeśli brak
-          const w = shape.width || 100;
-          const h = shape.height || 100;
-          if (checkCollision(shape.x, shape.y, w, h)) {
-            removeShape(shape.id);
+        } else {
+          // Jeśli zaznaczenie było za małe i nie trzymamy żadnego obrazka -> reset
+          if (!selectionSnapshot) {
+            setSelectionBox(null);
           }
-        });
-
-        // Teksty
-        textBoxes.forEach(tb => {
-          if (checkCollision(tb.x, tb.y, tb.width, tb.height)) {
-            removeTextBox(tb.id);
-          }
-        });
-
-        // Emojis
-        emojis.forEach(emoji => {
-          // Przyjmujemy ok. 48px dla emoji
-          if (checkCollision(emoji.x, emoji.y, 48, 48)) {
-            removeEmoji(emoji.id);
-          }
-        });
-
-        // Gify
-        gifs.forEach(gif => {
-          if (checkCollision(gif.x, gif.y, gif.width, gif.width)) { // Gify często kwadratowe
-            removeGif(gif.id);
-          }
-        });
-
-        // 2. Wyczyść rysunki na Canvas rysowania (Piksele)
-        if (drawingContextRef.current) {
-          drawingContextRef.current.clearRect(x, y, width, height);
-        }
-
-        // 3. Wyślij informację o wyczyszczeniu obszaru do innych
-        if (socket && whiteboardId) {
-          socket.emit('erase-area', {
-            whiteboardId,
-            x, y, width, height
-          });
         }
       }
 
-      // Reset
-      setSelectionBox(null);
       setSelectionStart(null);
+      return;
+    }
+    // ----------------------------------------------
+
+    // --- OBSŁUGA STANDARDOWEGO RYSOWANIA (OŁÓWEK, PĘDZEL, GUMKA) ---
+    if (!isDrawing) return;
+
+    if (!['pencil', 'brush', 'eraser'].includes(tool)) {
       setIsDrawing(false);
       return;
     }
 
-    if (!['pencil', 'brush', 'eraser'].includes(tool)) { setIsDrawing(false); return; }
-    
-    // 🔹 DODANE: Upewnij się, że kontekst jest poprawnie skonfigurowany
+    // Upewnij się, że kontekst jest poprawny
     setupDrawingContext();
-    
-    drawingContextRef.current.closePath();
+
+    // Zamknij ścieżkę
+    if (drawingContextRef.current) {
+      drawingContextRef.current.closePath();
+    }
+
     setIsDrawing(false);
-    
+
+    // Zapisz do historii
     if (currentDrawingRef.current && onDrawing) {
       onDrawing(currentDrawingRef.current);
       saveToHistory(ACTION_TYPES.DRAWING, currentDrawingRef.current);
@@ -796,10 +835,10 @@ const Canvas = ({
       const points = currentDrawingRef.current.points;
       const previousPoint = points[points.length - 1];
       points.push({ x, y });
-      
+
       // 🔹 DODANE: Upewnij się, że kontekst jest poprawnie skonfigurowany
       setupDrawingContext();
-      
+
       drawPathSegment(drawingContextRef.current, tool, color, size, previousPoint, { x, y });
     }
   };
@@ -911,21 +950,103 @@ const Canvas = ({
     if (socket) socket.emit('text-update', { whiteboardId, id, ...newProps });
   };
 
+  // Obsługa klawiszy (Delete, Backspace, Ctrl+Z etc.)
   useEffect(() => {
     const handleKeyDown = (e) => {
       const activeElement = document.activeElement;
+      // Ignoruj jeśli użytkownik pisze w polu tekstowym (np. wewnątrz notatki)
       if (activeElement && (activeElement.tagName.toLowerCase() === 'input' || activeElement.tagName.toLowerCase() === 'textarea')) return;
+
       if (e.key === 'Backspace' || e.key === 'Delete') {
+
+        // --- 1. OBSŁUGA NARZĘDZIA SELECT (USUWANIE OBSZAROWE) ---
+        if (selectionBox) {
+          e.preventDefault();
+
+          // A. Usuń "wycięte" piksele (snapshot)
+          setSelectionSnapshot(null);
+
+          // B. Funkcja pomocnicza: Sprawdź czy obiekt wchodzi w obszar zaznaczenia
+          const isInsideSelection = (objX, objY, objW, objH) => {
+            return (
+              objX < selectionBox.x + selectionBox.width &&
+              objX + objW > selectionBox.x &&
+              objY < selectionBox.y + selectionBox.height &&
+              objY + objH > selectionBox.y
+            );
+          };
+
+          // C. Przejdź przez wszystkie listy obiektów i usuń te, które są w środku
+
+          // Notatki
+          notes.forEach(note => {
+            if (isInsideSelection(note.x, note.y, note.width, note.height)) {
+              removeNote(note.id);
+            }
+          });
+
+          // Pola tekstowe
+          textBoxes.forEach(tb => {
+            if (isInsideSelection(tb.x, tb.y, tb.width, tb.height)) {
+              removeTextBox(tb.id);
+            }
+          });
+
+          // Emoji (zakładamy stały rozmiar ok. 48px jeśli nie podany)
+          emojis.forEach(emoji => {
+            const size = emoji.size || 48;
+            if (isInsideSelection(emoji.x, emoji.y, size, size)) {
+              removeEmoji(emoji.id);
+            }
+          });
+
+          // Gify
+          gifs.forEach(gif => {
+            // Gify są często kwadratowe lub o szerokości zdefiniowanej
+            const w = gif.width || 150;
+            if (isInsideSelection(gif.x, gif.y, w, w)) {
+              removeGif(gif.id);
+            }
+          });
+
+          // Kształty
+          shapes.forEach(shape => {
+            const w = shape.width || 100;
+            const h = shape.height || 100;
+            // Dla strzałek wysokość może być 0, więc dajemy min 10px dla łatwiejszego łapania
+            if (isInsideSelection(shape.x, shape.y, w, Math.max(h, 10))) {
+              removeShape(shape.id);
+            }
+          });
+
+          // Zakończ zaznaczanie
+          setSelectionBox(null);
+          return;
+        }
+        // -------------------------------------------------------
+
+        // --- 2. USUWANIE POJEDYNCZYCH ELEMENTÓW (przez kliknięcie) ---
         if (selectedNoteId) removeNote(selectedNoteId);
         if (selectedTextBoxId) removeTextBox(selectedTextBoxId);
         if (selectedEmojiId) removeEmoji(selectedEmojiId);
         if (selectedGifId) removeGif(selectedGifId);
         if (selectedShapeId) removeShape(selectedShapeId);
       }
+
+      // Undo/Redo
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
     };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedNoteId, selectedTextBoxId, selectedEmojiId, selectedGifId, selectedShapeId]);
+  }, [
+    // Lista zależności musi być pełna, aby funkcja widziała aktualny stan tablic
+    notes, textBoxes, emojis, gifs, shapes,
+    selectedNoteId, selectedTextBoxId, selectedEmojiId, selectedGifId, selectedShapeId,
+    selectionBox, selectionSnapshot,
+    undo, redo
+  ]);
 
   useEffect(() => {
     if (socket) {
@@ -988,19 +1109,32 @@ const Canvas = ({
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
     if (onCursorMove) onCursorMove({ x, y });
 
-    if (isDrawing && tool === 'select' && selectionStart) {
-      const newWidth = x - selectionStart.x;
-      const newHeight = y - selectionStart.y;
+    // --- HANDLE SELECTION DRAG/RESIZE ---
+    if (tool === 'select') {
+      // Case A: Moving the captured selection
+      if (isDraggingSelection && selectionBox) {
+        setSelectionBox({
+          ...selectionBox,
+          x: x - dragOffset.x,
+          y: y - dragOffset.y
+        });
+        return;
+      }
 
-      // Obliczamy znormalizowane koordynaty (obsługa ciągnięcia w lewo/górę)
-      setSelectionBox({
-        x: newWidth > 0 ? selectionStart.x : x,
-        y: newHeight > 0 ? selectionStart.y : y,
-        width: Math.abs(newWidth),
-        height: Math.abs(newHeight)
-      });
+      // Case B: Creating the selection box (resizing)
+      if (isDrawing && selectionStart) {
+        const newWidth = x - selectionStart.x;
+        const newHeight = y - selectionStart.y;
+        setSelectionBox({
+          x: newWidth > 0 ? selectionStart.x : x,
+          y: newHeight > 0 ? selectionStart.y : y,
+          width: Math.abs(newWidth),
+          height: Math.abs(newHeight)
+        });
+      }
       return;
     }
+    // ------------------------------------
 
     if (isDrawing) draw(e);
   };
@@ -1064,167 +1198,179 @@ const Canvas = ({
 
   return (
     <div className="canvas-container" ref={containerRef}>
-      <div className={`canvas-area background-${backgroundMode}`} onClick={handleCanvasClick}>
-        {/* Tło (background canvas) */}
-        <canvas
-          ref={backgroundCanvasRef}
-          className="background-canvas"
+      <div
+      className={`canvas-area background-${backgroundMode} ${tool === 'select' ? 'is-selecting' : ''}`}
+      onClick={handleCanvasClick}>
+      <canvas
+        ref={backgroundCanvasRef}
+        className="background-canvas"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          zIndex: 1,
+          pointerEvents: 'none'
+        }}
+      />
+
+      {/* Główny canvas do rysowania */}
+      <canvas
+        ref={drawingCanvasRef}
+        className="drawing-canvas"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          zIndex: 2,
+          backgroundColor: 'transparent'
+        }}
+        onMouseDown={startDrawing}
+        onMouseUp={stopDrawing}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+        onMouseEnter={handleMouseEnter}
+      />
+
+      {/* Renderowanie prostokąta zaznaczania */}
+      {selectionBox && (
+        <div
+          className="selection-overlay"
           style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            zIndex: 1,
-            pointerEvents: 'none'
+            left: selectionBox.x,
+            top: selectionBox.y,
+            width: selectionBox.width,
+            height: selectionBox.height,
+            // Add a border if we have a snapshot to make it look like a selected object
+            border: '1px dashed #3498db'
           }}
-        />
-        
-        {/* Główny canvas do rysowania */}
-        <canvas
-          ref={drawingCanvasRef}
-          className="drawing-canvas"
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            zIndex: 2,
-            backgroundColor: 'transparent'
-          }}
-          onMouseDown={startDrawing}
-          onMouseUp={stopDrawing}
-          onMouseMove={handleMouseMove}
-          onMouseLeave={handleMouseLeave}
-          onMouseEnter={handleMouseEnter}
-        />
-        
-        {/* Renderowanie prostokąta zaznaczania */}
-        {selectionBox && (
-          <div
-            className="selection-overlay"
-            style={{
-              left: selectionBox.x,
-              top: selectionBox.y,
-              width: selectionBox.width,
-              height: selectionBox.height
-            }}
-          />
-        )}
-
-        {notes.map(note => (
-          <Note
-            key={note.id}
-            id={note.id}
-            x={note.x}
-            y={note.y}
-            width={note.width}
-            height={note.height}
-            initialText={note.text}
-            onUpdate={handleNoteUpdate}
-            onRemove={handleNoteDelete}
-            selectedNoteId={selectedNoteId}
-            setSelectedNoteId={setSelectedNoteId}
-            socket={socket}
-          />
-        ))}
-        {textBoxes.map(textBox => (
-          <Text
-            key={textBox.id}
-            id={textBox.id}
-            x={textBox.x}
-            y={textBox.y}
-            width={textBox.width}
-            height={textBox.height}
-            text={textBox.text}
-            onUpdate={handleTextUpdate}
-            onRemove={removeTextBox}
-            selected={selectedTextBoxId === textBox.id}
-            setSelected={setSelectedTextBoxId}
-            socket={socket}
-          />
-        ))}
-        {emojis.map(emojiData => (
-          <Emoji
-            key={emojiData.id}
-            {...emojiData}
-            selected={selectedEmojiId === emojiData.id}
-            onSelect={setSelectedEmojiId}
-            onRemove={removeEmoji}
-            onUpdate={handleEmojiUpdate}
-          />
-        ))}
-        {gifs.map(gif => (
-          <Gif
-            key={gif.id}
-            {...gif}
-            selected={selectedGifId === gif.id}
-            onSelect={setSelectedGifId}
-            onUpdate={handleGifUpdate}
-          />
-        ))}
-        {shapes.map(shape => (
-          <Shape
-            key={shape.id}
-            {...shape}
-            selected={selectedShapeId === shape.id}
-            onSelect={setSelectedShapeId}
-            onRemove={removeShape}
-            onUpdate={handleShapeUpdate}
-          />
-        ))}
-
-        {/* FIX: Dodano klucz fall-back dla kursorów */}
-        {remoteCursorsArray.map((cursor, index) => (
-          cursor.position && (
-            <div
-              key={cursor.userId || `cursor_${index}`}
-              className="remote-cursor"
-              style={{
-                position: 'absolute',
-                left: cursor.position.x,
-                top: cursor.position.y,
-                pointerEvents: 'none',
-                zIndex: 1000,
-                transform: 'translate(-50%, -50%)',
-                transition: 'left 0.1s linear, top 0.1s linear'
-              }}
-            >
-              <div style={{
-                width: '8px',
-                height: '8px',
-                backgroundColor: cursor.user?.color || '#ff4444',
-                borderRadius: '50%',
-                border: '2px solid white',
-                boxShadow: '0 0 4px rgba(0,0,0,0.5)'
-              }} />
-              <div style={{
-                position: 'absolute',
-                top: '15px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                fontSize: '12px',
-                background: cursor.user?.color || '#ff4444',
-                color: 'white',
-                padding: '3px 8px',
-                borderRadius: '10px',
-                whiteSpace: 'nowrap',
-                fontWeight: 'bold',
-                border: '1px solid white',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
-              }}>
-                {cursor.user?.name || 'Unknown'}
-              </div>
-            </div>
-          )
-        ))}
-
-        <button
-          className="background-toggle"
-          onClick={toggleBackground}
-          title={`Tło: ${backgroundModes.find(mode => mode.id === backgroundMode)?.name}`}
         >
-          {getCurrentBackgroundIcon()}
-        </button>
-      </div>
+          {selectionSnapshot && (
+            <img
+              src={selectionSnapshot}
+              alt="Selected area"
+              className="selection-image"
+              draggable={false} // Prevent browser native drag
+            />
+          )}
+        </div>
+      )}
+
+      {notes.map(note => (
+        <Note
+          key={note.id}
+          id={note.id}
+          x={note.x}
+          y={note.y}
+          width={note.width}
+          height={note.height}
+          initialText={note.text}
+          onUpdate={handleNoteUpdate}
+          onRemove={handleNoteDelete}
+          selectedNoteId={selectedNoteId}
+          setSelectedNoteId={setSelectedNoteId}
+          socket={socket}
+        />
+      ))}
+      {textBoxes.map(textBox => (
+        <Text
+          key={textBox.id}
+          id={textBox.id}
+          x={textBox.x}
+          y={textBox.y}
+          width={textBox.width}
+          height={textBox.height}
+          text={textBox.text}
+          onUpdate={handleTextUpdate}
+          onRemove={removeTextBox}
+          selected={selectedTextBoxId === textBox.id}
+          setSelected={setSelectedTextBoxId}
+          socket={socket}
+        />
+      ))}
+      {emojis.map(emojiData => (
+        <Emoji
+          key={emojiData.id}
+          {...emojiData}
+          selected={selectedEmojiId === emojiData.id}
+          onSelect={setSelectedEmojiId}
+          onRemove={removeEmoji}
+          onUpdate={handleEmojiUpdate}
+        />
+      ))}
+      {gifs.map(gif => (
+        <Gif
+          key={gif.id}
+          {...gif}
+          selected={selectedGifId === gif.id}
+          onSelect={setSelectedGifId}
+          onUpdate={handleGifUpdate}
+        />
+      ))}
+      {shapes.map(shape => (
+        <Shape
+          key={shape.id}
+          {...shape}
+          selected={selectedShapeId === shape.id}
+          onSelect={setSelectedShapeId}
+          onRemove={removeShape}
+          onUpdate={handleShapeUpdate}
+        />
+      ))}
+
+      {/* FIX: Dodano klucz fall-back dla kursorów */}
+      {remoteCursorsArray.map((cursor, index) => (
+        cursor.position && (
+          <div
+            key={cursor.userId || `cursor_${index}`}
+            className="remote-cursor"
+            style={{
+              position: 'absolute',
+              left: cursor.position.x,
+              top: cursor.position.y,
+              pointerEvents: 'none',
+              zIndex: 1000,
+              transform: 'translate(-50%, -50%)',
+              transition: 'left 0.1s linear, top 0.1s linear'
+            }}
+          >
+            <div style={{
+              width: '8px',
+              height: '8px',
+              backgroundColor: cursor.user?.color || '#ff4444',
+              borderRadius: '50%',
+              border: '2px solid white',
+              boxShadow: '0 0 4px rgba(0,0,0,0.5)'
+            }} />
+            <div style={{
+              position: 'absolute',
+              top: '15px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              fontSize: '12px',
+              background: cursor.user?.color || '#ff4444',
+              color: 'white',
+              padding: '3px 8px',
+              borderRadius: '10px',
+              whiteSpace: 'nowrap',
+              fontWeight: 'bold',
+              border: '1px solid white',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
+            }}>
+              {cursor.user?.name || 'Unknown'}
+            </div>
+          </div>
+        )
+      ))}
+
+      <button
+        className="background-toggle"
+        onClick={toggleBackground}
+        title={`Tło: ${backgroundModes.find(mode => mode.id === backgroundMode)?.name}`}
+      >
+        {getCurrentBackgroundIcon()}
+      </button>
     </div>
+    </div >
   );
 };
 
