@@ -96,7 +96,8 @@ const Canvas = ({
     GIF_DELETE: 'gif_delete',
     SHAPE_CREATE: 'shape_create',
     SHAPE_DELETE: 'shape_delete',
-    CLEAR_AREA: 'clear_area'
+    CLEAR_AREA: 'clear_area',
+    MASS_DELETE: 'mass_delete' // <--- DODAJ TO
   };
 
   useEffect(() => { setShapes(initialShapes || []); }, [initialShapes]);
@@ -185,6 +186,17 @@ const Canvas = ({
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
         break;
+      case ACTION_TYPES.MASS_DELETE:
+        if (action.data.notes) setNotes(prev => [...prev, ...action.data.notes]);
+        if (action.data.textBoxes) setTextBoxes(prev => [...prev, ...action.data.textBoxes]);
+        if (action.data.emojis) setEmojis(prev => [...prev, ...action.data.emojis]);
+        if (action.data.gifs) setGifs(prev => [...prev, ...action.data.gifs]);
+        if (action.data.shapes) setShapes(prev => [...prev, ...action.data.shapes]);
+        redrawCanvas();
+        historyRef.current.step = currentStep - 1;
+        setHistoryStep(currentStep - 1);
+        break;
+      // ----------------------------------
       default:
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
@@ -260,6 +272,29 @@ const Canvas = ({
       case ACTION_TYPES.SHAPE_DELETE:
         setShapes(prev => prev.filter(s => s.id !== action.data.shape.id));
         if (onShapeDelete) onShapeDelete(action.data.shape.id);
+        historyRef.current.step = nextStep;
+        setHistoryStep(nextStep);
+        break;
+
+      case ACTION_TYPES.MASS_DELETE:
+        // Ponownie usuwamy elementy
+        const idsToRemove = {
+          notes: action.data.notes?.map(x => x.id) || [],
+          textBoxes: action.data.textBoxes?.map(x => x.id) || [],
+          emojis: action.data.emojis?.map(x => x.id) || [],
+          gifs: action.data.gifs?.map(x => x.id) || [],
+          shapes: action.data.shapes?.map(x => x.id) || []
+        };
+
+        if (idsToRemove.notes.length) setNotes(prev => prev.filter(x => !idsToRemove.notes.includes(x.id)));
+        if (idsToRemove.textBoxes.length) setTextBoxes(prev => prev.filter(x => !idsToRemove.textBoxes.includes(x.id)));
+        if (idsToRemove.emojis.length) setEmojis(prev => prev.filter(x => !idsToRemove.emojis.includes(x.id)));
+        if (idsToRemove.gifs.length) setGifs(prev => prev.filter(x => !idsToRemove.gifs.includes(x.id)));
+        if (idsToRemove.shapes.length) setShapes(prev => prev.filter(x => !idsToRemove.shapes.includes(x.id)));
+
+        // Dla rysunków nie musimy nic robić, bo stan selectionSnapshot został wyczyszczony przy pierwotnej akcji
+        redrawCanvas();
+
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
         break;
@@ -983,10 +1018,7 @@ const Canvas = ({
         if (selectionBox) {
           e.preventDefault();
 
-          // A. Usuń "wycięte" piksele (snapshot)
-          setSelectionSnapshot(null);
-
-          // B. Funkcja pomocnicza: Sprawdź czy obiekt wchodzi w obszar zaznaczenia
+          // Definicja funkcji sprawdzającej kolizję
           const isInsideSelection = (objX, objY, objW, objH) => {
             return (
               objX < selectionBox.x + selectionBox.width &&
@@ -996,50 +1028,64 @@ const Canvas = ({
             );
           };
 
-          // C. Przejdź przez wszystkie listy obiektów i usuń te, które są w środku
+          // A. ZNAJDŹ WSZYSTKIE ELEMENTY DO USUNIĘCIA
+          const notesToDelete = notes.filter(n => isInsideSelection(n.x, n.y, n.width, n.height));
+          const textsToDelete = textBoxes.filter(t => isInsideSelection(t.x, t.y, t.width, t.height));
+          const emojisToDelete = emojis.filter(e => isInsideSelection(e.x, e.y, e.size || 48, e.size || 48));
+          const gifsToDelete = gifs.filter(g => isInsideSelection(g.x, g.y, g.width || 150, g.width || 150));
+          const shapesToDelete = shapes.filter(s => isInsideSelection(s.x, s.y, s.width || 100, Math.max(s.height || 100, 10)));
 
-          // Notatki
-          notes.forEach(note => {
-            if (isInsideSelection(note.x, note.y, note.width, note.height)) {
-              removeNote(note.id);
-            }
-          });
+          // B. ZAPISZ DO HISTORII JAKO JEDNA AKCJA
+          // Zapisujemy tylko jeśli faktycznie coś usuwamy (obiekty LUB wycięty rysunek)
+          if (notesToDelete.length > 0 || textsToDelete.length > 0 ||
+            emojisToDelete.length > 0 || gifsToDelete.length > 0 ||
+            shapesToDelete.length > 0 || selectionSnapshot) {
 
-          // Pola tekstowe
-          textBoxes.forEach(tb => {
-            if (isInsideSelection(tb.x, tb.y, tb.width, tb.height)) {
-              removeTextBox(tb.id);
-            }
-          });
+            saveToHistory(ACTION_TYPES.MASS_DELETE, {
+              notes: notesToDelete,
+              textBoxes: textsToDelete,
+              emojis: emojisToDelete,
+              gifs: gifsToDelete,
+              shapes: shapesToDelete,
+              // Zapisujemy fakt, że usunięto snapshot, chociaż undo po prostu przerysuje canvas
+              wasSnapshotDeleted: !!selectionSnapshot
+            });
+          }
 
-          // Emoji (zakładamy stały rozmiar ok. 48px jeśli nie podany)
-          emojis.forEach(emoji => {
-            const size = emoji.size || 48;
-            if (isInsideSelection(emoji.x, emoji.y, size, size)) {
-              removeEmoji(emoji.id);
-            }
-          });
+          // C. WYKONAJ USUWANIE ZE STANU (SOCKET + LOKALNIE)
 
-          // Gify
-          gifs.forEach(gif => {
-            // Gify są często kwadratowe lub o szerokości zdefiniowanej
-            const w = gif.width || 150;
-            if (isInsideSelection(gif.x, gif.y, w, w)) {
-              removeGif(gif.id);
-            }
-          });
+          // Usuwanie notatek
+          if (notesToDelete.length) {
+            setNotes(prev => prev.filter(n => !notesToDelete.some(del => del.id === n.id)));
+            notesToDelete.forEach(n => socket && socket.emit('note-delete', { whiteboardId, id: n.id }));
+          }
 
-          // Kształty
-          shapes.forEach(shape => {
-            const w = shape.width || 100;
-            const h = shape.height || 100;
-            // Dla strzałek wysokość może być 0, więc dajemy min 10px dla łatwiejszego łapania
-            if (isInsideSelection(shape.x, shape.y, w, Math.max(h, 10))) {
-              removeShape(shape.id);
-            }
-          });
+          // Usuwanie tekstów
+          if (textsToDelete.length) {
+            setTextBoxes(prev => prev.filter(t => !textsToDelete.some(del => del.id === t.id)));
+            textsToDelete.forEach(t => socket && socket.emit('text-delete', { whiteboardId, id: t.id }));
+          }
 
-          // Zakończ zaznaczanie
+          // Usuwanie emoji
+          if (emojisToDelete.length) {
+            setEmojis(prev => prev.filter(e => !emojisToDelete.some(del => del.id === e.id)));
+            emojisToDelete.forEach(e => socket && socket.emit('emoji-delete', { whiteboardId, id: e.id }));
+          }
+
+          // Usuwanie gifów
+          if (gifsToDelete.length) {
+            setGifs(prev => prev.filter(g => !gifsToDelete.some(del => del.id === g.id)));
+            gifsToDelete.forEach(g => socket && socket.emit('gif-delete', { whiteboardId, id: g.id }));
+          }
+
+          // Usuwanie kształtów
+          if (shapesToDelete.length) {
+            setShapes(prev => prev.filter(s => !shapesToDelete.some(del => del.id === s.id)));
+            shapesToDelete.forEach(s => socket && socket.emit('shape-delete', { whiteboardId, id: s.id }));
+          }
+
+          // D. CZYSZCZENIE ZAZNACZENIA I SNAPSHOTA
+          setSelectionSnapshot(null);
           setSelectionBox(null);
           return;
         }
