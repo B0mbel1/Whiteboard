@@ -150,3 +150,67 @@
   pointer-events: none; /* Kliknięcia przechodzą przez niego */
   z-index: 1000;
 }
+.background-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none; /* Kliknięcia przechodzą przez tło */
+}
+.drawing-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  background-color: transparent !important;
+  pointer-events: auto;
+}
+.canvas-area.background-white,
+.canvas-area.background-grid,
+.canvas-area.background-lines,
+.canvas-area.background-black {
+  background: transparent !important;
+}
+.background-toggle {
+  position: absolute;
+  top: 20px;
+  left: 150px;
+  z-index: 30;
+  width: 50px;
+  height: 50px;
+  border: 2px solid #3498db;
+  background: white;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
+}
+
+.toolbar.collapsed~.canvas-container .background-toggle {
+  left: 20px;
+}
+
+.background-toggle:hover {
+  background: #3498db;
+  color: white;
+  transform: scale(1.1);
+}
+
+.background-toggle:active {
+  transform: scale(0.95);
+}
+.selection-overlay {
+  position: absolute;
+  border: 2px dashed #3498db;
+  background-color: rgba(52, 152, 219, 0.1);
+  pointer-events: none;
+  z-index: 1000;
+}

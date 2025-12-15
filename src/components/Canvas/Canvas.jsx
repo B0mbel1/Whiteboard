@@ -42,9 +42,15 @@ const Canvas = ({
 }) => {
   const [backgroundMode, setBackgroundMode] = useState('grid');
   const [remoteCursors, setRemoteCursors] = useState(new Map());
-  const canvasRef = useRef(null);
+  
+  // Dwa canvasy: tło i rysunek
+  const backgroundCanvasRef = useRef(null);
+  const drawingCanvasRef = useRef(null);
+  
   const containerRef = useRef(null);
-  const contextRef = useRef(null);
+  const backgroundContextRef = useRef(null);
+  const drawingContextRef = useRef(null);
+  
   const [isDrawing, setIsDrawing] = useState(false);
   const currentDrawingRef = useRef(null);
   const [notes, setNotes] = useState(initialNotes || []);
@@ -70,10 +76,9 @@ const Canvas = ({
   const [shapes, setShapes] = useState(initialShapes || []);
   const [selectedShapeId, setSelectedShapeId] = useState(null);
 
-  //Zaznaczenie
-  // 🔹 DODANE: Stan dla zaznaczania obszaru
-  const [selectionBox, setSelectionBox] = useState(null); // { x, y, width, height }
-  const [selectionStart, setSelectionStart] = useState(null); // { x, y }
+  // Zaznaczenie
+  const [selectionBox, setSelectionBox] = useState(null);
+  const [selectionStart, setSelectionStart] = useState(null);
 
   const ACTION_TYPES = {
     DRAWING: 'drawing',
@@ -87,7 +92,7 @@ const Canvas = ({
     GIF_DELETE: 'gif_delete',
     SHAPE_CREATE: 'shape_create',
     SHAPE_DELETE: 'shape_delete',
-    CLEAR_AREA: 'clear_area' // Opcjonalne: do historii
+    CLEAR_AREA: 'clear_area'
   };
 
   useEffect(() => { setShapes(initialShapes || []); }, [initialShapes]);
@@ -113,7 +118,7 @@ const Canvas = ({
       case ACTION_TYPES.DRAWING:
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
-        clearCanvas();
+        clearDrawingCanvas();
         redrawCanvas();
         break;
       case ACTION_TYPES.NOTE_CREATE:
@@ -191,7 +196,7 @@ const Canvas = ({
       case ACTION_TYPES.DRAWING:
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
-        clearCanvas();
+        clearDrawingCanvas();
         redrawCanvas();
         break;
       case ACTION_TYPES.NOTE_CREATE:
@@ -261,8 +266,13 @@ const Canvas = ({
   };
 
   const redrawCanvas = () => {
-    const context = contextRef.current;
+    const context = drawingContextRef.current;
     if (!context) return;
+    
+    // Najpierw wyczyść drawing canvas
+    clearDrawingCanvas();
+    
+    // Narysuj historię
     for (let i = 0; i <= historyRef.current.step; i++) {
       const action = historyRef.current.history[i];
       if (action.type === ACTION_TYPES.DRAWING && action.data && action.data.points && action.data.points.length > 1) {
@@ -340,19 +350,144 @@ const Canvas = ({
     { id: 'black', name: 'Czarne tło', icon: '🌑' },
   ];
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const container = canvas.parentElement;
-    canvas.width = container.clientWidth;
-    canvas.height = container.clientHeight;
-    const context = canvas.getContext('2d');
-    context.lineCap = 'round';
-    context.strokeStyle = color;
-    context.lineWidth = size;
-    contextRef.current = context;
-    clearCanvas();
+  // Funkcja do rysowania tła
+  const drawBackground = () => {
+    const canvas = backgroundCanvasRef.current;
+    const context = backgroundContextRef.current;
+    if (!canvas || !context) return;
+    
+    const width = canvas.width;
+    const height = canvas.height;
+    
+    // Wyczyść tło
+    context.clearRect(0, 0, width, height);
+    
+    switch (backgroundMode) {
+      case 'white':
+        context.fillStyle = 'white';
+        context.fillRect(0, 0, width, height);
+        break;
+        
+      case 'grid':
+        context.fillStyle = '#f0f0f0';
+        context.fillRect(0, 0, width, height);
+        
+        // Rysuj kratkę
+        context.strokeStyle = '#d0d0d0';
+        context.lineWidth = 1;
+        
+        const gridSize = 20;
+        context.beginPath();
+        
+        // Pionowe linie
+        for (let x = 0; x <= width; x += gridSize) {
+          context.moveTo(x, 0);
+          context.lineTo(x, height);
+        }
+        
+        // Poziome linie
+        for (let y = 0; y <= height; y += gridSize) {
+          context.moveTo(0, y);
+          context.lineTo(width, y);
+        }
+        
+        context.stroke();
+        break;
+        
+      case 'lines':
+        context.fillStyle = 'white';
+        context.fillRect(0, 0, width, height);
+        
+        // Rysuj linie jak w zeszycie
+        context.strokeStyle = '#e0e0e0';
+        context.lineWidth = 1;
+        
+        const lineSpacing = 24;
+        context.beginPath();
+        
+        for (let y = lineSpacing; y < height; y += lineSpacing) {
+          context.moveTo(0, y);
+          context.lineTo(width, y);
+        }
+        
+        context.stroke();
+        break;
+        
+      case 'black':
+        context.fillStyle = 'black';
+        context.fillRect(0, 0, width, height);
+        break;
+        
+      default:
+        context.fillStyle = 'white';
+        context.fillRect(0, 0, width, height);
+    }
+  };
 
+  // Funkcja do konfiguracji kontekstu rysowania
+  const setupDrawingContext = () => {
+    const ctx = drawingContextRef.current;
+    if (!ctx) return;
+    
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : color;
+    ctx.lineWidth = getToolSize();
+    ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
+  };
+
+  // Inicjalizacja dwóch canvasów
+  useEffect(() => {
+    const backgroundCanvas = backgroundCanvasRef.current;
+    const drawingCanvas = drawingCanvasRef.current;
+    const container = containerRef.current;
+    
+    if (!backgroundCanvas || !drawingCanvas || !container) return;
+    
+    const updateCanvasSize = () => {
+      const rect = container.getBoundingClientRect();
+      const width = rect.width;
+      const height = rect.height;
+      
+      // Ustaw rozmiar dla obu canvasów
+      backgroundCanvas.width = width;
+      backgroundCanvas.height = height;
+      drawingCanvas.width = width;
+      drawingCanvas.height = height;
+      
+      // Inicjalizuj konteksty
+      backgroundContextRef.current = backgroundCanvas.getContext('2d');
+      drawingContextRef.current = drawingCanvas.getContext('2d');
+      
+      // Skonfiguruj kontekst rysowania
+      setupDrawingContext();
+      
+      // Narysuj tło
+      drawBackground();
+      
+      // Przerysuj historię na canvasie rysowania
+      redrawCanvas();
+    };
+    
+    updateCanvasSize();
+    window.addEventListener('resize', updateCanvasSize);
+    
+    return () => {
+      window.removeEventListener('resize', updateCanvasSize);
+    };
+  }, []);
+
+  // Aktualizuj tło gdy zmieni się tryb
+  useEffect(() => {
+    drawBackground();
+  }, [backgroundMode]);
+
+  // 🔹 DODANE: Aktualizuj kontekst rysowania gdy zmieniają się narzędzia/kolor/rozmiar
+  useEffect(() => {
+    setupDrawingContext();
+  }, [color, size, tool]);
+
+  useEffect(() => {
     if (socket) {
       console.log("📡 Setting up canvas listeners");
       const handleRemoteDrawing = (data) => { drawRemote(data); };
@@ -372,7 +507,7 @@ const Canvas = ({
       };
       const handleWhiteboardState = (data) => {
         console.log("🎨 Redrawing", data.drawingData.length, "existing drawings");
-        clearCanvas();
+        clearDrawingCanvas();
         setTimeout(() => {
           data.drawingData.forEach(drawing => { drawRemote(drawing); });
         }, 100);
@@ -416,28 +551,21 @@ const Canvas = ({
     }
   }, [socket]);
 
-  const clearCanvas = () => {
-    const context = contextRef.current;
-    const canvas = canvasRef.current;
+  const clearDrawingCanvas = () => {
+    const context = drawingContextRef.current;
+    const canvas = drawingCanvasRef.current;
     if (!context || !canvas) return;
     context.clearRect(0, 0, canvas.width, canvas.height);
-    if (backgroundMode === 'white') {
-      context.fillStyle = 'white';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-    } else if (backgroundMode === 'black') {
-      context.fillStyle = 'black';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-    }
   };
 
   const drawRemote = (data) => {
-    const context = contextRef.current;
+    const context = drawingContextRef.current;
     if (!context || !data.points || data.points.length < 2) return;
     drawCompletePath(context, data.tool, data.color, data.size, data.points);
   };
 
   const getCanvasCoordinates = (clientX, clientY) => {
-    const canvas = canvasRef.current;
+    const canvas = drawingCanvasRef.current;
     const rect = canvas.getBoundingClientRect();
     return { x: clientX - rect.left, y: clientY - rect.top };
   };
@@ -447,27 +575,47 @@ const Canvas = ({
     if (onGifUpdate) onGifUpdate(id, updates);
   };
 
+  // 🔹 POPRAWIONE: updateCanvasSize teraz też aktualizuje kontekst
   const updateCanvasSize = () => {
-    const canvas = canvasRef.current;
+    const backgroundCanvas = backgroundCanvasRef.current;
+    const drawingCanvas = drawingCanvasRef.current;
     const container = containerRef.current;
-    const ctx = contextRef.current;
-    if (!canvas || !container || !ctx) return;
+    
+    if (!backgroundCanvas || !drawingCanvas || !container) return;
+    
     const rect = container.getBoundingClientRect();
-    if (canvas.width === rect.width && canvas.height === rect.height) return;
-
+    const width = rect.width;
+    const height = rect.height;
+    
+    // Zapisz obraz z drawing canvas przed zmianą rozmiaru
     let imageData = null;
-    if (canvas.width > 0 && canvas.height > 0) {
-      try { imageData = ctx.getImageData(0, 0, canvas.width, canvas.height); }
+    if (drawingCanvas.width > 0 && drawingCanvas.height > 0) {
+      try { 
+        imageData = drawingContextRef.current?.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height); 
+      }
       catch (e) { console.warn("Nie udało się pobrać danych canvas:", e); }
     }
-    canvas.width = rect.width;
-    canvas.height = rect.height;
-    if (imageData) ctx.putImageData(imageData, 0, 0);
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = color;
-    const toolSize = getToolSize();
-    ctx.lineWidth = toolSize;
+    
+    // Ustaw nowe rozmiary
+    backgroundCanvas.width = width;
+    backgroundCanvas.height = height;
+    drawingCanvas.width = width;
+    drawingCanvas.height = height;
+    
+    // Ponownie zainicjalizuj konteksty
+    backgroundContextRef.current = backgroundCanvas.getContext('2d');
+    drawingContextRef.current = drawingCanvas.getContext('2d');
+    
+    // Skonfiguruj kontekst rysowania
+    setupDrawingContext();
+    
+    // Przywróć obraz na drawing canvas
+    if (imageData && drawingContextRef.current) {
+      drawingContextRef.current.putImageData(imageData, 0, 0);
+    }
+    
+    // Ponownie narysuj tło
+    drawBackground();
   };
 
   const getToolSize = () => {
@@ -475,34 +623,30 @@ const Canvas = ({
     return getDisplaySize(tool, base);
   };
 
+  // 🔹 POPRAWIONE: useEffect do inicjalizacji
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    contextRef.current = ctx;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = color;
-    ctx.lineWidth = getToolSize();
+    const backgroundCanvas = backgroundCanvasRef.current;
+    const drawingCanvas = drawingCanvasRef.current;
+    if (!backgroundCanvas || !drawingCanvas) return;
+    
+    // Inicjalizuj konteksty
+    backgroundContextRef.current = backgroundCanvas.getContext('2d');
+    drawingContextRef.current = drawingCanvas.getContext('2d');
+    
+    // Skonfiguruj drawing context
+    setupDrawingContext();
+    
     updateCanvasSize();
     window.addEventListener('resize', updateCanvasSize);
     return () => window.removeEventListener('resize', updateCanvasSize);
   }, []);
 
   useEffect(() => {
-    const ctx = contextRef.current;
-    if (!ctx) return;
-    ctx.strokeStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : color;
-    ctx.lineWidth = getToolSize();
-    ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
-  }, [color, size, tool]);
-
-  useEffect(() => {
     if (socket) {
       const handleEraseArea = (data) => {
-        const ctx = contextRef.current;
+        const ctx = drawingContextRef.current;
         if (ctx) {
-          // Wyczyść piksele na canvasie
+          // Wyczyść piksele na canvasie rysowania
           ctx.clearRect(data.x, data.y, data.width, data.height);
         }
       };
@@ -515,8 +659,7 @@ const Canvas = ({
   }, [socket]);
 
   const startDrawing = ({ nativeEvent }) => {
-    // ✅ ZMIANA: Sprawdzamy, czy wciśnięty przycisk to lewy (0).
-    // Jeśli to prawy (2) lub środkowy (1), przerywamy funkcję.
+    // Sprawdzamy, czy wciśnięty przycisk to lewy (0)
     if (nativeEvent.button !== 0) return;
 
     if (tool === 'select') {
@@ -530,10 +673,16 @@ const Canvas = ({
     if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
     if (setShowColorPicker) setShowColorPicker(false);
     const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
-    contextRef.current.beginPath();
-    contextRef.current.moveTo(x, y);
-    contextRef.current.lineTo(x, y);
-    contextRef.current.stroke();
+    const ctx = drawingContextRef.current;
+    
+    // 🔹 DODANE: Upewnij się, że kontekst jest poprawnie skonfigurowany
+    setupDrawingContext();
+    
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    
     setIsDrawing(true);
     currentDrawingRef.current = { tool, color, size, points: [{ x, y }, { x, y }] };
   };
@@ -603,9 +752,9 @@ const Canvas = ({
           }
         });
 
-        // 2. Wyczyść rysunki na Canvas (Piksele)
-        if (contextRef.current) {
-          contextRef.current.clearRect(x, y, width, height);
+        // 2. Wyczyść rysunki na Canvas rysowania (Piksele)
+        if (drawingContextRef.current) {
+          drawingContextRef.current.clearRect(x, y, width, height);
         }
 
         // 3. Wyślij informację o wyczyszczeniu obszaru do innych
@@ -625,8 +774,13 @@ const Canvas = ({
     }
 
     if (!['pencil', 'brush', 'eraser'].includes(tool)) { setIsDrawing(false); return; }
-    contextRef.current.closePath();
+    
+    // 🔹 DODANE: Upewnij się, że kontekst jest poprawnie skonfigurowany
+    setupDrawingContext();
+    
+    drawingContextRef.current.closePath();
     setIsDrawing(false);
+    
     if (currentDrawingRef.current && onDrawing) {
       onDrawing(currentDrawingRef.current);
       saveToHistory(ACTION_TYPES.DRAWING, currentDrawingRef.current);
@@ -635,14 +789,18 @@ const Canvas = ({
   };
 
   const draw = ({ nativeEvent }) => {
-    if (!isDrawing || !contextRef.current) return;
+    if (!isDrawing || !drawingContextRef.current) return;
     if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
     const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
     if (currentDrawingRef.current) {
       const points = currentDrawingRef.current.points;
       const previousPoint = points[points.length - 1];
       points.push({ x, y });
-      drawPathSegment(contextRef.current, tool, color, size, previousPoint, { x, y });
+      
+      // 🔹 DODANE: Upewnij się, że kontekst jest poprawnie skonfigurowany
+      setupDrawingContext();
+      
+      drawPathSegment(drawingContextRef.current, tool, color, size, previousPoint, { x, y });
     }
   };
 
@@ -652,14 +810,14 @@ const Canvas = ({
   };
 
   const handleCanvasClick = (e) => {
-    // ✅ ZMIANA: Blokujemy stawianie elementów (tekst, notatki, gify) prawym przyciskiem.
+    // Blokujemy stawianie elementów prawym przyciskiem
     if (e.button !== 0) return;
 
     if (e.target.closest('.shape-item') || e.target.closest('.emoji-item')) return;
     setSelectedNoteId(null); setSelectedTextBoxId(null); setSelectedEmojiId(null); setSelectedGifId(null); setSelectedShapeId(null);
 
     if (tool === 'notes') {
-      const rect = canvasRef.current.getBoundingClientRect();
+      const rect = drawingCanvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       const newNote = { id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x, y, text: '', width: 180, height: 120 };
@@ -668,7 +826,7 @@ const Canvas = ({
       if (onNoteCreate) onNoteCreate(newNote);
       if (setTool) setTool('cursor');
     } else if (tool === 'text') {
-      const rect = canvasRef.current.getBoundingClientRect();
+      const rect = drawingCanvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       const newTextBox = { id: `text_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x, y, text: '', width: 200, height: 100 };
@@ -679,7 +837,7 @@ const Canvas = ({
     }
 
     if (tool === 'emoji' && activeEmoji) {
-      const rect = canvasRef.current.getBoundingClientRect();
+      const rect = drawingCanvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       const newEmoji = { id: `emoji_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x, y, emoji: activeEmoji, size: 48 };
@@ -690,7 +848,7 @@ const Canvas = ({
     }
 
     if (tool === 'gif' && activeGif) {
-      const rect = canvasRef.current.getBoundingClientRect();
+      const rect = drawingCanvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       const newGif = { id: `gif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: x - 75, y: y - 75, url: activeGif, width: 150 };
@@ -700,7 +858,7 @@ const Canvas = ({
       if (setTool) setTool('cursor');
     }
     if (tool === 'shape' && activeShape) {
-      const rect = canvasRef.current.getBoundingClientRect();
+      const rect = drawingCanvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       let defaultWidth = 100, defaultHeight = 100, startX = x - 50, startY = y - 50;
@@ -851,19 +1009,19 @@ const Canvas = ({
     const currentIndex = backgroundModes.findIndex(mode => mode.id === backgroundMode);
     const nextIndex = (currentIndex + 1) % backgroundModes.length;
     setBackgroundMode(backgroundModes[nextIndex].id);
-    clearCanvas();
+    // Nie czyścimy drawing canvas - tylko zmieniamy tło
+    drawBackground();
   };
 
-  useEffect(() => { clearCanvas(); }, [backgroundMode]);
   const getCurrentBackgroundIcon = () => backgroundModes.find(mode => mode.id === backgroundMode)?.icon;
 
   const handleMouseLeave = () => {
-    if (tool === 'pointer' && canvasRef.current) canvasRef.current.style.cursor = 'default';
+    if (tool === 'pointer' && drawingCanvasRef.current) drawingCanvasRef.current.style.cursor = 'default';
     stopDrawing();
   };
 
   const handleMouseEnter = () => {
-    if (tool === 'pointer' && canvasRef.current) canvasRef.current.style.cursor = 'pointer';
+    if (tool === 'pointer' && drawingCanvasRef.current) drawingCanvasRef.current.style.cursor = 'pointer';
   };
 
   useEffect(() => {
@@ -907,15 +1065,38 @@ const Canvas = ({
   return (
     <div className="canvas-container" ref={containerRef}>
       <div className={`canvas-area background-${backgroundMode}`} onClick={handleCanvasClick}>
+        {/* Tło (background canvas) */}
         <canvas
-          ref={canvasRef}
+          ref={backgroundCanvasRef}
+          className="background-canvas"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            zIndex: 1,
+            pointerEvents: 'none'
+          }}
+        />
+        
+        {/* Główny canvas do rysowania */}
+        <canvas
+          ref={drawingCanvasRef}
+          className="drawing-canvas"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            zIndex: 2,
+            backgroundColor: 'transparent'
+          }}
           onMouseDown={startDrawing}
           onMouseUp={stopDrawing}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
           onMouseEnter={handleMouseEnter}
         />
-        {/* 🔹 DODANE: Renderowanie prostokąta zaznaczania */}
+        
+        {/* Renderowanie prostokąta zaznaczania */}
         {selectionBox && (
           <div
             className="selection-overlay"
