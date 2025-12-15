@@ -465,6 +465,26 @@ const Canvas = ({
     ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
   };
 
+  useEffect(() => {
+    // Jeśli zmieniamy narzędzie na cokolwiek innego niż 'select'
+    if (tool !== 'select') {
+
+      // 1. Jeśli mamy "wycięty" obrazek w powietrzu -> wklej go na stałe (commit)
+      if (selectionSnapshot) {
+        commitSelection();
+      }
+      // 2. Jeśli mamy samą ramkę (bez obrazka) -> po prostu ją usuń
+      else if (selectionBox) {
+        setSelectionBox(null);
+        setSelectionStart(null);
+      }
+
+      // 3. Zresetuj flagi przeciągania
+      setIsDraggingSelection(false);
+    }
+    // WAŻNE: Dodaj 'tool' do zależności, aby kod odpalał się przy każdej zmianie narzędzia
+  }, [tool]);
+
   // Inicjalizacja dwóch canvasów
   useEffect(() => {
     const backgroundCanvas = backgroundCanvasRef.current;
@@ -1199,177 +1219,177 @@ const Canvas = ({
   return (
     <div className="canvas-container" ref={containerRef}>
       <div
-      className={`canvas-area background-${backgroundMode} ${tool === 'select' ? 'is-selecting' : ''}`}
-      onClick={handleCanvasClick}>
-      <canvas
-        ref={backgroundCanvasRef}
-        className="background-canvas"
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          zIndex: 1,
-          pointerEvents: 'none'
-        }}
-      />
-
-      {/* Główny canvas do rysowania */}
-      <canvas
-        ref={drawingCanvasRef}
-        className="drawing-canvas"
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          zIndex: 2,
-          backgroundColor: 'transparent'
-        }}
-        onMouseDown={startDrawing}
-        onMouseUp={stopDrawing}
-        onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseLeave}
-        onMouseEnter={handleMouseEnter}
-      />
-
-      {/* Renderowanie prostokąta zaznaczania */}
-      {selectionBox && (
-        <div
-          className="selection-overlay"
+        className={`canvas-area background-${backgroundMode} ${tool === 'select' ? 'is-selecting' : ''}`}
+        onClick={handleCanvasClick}>
+        <canvas
+          ref={backgroundCanvasRef}
+          className="background-canvas"
           style={{
-            left: selectionBox.x,
-            top: selectionBox.y,
-            width: selectionBox.width,
-            height: selectionBox.height,
-            // Add a border if we have a snapshot to make it look like a selected object
-            border: '1px dashed #3498db'
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            zIndex: 1,
+            pointerEvents: 'none'
           }}
-        >
-          {selectionSnapshot && (
-            <img
-              src={selectionSnapshot}
-              alt="Selected area"
-              className="selection-image"
-              draggable={false} // Prevent browser native drag
-            />
-          )}
-        </div>
-      )}
+        />
 
-      {notes.map(note => (
-        <Note
-          key={note.id}
-          id={note.id}
-          x={note.x}
-          y={note.y}
-          width={note.width}
-          height={note.height}
-          initialText={note.text}
-          onUpdate={handleNoteUpdate}
-          onRemove={handleNoteDelete}
-          selectedNoteId={selectedNoteId}
-          setSelectedNoteId={setSelectedNoteId}
-          socket={socket}
+        {/* Główny canvas do rysowania */}
+        <canvas
+          ref={drawingCanvasRef}
+          className="drawing-canvas"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            zIndex: 2,
+            backgroundColor: 'transparent'
+          }}
+          onMouseDown={startDrawing}
+          onMouseUp={stopDrawing}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={handleMouseLeave}
+          onMouseEnter={handleMouseEnter}
         />
-      ))}
-      {textBoxes.map(textBox => (
-        <Text
-          key={textBox.id}
-          id={textBox.id}
-          x={textBox.x}
-          y={textBox.y}
-          width={textBox.width}
-          height={textBox.height}
-          text={textBox.text}
-          onUpdate={handleTextUpdate}
-          onRemove={removeTextBox}
-          selected={selectedTextBoxId === textBox.id}
-          setSelected={setSelectedTextBoxId}
-          socket={socket}
-        />
-      ))}
-      {emojis.map(emojiData => (
-        <Emoji
-          key={emojiData.id}
-          {...emojiData}
-          selected={selectedEmojiId === emojiData.id}
-          onSelect={setSelectedEmojiId}
-          onRemove={removeEmoji}
-          onUpdate={handleEmojiUpdate}
-        />
-      ))}
-      {gifs.map(gif => (
-        <Gif
-          key={gif.id}
-          {...gif}
-          selected={selectedGifId === gif.id}
-          onSelect={setSelectedGifId}
-          onUpdate={handleGifUpdate}
-        />
-      ))}
-      {shapes.map(shape => (
-        <Shape
-          key={shape.id}
-          {...shape}
-          selected={selectedShapeId === shape.id}
-          onSelect={setSelectedShapeId}
-          onRemove={removeShape}
-          onUpdate={handleShapeUpdate}
-        />
-      ))}
 
-      {/* FIX: Dodano klucz fall-back dla kursorów */}
-      {remoteCursorsArray.map((cursor, index) => (
-        cursor.position && (
+        {/* Renderowanie prostokąta zaznaczania */}
+        {selectionBox && (
           <div
-            key={cursor.userId || `cursor_${index}`}
-            className="remote-cursor"
+            className="selection-overlay"
             style={{
-              position: 'absolute',
-              left: cursor.position.x,
-              top: cursor.position.y,
-              pointerEvents: 'none',
-              zIndex: 1000,
-              transform: 'translate(-50%, -50%)',
-              transition: 'left 0.1s linear, top 0.1s linear'
+              left: selectionBox.x,
+              top: selectionBox.y,
+              width: selectionBox.width,
+              height: selectionBox.height,
+              // Add a border if we have a snapshot to make it look like a selected object
+              border: '1px dashed #3498db'
             }}
           >
-            <div style={{
-              width: '8px',
-              height: '8px',
-              backgroundColor: cursor.user?.color || '#ff4444',
-              borderRadius: '50%',
-              border: '2px solid white',
-              boxShadow: '0 0 4px rgba(0,0,0,0.5)'
-            }} />
-            <div style={{
-              position: 'absolute',
-              top: '15px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              fontSize: '12px',
-              background: cursor.user?.color || '#ff4444',
-              color: 'white',
-              padding: '3px 8px',
-              borderRadius: '10px',
-              whiteSpace: 'nowrap',
-              fontWeight: 'bold',
-              border: '1px solid white',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
-            }}>
-              {cursor.user?.name || 'Unknown'}
-            </div>
+            {selectionSnapshot && (
+              <img
+                src={selectionSnapshot}
+                alt="Selected area"
+                className="selection-image"
+                draggable={false} // Prevent browser native drag
+              />
+            )}
           </div>
-        )
-      ))}
+        )}
 
-      <button
-        className="background-toggle"
-        onClick={toggleBackground}
-        title={`Tło: ${backgroundModes.find(mode => mode.id === backgroundMode)?.name}`}
-      >
-        {getCurrentBackgroundIcon()}
-      </button>
-    </div>
+        {notes.map(note => (
+          <Note
+            key={note.id}
+            id={note.id}
+            x={note.x}
+            y={note.y}
+            width={note.width}
+            height={note.height}
+            initialText={note.text}
+            onUpdate={handleNoteUpdate}
+            onRemove={handleNoteDelete}
+            selectedNoteId={selectedNoteId}
+            setSelectedNoteId={setSelectedNoteId}
+            socket={socket}
+          />
+        ))}
+        {textBoxes.map(textBox => (
+          <Text
+            key={textBox.id}
+            id={textBox.id}
+            x={textBox.x}
+            y={textBox.y}
+            width={textBox.width}
+            height={textBox.height}
+            text={textBox.text}
+            onUpdate={handleTextUpdate}
+            onRemove={removeTextBox}
+            selected={selectedTextBoxId === textBox.id}
+            setSelected={setSelectedTextBoxId}
+            socket={socket}
+          />
+        ))}
+        {emojis.map(emojiData => (
+          <Emoji
+            key={emojiData.id}
+            {...emojiData}
+            selected={selectedEmojiId === emojiData.id}
+            onSelect={setSelectedEmojiId}
+            onRemove={removeEmoji}
+            onUpdate={handleEmojiUpdate}
+          />
+        ))}
+        {gifs.map(gif => (
+          <Gif
+            key={gif.id}
+            {...gif}
+            selected={selectedGifId === gif.id}
+            onSelect={setSelectedGifId}
+            onUpdate={handleGifUpdate}
+          />
+        ))}
+        {shapes.map(shape => (
+          <Shape
+            key={shape.id}
+            {...shape}
+            selected={selectedShapeId === shape.id}
+            onSelect={setSelectedShapeId}
+            onRemove={removeShape}
+            onUpdate={handleShapeUpdate}
+          />
+        ))}
+
+        {/* FIX: Dodano klucz fall-back dla kursorów */}
+        {remoteCursorsArray.map((cursor, index) => (
+          cursor.position && (
+            <div
+              key={cursor.userId || `cursor_${index}`}
+              className="remote-cursor"
+              style={{
+                position: 'absolute',
+                left: cursor.position.x,
+                top: cursor.position.y,
+                pointerEvents: 'none',
+                zIndex: 1000,
+                transform: 'translate(-50%, -50%)',
+                transition: 'left 0.1s linear, top 0.1s linear'
+              }}
+            >
+              <div style={{
+                width: '8px',
+                height: '8px',
+                backgroundColor: cursor.user?.color || '#ff4444',
+                borderRadius: '50%',
+                border: '2px solid white',
+                boxShadow: '0 0 4px rgba(0,0,0,0.5)'
+              }} />
+              <div style={{
+                position: 'absolute',
+                top: '15px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                fontSize: '12px',
+                background: cursor.user?.color || '#ff4444',
+                color: 'white',
+                padding: '3px 8px',
+                borderRadius: '10px',
+                whiteSpace: 'nowrap',
+                fontWeight: 'bold',
+                border: '1px solid white',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
+              }}>
+                {cursor.user?.name || 'Unknown'}
+              </div>
+            </div>
+          )
+        ))}
+
+        <button
+          className="background-toggle"
+          onClick={toggleBackground}
+          title={`Tło: ${backgroundModes.find(mode => mode.id === backgroundMode)?.name}`}
+        >
+          {getCurrentBackgroundIcon()}
+        </button>
+      </div>
     </div >
   );
 };
