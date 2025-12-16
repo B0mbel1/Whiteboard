@@ -4,7 +4,7 @@ import MultimediaModal from '../MultimediaModal/MultimediaModal.jsx';
 import PointerTrail from './PointerTrail.jsx';
 import ToolRangeCircle from './ToolRangeCircle.jsx';
 
-const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker, activeEmoji, setActiveEmoji, setActiveGif, setActiveShape }) => {
+const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker, activeEmoji, setActiveEmoji, setActiveGif, setActiveShape, onImageUpload }) => {
   const [showShapes, setShowShapes] = useState({ visible: false, x: 0, y: 0 });
   const [showEmojis, setShowEmojis] = useState({ visible: false, x: 0, y: 0 });
   const [selectedShape, setSelectedShape] = useState(null);
@@ -522,7 +522,15 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
         <span className={`arrow ${collapsed ? 'arrow-right' : 'arrow-left'}`}>➤</span>
       </div>
 
-      {showMultimedia && <MultimediaModal onClose={() => setShowMultimedia(false)} />}
+      {showMultimedia && (
+        <MultimediaModal 
+          onClose={() => {
+            setShowMultimedia(false);
+            setTool('cursor'); // Resetuj narzędzie po zamknięciu modalu
+          }} 
+          onImageUpload={onImageUpload}
+        />
+      )}
 
       <ToolRangeCircle tool={tool} size={size} />
     </>

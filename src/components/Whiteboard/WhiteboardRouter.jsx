@@ -33,6 +33,8 @@ const WhiteboardRouter = () => {
   const [shapes, setShapes] = useState([]);
   const [activeShape, setActiveShape] = useState(null);
 
+  // Images
+  const [images, setImages] = useState([]);
 
   const [currentUser] = useState(() => {
     const userId = 'user_' + Math.random().toString(36).substring(2, 15);
@@ -114,6 +116,9 @@ const WhiteboardRouter = () => {
       if(data.shapes){
         setShapes(data.shapes);
       }
+      if(data.images){
+        setImages(data.images);
+      }
       if(data.emojis){
         setEmojis(data.emojis);
       }
@@ -146,6 +151,41 @@ const WhiteboardRouter = () => {
         ...updates
       });
     }
+  };
+
+  // Images
+  const handleImageCreate = (image) => {
+    // Lokalna aktualizacja
+    setImages(prev => [...prev, image]);
+    // Wysłanie do serwera
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('image-create', { whiteboardId, image });
+    }
+  };
+
+  const handleImageDelete = (id) => {
+    setImages(prev => prev.filter(img => img.id !== id));
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('image-delete', { whiteboardId, id });
+    }
+  };
+
+  const handleImageUpdate = (id, updates) => {
+    setImages(prev => prev.map(img => img.id === id ? { ...img, ...updates } : img));
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('image-update', { whiteboardId, id, ...updates });
+    }
+  };
+
+  const handleImageUpload = (fileDataUrl) => {
+    const newImage = {
+      id: `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      x: window.innerWidth / 2 - 100, // Centrum (w przybliżeniu)
+      y: window.innerHeight / 2 - 100,
+      url: fileDataUrl,
+      width: 200 // Domyślna szerokość
+    };
+    handleImageCreate(newImage);
   };
 
 
@@ -306,6 +346,7 @@ const WhiteboardRouter = () => {
           setActiveEmoji={setActiveEmoji}
           setActiveGif={setActiveGif}
           setActiveShape={setActiveShape}
+          onImageUpload={handleImageUpload} // ✅ Przekazujemy funkcję uploadu
         />
 
         {/* 🔹 Przekazujemy socket i whiteboardId do PointerTrail */}
@@ -347,6 +388,10 @@ const WhiteboardRouter = () => {
           onShapeCreate={handleShapeCreate}
           onShapeDelete={handleShapeDelete}
           onShapeUpdate={handleShapeUpdate} // <--- Przekazujemy funkcję
+          images={images}                 // ✅ Obrazy
+          onImageCreate={handleImageCreate}
+          onImageDelete={handleImageDelete}
+          onImageUpdate={handleImageUpdate}
         />
 
         <Sidebar
