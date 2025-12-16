@@ -17,27 +17,39 @@ const WhiteboardRouter = () => {
   const [socket, setSocket] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // ✅ DODAJ TE STANY - to najważniejsze!
   const [textBoxes, setTextBoxes] = useState([]);
   const [notes, setNotes] = useState([]);
-  const [users, setUsers] = useState([]);
 
-  // 🔑 Zachowujemy użytkownika w sessionStorage
+  // Emojis
+  const [emojis, setEmojis] = useState([]);
+  const [activeEmoji, setActiveEmoji] = useState(null); // Tutaj przechowamy np. "😎" wybrane z paska
+
+  //Gifs
+  const [gifs, setGifs] = useState([]);
+  const [activeGif, setActiveGif] = useState(null); // URL wybranego gifa
+
+  //Shapes
+  const [shapes, setShapes] = useState([]);
+  const [activeShape, setActiveShape] = useState(null);
+
+
   const [currentUser] = useState(() => {
-    const storedUser = sessionStorage.getItem('currentUser');
-    if (storedUser) return JSON.parse(storedUser);
-
     const userId = 'user_' + Math.random().toString(36).substring(2, 15);
     const userName = 'User' + Math.floor(Math.random() * 1000);
     const userColor = `hsl(${Math.random() * 360}, 80%, 60%)`;
 
-    const user = { id: userId, name: userName, color: userColor };
-    sessionStorage.setItem('currentUser', JSON.stringify(user));
-    return user;
+    console.log("👤 Generated user:", { id: userId, name: userName, color: userColor });
+
+    return {
+      id: userId,
+      name: userName,
+      color: userColor
+    };
   });
 
   const socketRef = useRef(null);
   const hasJoinedRef = useRef(false);
-  const usersIntervalRef = useRef(null);
 
   useEffect(() => {
     if (whiteboardId && !hasJoinedRef.current) {
@@ -46,10 +58,8 @@ const WhiteboardRouter = () => {
 
     return () => {
       if (socketRef.current) {
+        console.log("🔌 Disconnecting socket");
         socketRef.current.disconnect();
-      }
-      if (usersIntervalRef.current) {
-        clearInterval(usersIntervalRef.current);
       }
     };
   }, [whiteboardId]);
@@ -66,118 +76,197 @@ const WhiteboardRouter = () => {
     socketRef.current = newSocket;
     setSocket(newSocket);
 
+    console.log("🔌 Socket initialized for whiteboard:", whiteboardId);
+
     newSocket.on('connect', () => {
       console.log("✅ Connected to server");
 
-      // Dołączamy do whiteboardu
       if (!hasJoinedRef.current) {
         hasJoinedRef.current = true;
         newSocket.emit('join-whiteboard', {
-          whiteboardId,
+          whiteboardId: whiteboardId,
           user: currentUser
         });
+        console.log("📤 Sent join-whiteboard event");
       }
 
-      // 🔄 Pobieraj pełną listę użytkowników po dołączeniu
-      newSocket.emit('get-users', { whiteboardId });
       setIsLoading(false);
-
-      // 🔄 Odświeżaj listę użytkowników co 10 sekund
-      usersIntervalRef.current = setInterval(() => {
-        newSocket.emit('get-users', { whiteboardId });
-      }, 10000);
     });
 
-    // 🔹 Eventy
-    newSocket.on('whiteboard-users', (data) => {
-      setUsers(data.users);
-    });
-
-    newSocket.on('user-joined', ({ user }) => {
-      setUsers(prev => {
-        if (prev.some(u => u.id === user.id)) return prev;
-        return [...prev, user];
-      });
-    });
-
-    newSocket.on('user-left', ({ userId }) => {
-      setUsers(prev => prev.filter(u => u.id !== userId));
-    });
-
+    // ✅ DODAJ TE LISTENERY - to kluczowe dla notatek!
     newSocket.on('whiteboard-data', (data) => {
-      if (data.textBoxes) setTextBoxes(data.textBoxes);
-      if (data.notes) setNotes(data.notes);
-    });
+      console.log("📦 Received whiteboard data:", {
+        notes: data.notes?.length || 0,
+        textBoxes: data.textBoxes?.length || 0,
+        notesDetails: data.notes?.map(n => ({ id: n.id, x: n.x, y: n.y })) || []
+      });
 
-    newSocket.on('text-create', (data) => {
-      setTextBoxes(prev => [...prev, data.textBox]);
-    });
-
-    newSocket.on('text-delete', (data) => {
-      setTextBoxes(prev => prev.filter(tb => tb.id !== data.id));
-    });
-
-    newSocket.on('note-create', (data) => {
-      setNotes(prev => [...prev, data.note]);
-    });
-
-    newSocket.on('note-delete', (data) => {
-      setNotes(prev => prev.filter(note => note.id !== data.id));
+      // ✅ UŻYJ danych z serwera, NIE initialNotes
+      if (data.textBoxes) {
+        setTextBoxes(data.textBoxes);
+      }
+      if (data.notes) {
+        setNotes(data.notes);
+      }
+      if(data.gifs){
+        setGifs(data.gifs);
+      }
+      if(data.shapes){
+        setShapes(data.shapes);
+      }
+      if(data.emojis){
+        setEmojis(data.emojis);
+      }
     });
 
     newSocket.on('connect_error', (error) => {
       console.error("❌ Connection error:", error);
       setIsLoading(false);
     });
+
   };
 
-  // Funkcje obsługi notatek i rysowania
+  //Shapes
+  const handleShapeCreate = (shape) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('shape-create', { whiteboardId, shape });
+    }
+  };
+
+  const handleShapeDelete = (id) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('shape-delete', { whiteboardId, id });
+    }
+  };
+  const handleShapeUpdate = (id, updates) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('shape-update', {
+        whiteboardId,
+        id,
+        ...updates
+      });
+    }
+  };
+
+
+  //Gif
+  const handleGifCreate = (gif) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('gif-create', { whiteboardId, gif });
+    }
+  };
+
+  const handleGifDelete = (id) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('gif-delete', { whiteboardId, id });
+    }
+  };
+  const handleGifUpdate = (id, updates) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('gif-update', { whiteboardId, id, ...updates });
+    }
+  };
+
+  //emojis
+  const handleEmojiCreate = (emoji) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('emoji-create', { whiteboardId, emoji });
+    }
+  };
+
+  const handleEmojiUpdate = (id, updates) => {
+  if (socketRef.current && whiteboardId) {
+    socketRef.current.emit('emoji-update', {
+      whiteboardId,
+      id,
+      ...updates
+    });
+  }
+};
+
+  const handleEmojiDelete = (id) => {
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('emoji-delete', { whiteboardId, id });
+    }
+  };
+
+  // ✅ DODAJ FUNKCJE OBSŁUGI NOTATEK
   const handleNoteCreate = (note) => {
     if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('note-create', { whiteboardId, note });
+      socketRef.current.emit('note-create', {
+        whiteboardId,
+        note
+      });
     }
   };
+
   const handleNoteUpdate = (id, updates) => {
     if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('note-update', { whiteboardId, id, ...updates });
+      socketRef.current.emit('note-update', {
+        whiteboardId,
+        id,
+        ...updates
+      });
     }
   };
+
   const handleNoteDelete = (id) => {
     if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('note-delete', { whiteboardId, id });
+      socketRef.current.emit('note-delete', {
+        whiteboardId,
+        id
+      });
     }
   };
+
   const handleDrawing = (drawingData) => {
     if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('drawing', { whiteboardId, ...drawingData });
+      socketRef.current.emit('drawing', {
+        whiteboardId,
+        ...drawingData
+      });
     }
   };
+
   const handleCursorMove = (position) => {
     if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('cursor-move', { whiteboardId, position });
+      socketRef.current.emit('cursor-move', {
+        whiteboardId,
+        position
+      });
     }
   };
 
   const copyInviteLink = async () => {
-    if (!whiteboardId) return;
-    const link = `${window.location.origin}/${whiteboardId}`;
-    try {
-      await navigator.clipboard.writeText(link);
-      alert('✅ Invite link copied!');
-    } catch (err) {
-      const textArea = document.createElement('textarea');
-      textArea.value = link;
-      document.body.appendChild(textArea);
-      textArea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textArea);
-      alert('✅ Invite link copied!');
+    if (whiteboardId) {
+      const link = `${window.location.origin}/${whiteboardId}`;
+      try {
+        await navigator.clipboard.writeText(link);
+        alert('✅ Invite link copied to clipboard! Share it with others to collaborate!');
+      } catch (err) {
+        console.error('Failed to copy:', err);
+        const textArea = document.createElement('textarea');
+        textArea.value = link;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        alert('✅ Invite link copied to clipboard! Share it with others to collaborate!');
+      }
     }
   };
 
   if (isLoading) {
     return (
-      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '20px', background: '#f0f0f0' }}>
+      <div style={{
+        height: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#f0f0f0',
+        flexDirection: 'column',
+        gap: '20px'
+      }}>
         <h2>Joining whiteboard {whiteboardId}...</h2>
         <div>Please wait</div>
       </div>
@@ -190,39 +279,82 @@ const WhiteboardRouter = () => {
         <div className="whiteboard-info">
           <span className="whiteboard-id">Room: {whiteboardId}</span>
           <span className="user-info">You: {currentUser.name}</span>
-          <span className="user-count-wrapper">
-            👥 {users.length}
-            {users.length > 0 && (
-              <span className="user-list-dropdown">
-                {users.map(user => (
-                  <span key={user.id} className="user-list-item" style={{ color: user.color }}>
-                    {user.name}
-                  </span>
-                ))}
-              </span>
-            )}
-          </span>
         </div>
         <div className="header-controls">
-          <button className="invite-btn" onClick={copyInviteLink}>📋 Copy Invite Link</button>
+          <button
+            className="invite-btn"
+            onClick={copyInviteLink}
+          >
+            📋 Copy Invite Link
+          </button>
           <button className="fullscreen-btn">⛶ Fullscreen</button>
           <button className="save-btn">💾 Save</button>
         </div>
       </div>
 
       <div className="whiteboard-main">
-        <Toolbar 
-          tool={tool} setTool={setTool} color={color} setColor={setColor} 
-          size={size} setSize={setSize} showColorPicker={showColorPicker} setShowColorPicker={setShowColorPicker} 
+        <Toolbar
+          tool={tool}
+          setTool={setTool}
+          color={color}
+          setColor={setColor}
+          size={size}
+          setSize={setSize}
+          showColorPicker={showColorPicker}
+          setShowColorPicker={setShowColorPicker}
+          activeEmoji={activeEmoji}
+          setActiveEmoji={setActiveEmoji}
+          setActiveGif={setActiveGif}
+          setActiveShape={setActiveShape}
         />
-        <PointerTrail active={tool === 'pointer'} />
-        <Canvas 
-          tool={tool} color={color} setTool={setTool} size={size[tool]} setShowColorPicker={setShowColorPicker} 
-          whiteboardId={whiteboardId} socket={socketRef.current} currentUser={currentUser} 
-          onDrawing={handleDrawing} onCursorMove={handleCursorMove} textBoxes={textBoxes} 
-          notes={notes} onNoteCreate={handleNoteCreate} onNoteUpdate={handleNoteUpdate} onNoteDelete={handleNoteDelete} 
+
+        {/* 🔹 Przekazujemy socket i whiteboardId do PointerTrail */}
+        <PointerTrail 
+          active={tool === 'pointer'} 
+          socket={socketRef.current}
+          whiteboardId={whiteboardId}
         />
-        <Sidebar whiteboardId={whiteboardId} socket={socketRef.current} currentUser={currentUser} />
+
+        {/* ✅ PRZEKAŻ NOTATKI DO CANVAS - to najważniejsze! */}
+        <Canvas
+          tool={tool}
+          color={color}
+          setTool={setTool}
+          size={size[tool]}
+          setShowColorPicker={setShowColorPicker}
+          whiteboardId={whiteboardId}
+          socket={socketRef.current}
+          currentUser={currentUser}
+          onDrawing={handleDrawing}
+          onCursorMove={handleCursorMove}
+          textBoxes={textBoxes}
+          notes={notes}
+          onNoteCreate={handleNoteCreate}
+          onNoteUpdate={handleNoteUpdate}
+          onNoteDelete={handleNoteDelete}
+          emojis={emojis}
+          activeEmoji={activeEmoji} // Aktualnie wybrane emoji do postawienia
+          onEmojiCreate={handleEmojiCreate}
+          onEmojiUpdate={handleEmojiUpdate}
+          onEmojiDelete={handleEmojiDelete}
+          gifs={gifs}                     // ✅ Przekazujemy listę
+          activeGif={activeGif}           // ✅ Przekazujemy wybrany URL
+          onGifCreate={handleGifCreate}   // ✅ Funkcja tworzenia
+          onGifDelete={handleGifDelete}   // ✅ Funkcja usuwania
+          onGifUpdate={handleGifUpdate}
+          shapes={shapes}
+          activeShape={activeShape}
+          onShapeCreate={handleShapeCreate}
+          onShapeDelete={handleShapeDelete}
+          onShapeUpdate={handleShapeUpdate} // <--- Przekazujemy funkcję
+        />
+
+        <Sidebar
+          whiteboardId={whiteboardId}
+          socket={socketRef.current}
+          currentUser={currentUser}
+        />
+
         {showColorPicker && (
           <div className="color-picker-wrapper">
             <ColorPicker color={color} setColor={setColor} setShowColorPicker={setShowColorPicker} />

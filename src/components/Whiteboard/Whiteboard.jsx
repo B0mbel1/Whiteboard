@@ -20,52 +20,60 @@ const Whiteboard = () => {
   const [error, setError] = useState(null);
   const [textBoxes, setTextBoxes] = useState([]);
   const [notes, setNotes] = useState([]); 
-  const [users, setUsers] = useState([]);
-
-  // Tworzenie lub pobranie aktualnego użytkownika z sessionStorage
+  
   const [currentUser] = useState(() => {
-    const storedUser = sessionStorage.getItem('currentUser');
-    if (storedUser) return JSON.parse(storedUser);
-
+    // Generate a more unique user ID
     const userId = 'user_' + Math.random().toString(36).substring(2, 15);
     const userName = 'User' + Math.floor(Math.random() * 1000);
     const userColor = `hsl(${Math.random() * 360}, 80%, 60%)`;
-
-    const user = { id: userId, name: userName, color: userColor };
-    sessionStorage.setItem('currentUser', JSON.stringify(user));
-    return user;
+    
+    console.log("👤 Generated user:", { id: userId, name: userName, color: userColor });
+    
+    return {
+      id: userId,
+      name: userName,
+      color: userColor
+    };
   });
-
+  
   const socketRef = useRef(null);
   const hasJoinedRef = useRef(false); // Track if we've already joined
   const navigate = useNavigate();
 
-  // Przy ładowaniu komponentu tworzona jest nowa tablica
   useEffect(() => {
+    // Auto-create whiteboard when component mounts (main route)
     createNewWhiteboard();
   }, []);
 
-  // Funkcja tworząca nową tablicę
   const createNewWhiteboard = async () => {
     try {
       setIsLoading(true);
       setError(null);
       console.log("📝 Creating new whiteboard...");
-
+      
       const response = await fetch('http://localhost:3001/api/create-whiteboard');
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const data = await response.json();
-      if (!data.success) throw new Error(data.error || 'Failed to create whiteboard');
-
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to create whiteboard');
+      }
+      
       const newWhiteboardId = data.whiteboardId;
+      
       console.log("🎯 New whiteboard ID:", newWhiteboardId);
-
-      // Aktualizacja URL i state
+      
+      // Update URL to show the whiteboard ID
       navigate(`/${newWhiteboardId}`, { replace: true });
       setWhiteboardId(newWhiteboardId);
-
-      // Inicjalizacja socketu i dołączenie do whiteboard
+      
+      // Initialize socket and join whiteboard
       initializeSocket(newWhiteboardId);
+      
     } catch (error) {
       console.error('Error creating whiteboard:', error);
       setError(error.message);
@@ -74,82 +82,48 @@ const Whiteboard = () => {
     }
   };
 
-  // Funkcja inicjalizująca socket
   const initializeSocket = (whiteboardId) => {
     try {
-      hasJoinedRef.current = false; // Reset flagi join
-
+      // Reset join tracking
+      hasJoinedRef.current = false;
+      
+      // Initialize socket connection
       const newSocket = io('http://localhost:3001', {
         timeout: 10000,
         transports: ['websocket', 'polling']
       });
-
+      
       socketRef.current = newSocket;
       setSocket(newSocket);
 
       console.log("🔌 Socket initialized for whiteboard:", whiteboardId);
       console.log("👤 Current user:", currentUser);
 
-      // Połączenie z socketem
+      // Set up connection handlers
       newSocket.on('connect', () => {
         console.log("✅ Socket connected successfully");
-
-        // Dołączenie do whiteboard tylko raz
+        
+        // Join the whiteboard only once after connection is established
         if (!hasJoinedRef.current) {
           hasJoinedRef.current = true;
-          newSocket.emit('join-whiteboard', { whiteboardId, user: currentUser });
+          newSocket.emit('join-whiteboard', {
+            whiteboardId: whiteboardId,
+            user: currentUser
+          });
         }
       });
 
-      // Odbiór pełnych danych whiteboard
       newSocket.on('whiteboard-data', (data) => {
-        setTextBoxes(data.textBoxes || []);
-        setNotes(data.notes || []);
-        setUsers(data.users || []);
+          setTextBoxes(data.textBoxes || []);
+          setNotes(data.notes || []); 
       });
 
-      // Obsługa notatek
-      newSocket.on('note-create', (data) => {
-        setNotes(prev => [...prev, data.note]);
-      });
-
-      newSocket.on('note-update', (data) => {
-        setNotes(prev => prev.map(note => note.id === data.id ? { ...note, ...data } : note));
-      });
-
-      newSocket.on('note-delete', (data) => {
-        setNotes(prev => prev.filter(note => note.id !== data.id));
-      });
-
-      // Obsługa użytkowników
-      newSocket.on('whiteboard-users', (data) => {
-        setUsers(data.users);
-      });
-
-      newSocket.on('user-joined', ({ user }) => {
-        setUsers(prev => {
-          if (prev.some(u => u.id === user.id)) return prev;
-          return [...prev, user];
-        });
-      });
-
-      newSocket.on('user-left', ({ userId }) => {
-        setUsers(prev => prev.filter(u => u.id !== userId));
-      });
+       
 
       newSocket.on('connect_error', (error) => {
         console.error("❌ Socket connection error:", error);
         setError('Failed to connect to server. Please check if the server is running.');
       });
-
-      // Odświeżanie listy użytkowników co 10s
-      const interval = setInterval(() => {
-        if (socketRef.current && whiteboardId) {
-          socketRef.current.emit('get-users', { whiteboardId });
-        }
-      }, 10000);
-
-      return () => clearInterval(interval);
 
     } catch (error) {
       console.error("❌ Error initializing socket:", error);
@@ -157,39 +131,53 @@ const Whiteboard = () => {
     }
   };
 
-  // Funkcje do obsługi notatek
+    // DODANE: funkcje do obsługi notatek
   const handleNoteCreate = (note) => {
     if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('note-create', { whiteboardId, note });
+      socketRef.current.emit('note-create', {
+        whiteboardId,
+        note
+      });
     }
   };
 
   const handleNoteUpdate = (id, updates) => {
     if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('note-update', { whiteboardId, id, ...updates });
+      socketRef.current.emit('note-update', {
+        whiteboardId,
+        id,
+        ...updates
+      });
     }
   };
 
   const handleNoteDelete = (id) => {
     if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('note-delete', { whiteboardId, id });
+      socketRef.current.emit('note-delete', {
+        whiteboardId,
+        id
+      });
     }
   };
 
-  // Funkcje do obsługi rysowania
   const handleDrawing = (drawingData) => {
     if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('drawing', { whiteboardId, ...drawingData });
+      socketRef.current.emit('drawing', {
+        whiteboardId,
+        ...drawingData
+      });
     }
   };
 
   const handleCursorMove = (position) => {
     if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('cursor-move', { whiteboardId, position });
+      socketRef.current.emit('cursor-move', {
+        whiteboardId,
+        position
+      });
     }
   };
 
-  // Kopiowanie linku do tablicy
   const copyInviteLink = async () => {
     if (whiteboardId) {
       const link = `${window.location.origin}/${whiteboardId}`;
@@ -198,6 +186,7 @@ const Whiteboard = () => {
         alert('✅ Invite link copied to clipboard! Share it with others to collaborate!');
       } catch (err) {
         console.error('Failed to copy:', err);
+        // Fallback for browsers that don't support clipboard API
         const textArea = document.createElement('textarea');
         textArea.value = link;
         document.body.appendChild(textArea);
@@ -209,13 +198,11 @@ const Whiteboard = () => {
     }
   };
 
-  // Retry po błędzie
   const retryConnection = () => {
     setError(null);
     createNewWhiteboard();
   };
 
-  // Obsługa errora
   if (error) {
     return (
       <div style={{ 
@@ -251,7 +238,6 @@ const Whiteboard = () => {
     );
   }
 
-  // Obsługa loading
   if (isLoading) {
     return (
       <div style={{ 
@@ -269,31 +255,13 @@ const Whiteboard = () => {
     );
   }
 
-  // Główny render komponentu
   return (
     <div className="whiteboard">
       <div className="whiteboard-header">
         <div className="whiteboard-info">
           <span className="whiteboard-id">Room: {whiteboardId}</span>
           <span className="user-info">You: {currentUser.name}</span>
-          <span className="user-count-wrapper">
-            👥 {users.length}
-
-            {users.length > 0 && (
-              <span className="user-list-dropdown">
-                {users.map(user => (
-                  <span
-                    key={user.id}
-                    className="user-list-item"
-                    style={{ color: user.color }}>
-                    {user.name}
-                  </span>
-                ))}
-              </span>
-            )}
-          </span>
         </div>
-
         <div className="header-controls">
           <button 
             className="invite-btn" 
@@ -308,7 +276,7 @@ const Whiteboard = () => {
 
       <div className="whiteboard-main">
         <Toolbar 
-          position="left"
+        position="left"
           tool={tool}
           setTool={setTool}
           color={color}
@@ -319,7 +287,7 @@ const Whiteboard = () => {
           setShowColorPicker={setShowColorPicker}
         />
 
-        <PointerTrail active={tool === 'pointer'} />
+         <PointerTrail active={tool === 'pointer'} />
         
         <Canvas 
           tool={tool}
@@ -333,10 +301,10 @@ const Whiteboard = () => {
           onDrawing={handleDrawing}
           onCursorMove={handleCursorMove}
           textBoxes={textBoxes}
-          notes={notes} // Przekazanie notatek
-          onNoteCreate={handleNoteCreate}
-          onNoteUpdate={handleNoteUpdate}
-          onNoteDelete={handleNoteDelete}
+          notes={notes} // DODANE: przekaż notatki
+          onNoteCreate={handleNoteCreate} // DODANE
+          onNoteUpdate={handleNoteUpdate} // DODANE
+          onNoteDelete={handleNoteDelete} // DODANE
         />
         
         <Sidebar 
@@ -347,16 +315,13 @@ const Whiteboard = () => {
 
         {showColorPicker && (
           <div className="color-picker-wrapper">
-            <ColorPicker 
-              color={color} 
-              setColor={setColor} 
-              setShowColorPicker={setShowColorPicker} 
-            />
+            <ColorPicker color={color} setColor={setColor} setShowColorPicker={setShowColorPicker} />
           </div>
         )}
       </div>
     </div>
   );
 };
+
 
 export default Whiteboard;

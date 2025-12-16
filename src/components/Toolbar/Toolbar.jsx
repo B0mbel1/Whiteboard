@@ -4,11 +4,11 @@ import MultimediaModal from '../MultimediaModal/MultimediaModal.jsx';
 import PointerTrail from './PointerTrail.jsx';
 import ToolRangeCircle from './ToolRangeCircle.jsx';
 
-const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker }) => {
+const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker, activeEmoji, setActiveEmoji, setActiveGif, setActiveShape }) => {
   const [showShapes, setShowShapes] = useState({ visible: false, x: 0, y: 0 });
   const [showEmojis, setShowEmojis] = useState({ visible: false, x: 0, y: 0 });
   const [selectedShape, setSelectedShape] = useState(null);
-  const [selectedEmoji, setSelectedEmoji] = useState(null);
+  // const [selectedEmoji, setSelectedEmoji] = useState(null);
   const [collapsed, setCollapsed] = useState(false);
 
   const [selectedColor, setSelectedColor] = useState(color || '#000000');
@@ -104,7 +104,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
     const checkState = () => {
       updateUndoRedoState();
     };
-    
+
     // Sprawdzaj stan co 100ms
     const interval = setInterval(checkState, 100);
     return () => clearInterval(interval);
@@ -188,14 +188,21 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
     setShowColorPicker(prev => !prev);
   };
 
-  const handleSelectShape = (shape) => {
-    setSelectedShape(shape);
+  const handleSelectShape = (shapeObj) => {
+    setSelectedShape(shapeObj.name);
+    if (setActiveShape) {
+      setActiveShape(shapeObj.type); // Przekazujemy typ (np. 'star') wyżej
+    }
+    setTool('shape'); // Ustawiamy narzędzie na 'shape'
     setShowShapes({ visible: false, x: 0, y: 0 });
   };
 
   const handleSelectEmoji = (emoji) => {
-    setSelectedEmoji(emoji);
-    setShowEmojis({ visible: false, x: 0, y: 0 });
+    if (setActiveEmoji) {
+      setActiveEmoji(emoji); // Ustawiamy emoji w stanie nadrzędnym (WhiteboardRouter)
+    }
+    setTool('emoji'); // Przełączamy narzędzie na 'emoji'
+    setShowEmojis({ visible: false, x: 0, y: 0 }); // Zamykamy popup
   };
 
   // 🖌️ Zmiana kursora tylko dla canvas
@@ -221,6 +228,9 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
         break;
       case 'select':
         cursorStyle = 'url("/cursors/select.png") 0 0, crosshair';
+        break;
+      case 'emoji':
+        cursorStyle = 'default';
         break;
       case 'cursor':
       default:
@@ -285,13 +295,13 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
   ];
 
   const shapes = [
-    { label: '⬛', name: 'Kwadrat' },
-    { label: '▭', name: 'Prostokąt' },
-    { label: '➡️', name: 'Strzałka' },
-    { label: '⚪', name: 'Koło' },
-    { label: '⭐', name: 'Gwiazda' },
-    { label: '✅', name: 'Zatwierdzenie' },
-    { label: '❌', name: 'Zaprzeczenie' },
+    { label: '⬛', name: 'Kwadrat', type: 'square' },
+    { label: '▭', name: 'Prostokąt', type: 'rectangle_outline' },
+    { label: '➡️', name: 'Strzałka', type: 'arrow' },
+    { label: '⚪', name: 'Koło', type: 'circle' },
+    { label: '⭐', name: 'Gwiazda', type: 'star' },
+    { label: '✅', name: 'Zatwierdzenie', type: 'check' },
+    { label: '❌', name: 'Zaprzeczenie', type: 'cross' },
   ];
 
   const emojis = ['😀', '😁', '😂', '🤣', '😊', '😍', '😎', '😢', '😡', '👍', '👎', '❤️', '🔥', '🎉', '💡'];
@@ -335,18 +345,18 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
         <div className="toolbar-section">
           <h4>Akcje</h4>
           <div className="tool-undo-redo">
-            <button 
-              className={`tool-btn ${!canUndo ? 'disabled' : ''}`} 
-              title="Cofnij (Ctrl+Z)" 
+            <button
+              className={`tool-btn ${!canUndo ? 'disabled' : ''}`}
+              title="Cofnij (Ctrl+Z)"
               onClick={handleUndo}
               disabled={!canUndo}
               style={{ cursor: canUndo ? 'default' : 'not-allowed' }}
             >
               ↩️
             </button>
-            <button 
-              className={`tool-btn ${!canRedo ? 'disabled' : ''}`} 
-              title="Ponów (Ctrl+Y)" 
+            <button
+              className={`tool-btn ${!canRedo ? 'disabled' : ''}`}
+              title="Ponów (Ctrl+Y)"
               onClick={handleRedo}
               disabled={!canRedo}
               style={{ cursor: canRedo ? 'default' : 'not-allowed' }}
@@ -424,7 +434,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
                 key={i}
                 className={`shape-btn ${selectedShape === shape.name ? 'selected' : ''}`}
                 title={shape.name}
-                onClick={() => handleSelectShape(shape.name)}
+                onClick={() => handleSelectShape(shape)}
                 style={{ cursor: 'default' }}
               >
                 {shape.label}
@@ -441,7 +451,8 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
             {emojis.map((emoji, i) => (
               <button
                 key={i}
-                className={`emoji-btn ${selectedEmoji === emoji ? 'selected' : ''}`}
+                // Używamy activeEmoji z propsów do warunkowej klasy
+                className={`emoji-btn ${activeEmoji === emoji ? 'selected' : ''}`}
                 title={emoji}
                 onClick={() => handleSelectEmoji(emoji)}
                 style={{ cursor: 'default' }}
@@ -487,7 +498,12 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
                         borderRadius: '6px',
                         cursor: 'pointer'
                       }}
-                      onClick={() => console.log('Wybrano GIF:', url)}
+                      onClick={() => {
+                        console.log('Wybrano GIF:', url);
+                        setActiveGif(url);      // Ustaw URL
+                        setTool('gif');         // Zmień narzędzie na 'gif'
+                        setShowGifs({ visible: false, x: 0, y: 0 }); // Zamknij popup
+                      }}
                     />
                   ))}
                 </div>
@@ -505,7 +521,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
       >
         <span className={`arrow ${collapsed ? 'arrow-right' : 'arrow-left'}`}>➤</span>
       </div>
-      
+
       {showMultimedia && <MultimediaModal onClose={() => setShowMultimedia(false)} />}
 
       <ToolRangeCircle tool={tool} size={size} />

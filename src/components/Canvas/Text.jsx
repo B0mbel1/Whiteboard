@@ -12,50 +12,52 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
   const isResizing = useRef(false);
 
   // Synchronizuj zmiany z serwera
-// Text.jsx - ZASTĄP obecny useEffect obsługujący socket tym:
-useEffect(() => {
-  if (socket) {
-    const handleTextUpdate = (data) => {
-      if (data.id === id) {
-        console.log("📝 Text update received:", data);
-        
-        // ✅ POPRAWKA: Obsłuż zarówno position JAK i bezpośrednio x, y
-        if (data.position) {
-          setPosition(data.position);
-        } else if (data.x !== undefined && data.y !== undefined) {
-          // Jeśli serwer wysyła bezpośrednio x, y
-          setPosition({ x: data.x, y: data.y });
-        }
-        
-        if (data.text !== undefined) setText(data.text);
-        if (data.size) setSize(data.size);
-      }
-    };
-    
-    socket.on('text-update', handleTextUpdate);
-    return () => {
-      socket.off('text-update', handleTextUpdate);
-    };
-  }
-}, [socket, id]);
+  // Text.jsx - ZASTĄP obecny useEffect obsługujący socket tym:
+  useEffect(() => {
+    if (socket) {
+      const handleTextUpdate = (data) => {
+        if (data.id === id) {
+          console.log("📝 Text update received:", data);
 
-// ✅ DODAJ: Synchronizuj pozycję z props
-useEffect(() => {
-  setPosition({ x, y });
-}, [x, y]);
+          // ✅ POPRAWKA: Obsłuż zarówno position JAK i bezpośrednio x, y
+          if (data.position) {
+            setPosition(data.position);
+          } else if (data.x !== undefined && data.y !== undefined) {
+            // Jeśli serwer wysyła bezpośrednio x, y
+            setPosition({ x: data.x, y: data.y });
+          }
+
+          if (data.text !== undefined) setText(data.text);
+          if (data.size) setSize(data.size);
+        }
+      };
+
+      socket.on('text-update', handleTextUpdate);
+      return () => {
+        socket.off('text-update', handleTextUpdate);
+      };
+    }
+  }, [socket, id]);
+
+  // ✅ DODAJ: Synchronizuj pozycję z props
+  useEffect(() => {
+    setPosition({ x, y });
+  }, [x, y]);
 
   const handleMouseDown = (e) => {
-    if (isEditing) return;
-    
+    if (isEditing || e.target.classList.contains('resize-handle')) {
+      return;
+    }
+
     setSelected(id);
-    
+
     if (!e.target.classList.contains('resize-handle')) {
       isDragging.current = true;
-      dragOffset.current = { 
-        x: e.clientX - position.x, 
-        y: e.clientY - position.y 
+      dragOffset.current = {
+        x: e.clientX - position.x,
+        y: e.clientY - position.y
       };
-      e.preventDefault();
+      // e.preventDefault();
     }
   };
 
@@ -95,9 +97,9 @@ useEffect(() => {
     const handleResizeMove = (moveEvent) => {
       const newWidth = startWidth + (moveEvent.clientX - startX);
       const newHeight = startHeight + (moveEvent.clientY - startY);
-      setSize({ 
-        width: newWidth > 50 ? newWidth : 50, 
-        height: newHeight > 30 ? newHeight : 30 
+      setSize({
+        width: newWidth > 50 ? newWidth : 50,
+        height: newHeight > 30 ? newHeight : 30
       });
     };
 
@@ -146,7 +148,7 @@ useEffect(() => {
   useEffect(() => {
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-    
+
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
@@ -156,14 +158,15 @@ useEffect(() => {
   return (
     <div
       className={`text-box ${selected ? 'selected' : ''}`}
-      style={{ 
-        top: position.y, 
-        left: position.x, 
-        width: size.width, 
-        height: size.height 
+      style={{
+        top: position.y,
+        left: position.x,
+        width: size.width,
+        height: size.height
       }}
       onMouseDown={handleMouseDown}
       onDoubleClick={handleDoubleClick}
+      onClick={(e) => e.stopPropagation()}
     >
       {isEditing ? (
         <textarea
@@ -174,6 +177,7 @@ useEffect(() => {
           onKeyDown={handleKeyDown}
           className="text-input"
           style={{ width: '100%', height: '100%' }}
+          onMouseDown={(e) => e.stopPropagation()}
         />
       ) : (
         <div className="text-display">
@@ -181,8 +185,8 @@ useEffect(() => {
         </div>
       )}
       {selected && (
-        <div 
-          className="resize-handle" 
+        <div
+          className="resize-handle"
           onMouseDown={handleResizeMouseDown}
         />
       )}
