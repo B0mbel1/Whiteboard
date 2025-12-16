@@ -21,20 +21,34 @@ const Whiteboard = () => {
   const [textBoxes, setTextBoxes] = useState([]);
   const [notes, setNotes] = useState([]); 
   
-  const [currentUser] = useState(() => {
-    // Generate a more unique user ID
-    const userId = 'user_' + Math.random().toString(36).substring(2, 15);
-    const userName = 'User' + Math.floor(Math.random() * 1000);
-    const userColor = `hsl(${Math.random() * 360}, 80%, 60%)`;
-    
-    console.log("👤 Generated user:", { id: userId, name: userName, color: userColor });
-    
-    return {
-      id: userId,
-      name: userName,
-      color: userColor
-    };
-  });
+ 
+ const [currentUser, setCurrentUser] = useState(() => {
+  const saved = localStorage.getItem("whiteboard-user");
+
+  if (saved) {
+    return JSON.parse(saved);
+  }
+
+ console.log("👤 Generated user:", { id: userId, name: userName, color: userColor });
+
+  const userId = 'user_' + Math.random().toString(36).substring(2, 15);
+  const userName = 'User' + Math.floor(Math.random() * 1000);
+  const userColor = `hsl(${Math.random() * 360}, 80%, 60%)`;
+
+  const user = {
+    id: userId,
+    name: userName,
+    color: userColor
+  };
+
+  localStorage.setItem("whiteboard-user", JSON.stringify(user));
+  return {
+    id: userId,
+    name: userName,
+    color: userColor
+  };
+});
+
   
   const socketRef = useRef(null);
   const hasJoinedRef = useRef(false); // Track if we've already joined

@@ -12,7 +12,90 @@
   justify-content: space-between;
   align-items: center;
   flex-shrink: 0;
-  /* Zapobiega kurczeniu się nagłówka */
+  position: relative;
+  z-index: 100;
+}
+
+.whiteboard-info {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.whiteboard-id {
+  font-weight: bold;
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 14px;
+}
+
+.user-info input {
+  border: none;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.6);
+  background: transparent;
+  color: white;
+  width: 110px;
+  outline: none;
+  font-size: 14px;
+}
+
+.user-color {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 1px solid #fff;
+  position: relative;
+  transition: transform 0.2s;
+}
+
+.user-color:hover {
+  transform: scale(1.2);
+}
+
+.user-color-picker-wrapper {
+  position: absolute;
+  top: 35px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.header-controls {
+  display: flex;
+  gap: 10px;
+}
+
+.invite-btn,
+.fullscreen-btn,
+.save-btn {
+  padding: 6px 12px;
+  background: #34495e;
+  border: none;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.2s;
+}
+
+.invite-btn:hover,
+.fullscreen-btn:hover,
+.save-btn:hover {
+  background: #3d566e;
 }
 
 .whiteboard-main {
@@ -20,46 +103,14 @@
   display: flex;
   overflow: hidden;
   min-height: 0;
-  /* Ważne dla poprawnego flexbox */
   position: relative;
-  /* Add this */
 }
 
 .color-picker-wrapper {
   position: absolute;
   left: 150px;
-  /* Toolbar width + margin */
   top: 10px;
   z-index: 1000;
-}
-
-.fullscreen-btn,
-.file-menu {
-  padding: 5px 10px;
-  background: #34495e;
-  border: none;
-  color: white;
-  border-radius: 3px;
-  cursor: pointer;
-}
-
-.fullscreen-btn,
-.file-menu {
-  padding: 5px 10px;
-  background: #34495e;
-  border: none;
-  color: white;
-  border-radius: 3px;
-  cursor: pointer;
-}
-
-.save-btn {
-  padding: 5px 10px;
-  background: #34495e;
-  border: none;
-  color: white;
-  border-radius: 3px;
-  cursor: pointer;
 }
 
 .user-count-wrapper {
@@ -73,7 +124,7 @@
 .user-list-dropdown {
   display: none;
   position: absolute;
-  top: 100%; /* poniżej span z liczbą */
+  top: 100%;
   left: 0;
   background: #2d3a45;
   border: 1px solid #1f2a33;
@@ -82,7 +133,7 @@
   min-width: 120px;
   z-index: 9999;
   white-space: nowrap;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
 .user-list-wrapper:hover .user-list-dropdown,
@@ -93,4 +144,36 @@
 .user-list-item {
   display: block;
   padding: 2px 6px;
+}
+
+/* Style dla ColorPicker (importowane z ColorPicker.css) */
+.color-picker-panel {
+  position: absolute;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 220px;
+}
+
+.sketch-picker {
+  box-shadow: none !important;
+  padding: 0 !important;
+  width: 200px !important;
+}
+
+/* Loading screen */
+.loading-screen {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f0f0f0;
+  flex-direction: column;
+  gap: 20px;
 }
