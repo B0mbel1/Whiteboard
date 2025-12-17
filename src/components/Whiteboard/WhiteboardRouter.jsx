@@ -568,7 +568,6 @@ const WhiteboardRouter = () => {
                   borderTop: '1px solid #eee',
                   fontStyle: 'italic'
                 }}>
-                  Hover to see users
                 </div>
               </div>
             )}
