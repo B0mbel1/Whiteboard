@@ -39,8 +39,9 @@ const Canvas = ({
   onShapeCreate,
   onShapeDelete,
   onShapeUpdate,
+  backgroundMode,
+  onBackgroundChange,
 }) => {
-  const [backgroundMode, setBackgroundMode] = useState('grid');
   const [remoteCursors, setRemoteCursors] = useState(new Map());
 
   // Dwa canvasy: tło i rysunek
@@ -623,9 +624,7 @@ const Canvas = ({
       const handleWhiteboardState = (data) => {
         console.log("🎨 Redrawing", data.drawingData.length, "existing drawings");
 
-        if (data.backgroundMode) {
-          setBackgroundMode(data.backgroundMode);
-        }
+
         clearDrawingCanvas();
         setTimeout(() => {
           data.drawingData.forEach(drawing => { drawRemote(drawing); });
@@ -661,7 +660,6 @@ const Canvas = ({
       socket.on('whiteboard-data', handleWhiteboardState);
       socket.on('user-joined', handleUsersUpdated);
       socket.on('user-left', handleUsersUpdated);
-      socket.on('background-update', handleBackgroundUpdate);
 
       return () => {
         socket.off('drawing', handleRemoteDrawing);
@@ -669,7 +667,6 @@ const Canvas = ({
         socket.off('whiteboard-data', handleWhiteboardState);
         socket.off('user-joined', handleUsersUpdated);
         socket.off('user-left', handleUsersUpdated);
-        socket.off('background-update', handleBackgroundUpdate);
       };
     }
   }, [socket]);
@@ -681,9 +678,9 @@ const Canvas = ({
     context.clearRect(0, 0, canvas.width, canvas.height);
   };
 
-  const handleBackgroundUpdate = (data) => {
-    setBackgroundMode(data.mode);
-  };
+  // const handleBackgroundUpdate = (data) => {
+  //   setBackgroundMode(data.mode);
+  // };
 
   const drawRemote = (data) => {
     const context = drawingContextRef.current;
@@ -1253,15 +1250,9 @@ const Canvas = ({
     const nextIndex = (currentIndex + 1) % backgroundModes.length;
     const newMode = backgroundModes[nextIndex].id;
 
-    // Ustawiamy lokalnie (optymistycznie)
-    setBackgroundMode(newMode);
-
-    // Wysyłamy na serwer
-    if (socket && whiteboardId) {
-      socket.emit('background-update', {
-        whiteboardId,
-        mode: newMode
-      });
+    // Wywołujemy funkcję z rodzica (Routera)
+    if (onBackgroundChange) {
+      onBackgroundChange(newMode);
     }
   };
 
