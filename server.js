@@ -350,10 +350,27 @@ io.on("connection", (socket) => {
   });
 
   socket.on("erase-area", (d) => {
-    // Możemy tu opcjonalnie wyczyścić drawingData na serwerze, 
-    // ale to skomplikowane matematycznie.
-    // Najważniejsze, żeby rozesłać info do innych klientów.
-    broadcast(d.whiteboardId, "erase-area", d);
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb) {
+      // 1. Zapisujemy akcję wymazywania do historii rysowania!
+      // Dzięki temu przy odświeżeniu zostanie ona odtworzona w kolejności
+      const eraseAction = {
+        type: 'erase-area', // Ważne: oznaczamy typ
+        x: d.x,
+        y: d.y,
+        width: d.width,
+        height: d.height,
+        whiteboardId: d.whiteboardId
+      };
+
+      wb.drawingData.push(eraseAction);
+
+      // Ogranicznik historii (opcjonalny, taki sam jak przy drawing)
+      if (wb.drawingData.length > 10000) wb.drawingData.shift();
+
+      // 2. Rozsyłamy do innych
+      broadcast(d.whiteboardId, "erase-area", d);
+    }
   });
 
   // ========== KURSOR I WSKAŹNIK (POINTER) ==========

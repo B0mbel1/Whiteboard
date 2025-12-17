@@ -684,7 +684,18 @@ const Canvas = ({
 
   const drawRemote = (data) => {
     const context = drawingContextRef.current;
-    if (!context || !data.points || data.points.length < 2) return;
+
+    // Zabezpieczenie przed brakiem kontekstu
+    if (!context) return;
+
+    // 🆕 NOWA CZĘŚĆ: Obsługa wymazywania z historii
+    if (data.type === 'erase-area') {
+      context.clearRect(data.x, data.y, data.width, data.height);
+      return;
+    }
+
+    // --- Stara logika rysowania ---
+    if (!data.points || data.points.length < 2) return;
     drawCompletePath(context, data.tool, data.color, data.size, data.points);
   };
 
