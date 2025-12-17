@@ -46,7 +46,7 @@ const WhiteboardRouter = () => {
     const userName = 'User' + Math.floor(Math.random() * 1000);
     const userColor = `hsl(${Math.random() * 360}, 80%, 60%)`;
     
-    //onsole.log("👤 Generated user:", { id: userId, name: userName, color: userColor });
+    console.log("👤 Generated user:", { id: userId, name: userName, color: userColor });
     
     const user = {
       id: userId,

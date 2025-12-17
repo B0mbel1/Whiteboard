@@ -500,25 +500,56 @@ const Canvas = ({
     ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
   };
 
+  // useEffect(() => {
+  //   // Jeśli zmieniamy narzędzie na cokolwiek innego niż 'select'
+  //   if (tool !== 'select') {
+
+  //     // 1. Jeśli mamy "wycięty" obrazek w powietrzu -> wklej go na stałe (commit)
+  //     if (selectionSnapshot) {
+  //       commitSelection();
+  //     }
+  //     // 2. Jeśli mamy samą ramkę (bez obrazka) -> po prostu ją usuń
+  //     else if (selectionBox) {
+  //       setSelectionBox(null);
+  //       setSelectionStart(null);
+  //     }
+
+  //     // 3. Zresetuj flagi przeciągania
+  //     setIsDraggingSelection(false);
+  //   }
+  //   // WAŻNE: Dodaj 'tool' do zależności, aby kod odpalał się przy każdej zmianie narzędzia
+  // }, [tool]);
+  // Canvas.jsx
+
   useEffect(() => {
-    // Jeśli zmieniamy narzędzie na cokolwiek innego niż 'select'
-    if (tool !== 'select') {
+    const canvas = drawingCanvasRef.current;
+    if (!canvas) return;
 
-      // 1. Jeśli mamy "wycięty" obrazek w powietrzu -> wklej go na stałe (commit)
-      if (selectionSnapshot) {
-        commitSelection();
-      }
-      // 2. Jeśli mamy samą ramkę (bez obrazka) -> po prostu ją usuń
-      else if (selectionBox) {
-        setSelectionBox(null);
-        setSelectionStart(null);
-      }
+    let cursorStyle = 'default';
 
-      // 3. Zresetuj flagi przeciągania
-      setIsDraggingSelection(false);
+    switch (tool) {
+      case 'pencil':
+        cursorStyle = 'url("/cursors/pencil.png") 0 32, auto';
+        break;
+      case 'brush':
+        cursorStyle = 'url("/cursors/brush.png") 0 32, auto';
+        break;
+      case 'eraser':
+        cursorStyle = 'url("/cursors/rubber.png") 0 32, auto';
+        break;
+      case 'pointer':
+        cursorStyle = 'pointer';
+        break;
+      case 'select':
+        cursorStyle = 'crosshair';
+        break;
+      default:
+        cursorStyle = 'default';
     }
-    // WAŻNE: Dodaj 'tool' do zależności, aby kod odpalał się przy każdej zmianie narzędzia
+
+    canvas.style.cursor = cursorStyle;
   }, [tool]);
+
 
   // Inicjalizacja dwóch canvasów
   useEffect(() => {
@@ -1216,13 +1247,14 @@ const Canvas = ({
   const getCurrentBackgroundIcon = () => backgroundModes.find(mode => mode.id === backgroundMode)?.icon;
 
   const handleMouseLeave = () => {
-    if (tool === 'pointer' && drawingCanvasRef.current) drawingCanvasRef.current.style.cursor = 'default';
-    stopDrawing();
-  };
+  // Usuń linię ustawiającą cursor = 'default'
+  stopDrawing();
+};
 
-  const handleMouseEnter = () => {
-    if (tool === 'pointer' && drawingCanvasRef.current) drawingCanvasRef.current.style.cursor = 'pointer';
-  };
+const handleMouseEnter = () => {
+  // Usuń linię ustawiającą cursor = 'pointer'
+  // Kursor zostanie obsłużony przez powyższy useEffect na podstawie aktualnego 'tool'
+};
 
   useEffect(() => {
     const interval = setInterval(() => {
