@@ -622,10 +622,16 @@ const Canvas = ({
       };
       const handleWhiteboardState = (data) => {
         console.log("🎨 Redrawing", data.drawingData.length, "existing drawings");
+
+        if (data.backgroundMode) {
+          setBackgroundMode(data.backgroundMode);
+        }
         clearDrawingCanvas();
         setTimeout(() => {
           data.drawingData.forEach(drawing => { drawRemote(drawing); });
         }, 100);
+
+
         const otherUsers = data.users.filter(user => user.id !== socket.id);
         const cursorsMap = new Map();
         otherUsers.forEach(user => {
@@ -655,6 +661,7 @@ const Canvas = ({
       socket.on('whiteboard-data', handleWhiteboardState);
       socket.on('user-joined', handleUsersUpdated);
       socket.on('user-left', handleUsersUpdated);
+      socket.on('background-update', handleBackgroundUpdate);
 
       return () => {
         socket.off('drawing', handleRemoteDrawing);
@@ -662,6 +669,7 @@ const Canvas = ({
         socket.off('whiteboard-data', handleWhiteboardState);
         socket.off('user-joined', handleUsersUpdated);
         socket.off('user-left', handleUsersUpdated);
+        socket.off('background-update', handleBackgroundUpdate);
       };
     }
   }, [socket]);
@@ -671,6 +679,10 @@ const Canvas = ({
     const canvas = drawingCanvasRef.current;
     if (!context || !canvas) return;
     context.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  const handleBackgroundUpdate = (data) => {
+    setBackgroundMode(data.mode);
   };
 
   const drawRemote = (data) => {
@@ -1239,22 +1251,31 @@ const Canvas = ({
   const toggleBackground = () => {
     const currentIndex = backgroundModes.findIndex(mode => mode.id === backgroundMode);
     const nextIndex = (currentIndex + 1) % backgroundModes.length;
-    setBackgroundMode(backgroundModes[nextIndex].id);
-    // Nie czyścimy drawing canvas - tylko zmieniamy tło
-    drawBackground();
+    const newMode = backgroundModes[nextIndex].id;
+
+    // Ustawiamy lokalnie (optymistycznie)
+    setBackgroundMode(newMode);
+
+    // Wysyłamy na serwer
+    if (socket && whiteboardId) {
+      socket.emit('background-update', {
+        whiteboardId,
+        mode: newMode
+      });
+    }
   };
 
   const getCurrentBackgroundIcon = () => backgroundModes.find(mode => mode.id === backgroundMode)?.icon;
 
   const handleMouseLeave = () => {
-  // Usuń linię ustawiającą cursor = 'default'
-  stopDrawing();
-};
+    // Usuń linię ustawiającą cursor = 'default'
+    stopDrawing();
+  };
 
-const handleMouseEnter = () => {
-  // Usuń linię ustawiającą cursor = 'pointer'
-  // Kursor zostanie obsłużony przez powyższy useEffect na podstawie aktualnego 'tool'
-};
+  const handleMouseEnter = () => {
+    // Usuń linię ustawiającą cursor = 'pointer'
+    // Kursor zostanie obsłużony przez powyższy useEffect na podstawie aktualnego 'tool'
+  };
 
   useEffect(() => {
     const interval = setInterval(() => {
