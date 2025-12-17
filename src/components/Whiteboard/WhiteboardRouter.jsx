@@ -20,6 +20,8 @@ const WhiteboardRouter = () => {
   const [textBoxes, setTextBoxes] = useState([]);
   const [notes, setNotes] = useState([]);
 
+  const [backgroundMode, setBackgroundMode] = useState('grid');
+
   // Emojis
   const [emojis, setEmojis] = useState([]);
   const [activeEmoji, setActiveEmoji] = useState(null);
@@ -37,23 +39,23 @@ const WhiteboardRouter = () => {
 
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem("whiteboard-user");
-    
+
     if (saved) {
       return JSON.parse(saved);
     }
-    
+
     const userId = 'user_' + Math.random().toString(36).substring(2, 15);
     const userName = 'User' + Math.floor(Math.random() * 1000);
     const userColor = `hsl(${Math.random() * 360}, 80%, 60%)`;
-    
+
     console.log("👤 Generated user:", { id: userId, name: userName, color: userColor });
-    
+
     const user = {
       id: userId,
       name: userName,
       color: userColor
     };
-    
+
     localStorage.setItem("whiteboard-user", JSON.stringify(user));
     return user;
   });
@@ -84,7 +86,7 @@ const WhiteboardRouter = () => {
     const updatedUser = { ...currentUser, color: newColor };
     setCurrentUser(updatedUser);
     localStorage.setItem("whiteboard-user", JSON.stringify(updatedUser));
-    
+
     // WYSLIJ AKTUALIZACJE NA SERWER - DODANO
     updateUserOnServer({ color: newColor });
   };
@@ -92,11 +94,11 @@ const WhiteboardRouter = () => {
   // Funkcja zmiany nazwy użytkownika
   const handleUserNameChange = (newName) => {
     if (newName.trim() === '') return;
-    
+
     const updatedUser = { ...currentUser, name: newName };
     setCurrentUser(updatedUser);
     localStorage.setItem("whiteboard-user", JSON.stringify(updatedUser));
-    
+
     // WYSLIJ AKTUALIZACJE NA SERWER - DODANO
     updateUserOnServer({ name: newName });
   };
@@ -105,27 +107,27 @@ const WhiteboardRouter = () => {
   useEffect(() => {
     const handleClickOutside = (event) => {
       // Jeśli picker jest widoczny i kliknięto POZA nim i POZA kropką
-      if (showUserColorPicker && 
-          userColorPickerRef.current && 
-          !userColorPickerRef.current.contains(event.target) &&
-          userColorDotRef.current && 
-          !userColorDotRef.current.contains(event.target)) {
+      if (showUserColorPicker &&
+        userColorPickerRef.current &&
+        !userColorPickerRef.current.contains(event.target) &&
+        userColorDotRef.current &&
+        !userColorDotRef.current.contains(event.target)) {
         setShowUserColorPicker(false);
       }
-      
+
       // Dodano: Obsługa kliknięcia poza listą użytkowników
-      if (showUsersList && 
-          usersListRef.current && 
-          !usersListRef.current.contains(event.target) &&
-          usersCounterRef.current && 
-          !usersCounterRef.current.contains(event.target)) {
+      if (showUsersList &&
+        usersListRef.current &&
+        !usersListRef.current.contains(event.target) &&
+        usersCounterRef.current &&
+        !usersCounterRef.current.contains(event.target)) {
         setShowUsersList(false);
       }
     };
 
     // Dodaj listener zawsze
     document.addEventListener('mousedown', handleClickOutside);
-    
+
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
@@ -196,11 +198,19 @@ const WhiteboardRouter = () => {
       if (data.emojis) {
         setEmojis(data.emojis);
       }
-      
+
       // Dodano: Pobieranie listy użytkowników z danych
       if (data.users) {
         setUsers(data.users);
       }
+
+      if (data.backgroundMode) {
+        setBackgroundMode(data.backgroundMode);
+      }
+    });
+
+    newSocket.on('background-update', (data) => {
+      setBackgroundMode(data.mode);
     });
 
     // Dodano: Obsługa aktualizacji listy użytkowników
@@ -224,11 +234,11 @@ const WhiteboardRouter = () => {
     // Dodano: Obsługa aktualizacji użytkownika (np. zmiana koloru/nicku)
     newSocket.on('user-updated', (data) => {
       console.log("👤 User updated:", data.userId, data.updates);
-      
+
       // Aktualizuj lokalną listę użytkowników
-      setUsers(prevUsers => 
-        prevUsers.map(user => 
-          user.id === data.userId 
+      setUsers(prevUsers =>
+        prevUsers.map(user =>
+          user.id === data.userId
             ? { ...user, ...data.updates }
             : user
         )
@@ -239,6 +249,14 @@ const WhiteboardRouter = () => {
       console.error("❌ Connection error:", error);
       setIsLoading(false);
     });
+  };
+
+
+  const handleBackgroundChange = (newMode) => {
+    setBackgroundMode(newMode);
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('background-update', { whiteboardId, mode: newMode });
+    }
   };
 
   // Shapes
@@ -416,7 +434,7 @@ const WhiteboardRouter = () => {
               }}
             />
           </span>
-          
+
           {/* Kropka użytkownika - kliknięcie otwiera picker */}
           <span
             ref={userColorDotRef}
@@ -437,10 +455,10 @@ const WhiteboardRouter = () => {
               position: "relative"
             }}
           />
-          
+
           {/* ColorPicker dla koloru użytkownika */}
           {showUserColorPicker && (
-            <div 
+            <div
               ref={userColorPickerRef}
               className="user-color-picker-wrapper"
               style={{
@@ -455,14 +473,14 @@ const WhiteboardRouter = () => {
                 overflow: 'hidden'
               }}
             >
-              <ColorPicker 
-                color={currentUser.color} 
+              <ColorPicker
+                color={currentUser.color}
                 setColor={handleUserColorChange}
                 setShowColorPicker={setShowUserColorPicker}
               />
             </div>
           )}
-          
+
           {/* Dodano: Licznik aktywnych użytkowników z rozwijaną listą */}
           <div style={{ position: 'relative', display: 'inline-block', marginLeft: '15px' }}>
             <span
@@ -485,7 +503,7 @@ const WhiteboardRouter = () => {
             >
               👥 Active Users: <strong style={{ marginLeft: '4px' }}>{users.length}</strong>
             </span>
-            
+
             {/* Dodano: Lista użytkowników (pokazuje się na hover) */}
             {showUsersList && users.length > 0 && (
               <div
@@ -507,9 +525,9 @@ const WhiteboardRouter = () => {
                   border: '1px solid #e1e1e1'
                 }}
               >
-                <div style={{ 
-                  fontSize: '12px', 
-                  color: '#666', 
+                <div style={{
+                  fontSize: '12px',
+                  color: '#666',
                   marginBottom: '8px',
                   fontWeight: '500',
                   borderBottom: '1px solid #eee',
@@ -517,11 +535,11 @@ const WhiteboardRouter = () => {
                 }}>
                   Online Users ({users.length})
                 </div>
-                
+
                 <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
                   {users.map(user => (
-                    <div 
-                      key={user.id} 
+                    <div
+                      key={user.id}
                       className="user-list-item"
                       style={{
                         display: 'flex',
@@ -531,7 +549,7 @@ const WhiteboardRouter = () => {
                         fontSize: '13px'
                       }}
                     >
-                      <div 
+                      <div
                         className="user-color-dot"
                         style={{
                           width: '10px',
@@ -543,7 +561,7 @@ const WhiteboardRouter = () => {
                           border: '1px solid #ddd'
                         }}
                       />
-                      <span 
+                      <span
                         className="user-name"
                         style={{
                           whiteSpace: 'nowrap',
@@ -559,10 +577,10 @@ const WhiteboardRouter = () => {
                     </div>
                   ))}
                 </div>
-                
-                <div style={{ 
-                  fontSize: '11px', 
-                  color: '#999', 
+
+                <div style={{
+                  fontSize: '11px',
+                  color: '#999',
                   marginTop: '8px',
                   paddingTop: '6px',
                   borderTop: '1px solid #eee',
@@ -602,8 +620,8 @@ const WhiteboardRouter = () => {
           setActiveShape={setActiveShape}
         />
 
-        <PointerTrail 
-          active={tool === 'pointer'} 
+        <PointerTrail
+          active={tool === 'pointer'}
           socket={socketRef.current}
           whiteboardId={whiteboardId}
         />
@@ -639,6 +657,8 @@ const WhiteboardRouter = () => {
           onShapeCreate={handleShapeCreate}
           onShapeDelete={handleShapeDelete}
           onShapeUpdate={handleShapeUpdate}
+          backgroundMode={backgroundMode}
+          onBackgroundChange={handleBackgroundChange}
         />
 
         <Sidebar

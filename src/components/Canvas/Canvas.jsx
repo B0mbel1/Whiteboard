@@ -39,12 +39,19 @@ const Canvas = ({
   onShapeCreate,
   onShapeDelete,
   onShapeUpdate,
+  backgroundMode,
+  onBackgroundChange,
 }) => {
-  const [backgroundMode, setBackgroundMode] = useState('grid');
   const [remoteCursors, setRemoteCursors] = useState(new Map());
-  const canvasRef = useRef(null);
+
+  // Dwa canvasy: tło i rysunek
+  const backgroundCanvasRef = useRef(null);
+  const drawingCanvasRef = useRef(null);
+
   const containerRef = useRef(null);
-  const contextRef = useRef(null);
+  const backgroundContextRef = useRef(null);
+  const drawingContextRef = useRef(null);
+
   const [isDrawing, setIsDrawing] = useState(false);
   const currentDrawingRef = useRef(null);
   const [notes, setNotes] = useState(initialNotes || []);
@@ -70,10 +77,14 @@ const Canvas = ({
   const [shapes, setShapes] = useState(initialShapes || []);
   const [selectedShapeId, setSelectedShapeId] = useState(null);
 
-  //Zaznaczenie
-  // 🔹 DODANE: Stan dla zaznaczania obszaru
-  const [selectionBox, setSelectionBox] = useState(null); // { x, y, width, height }
-  const [selectionStart, setSelectionStart] = useState(null); // { x, y }
+  // Zaznaczenie
+  const [selectionBox, setSelectionBox] = useState(null);
+  const [selectionStart, setSelectionStart] = useState(null);
+
+  const [selectionSnapshot, setSelectionSnapshot] = useState(null); // Stores the cut image URL
+  const [isDraggingSelection, setIsDraggingSelection] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [originalCaptureRect, setOriginalCaptureRect] = useState(null);
 
   const ACTION_TYPES = {
     DRAWING: 'drawing',
@@ -87,7 +98,8 @@ const Canvas = ({
     GIF_DELETE: 'gif_delete',
     SHAPE_CREATE: 'shape_create',
     SHAPE_DELETE: 'shape_delete',
-    CLEAR_AREA: 'clear_area' // Opcjonalne: do historii
+    CLEAR_AREA: 'clear_area',
+    MASS_DELETE: 'mass_delete' // <--- DODAJ TO
   };
 
   useEffect(() => { setShapes(initialShapes || []); }, [initialShapes]);
@@ -113,7 +125,7 @@ const Canvas = ({
       case ACTION_TYPES.DRAWING:
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
-        clearCanvas();
+        clearDrawingCanvas();
         redrawCanvas();
         break;
       case ACTION_TYPES.NOTE_CREATE:
@@ -176,6 +188,17 @@ const Canvas = ({
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
         break;
+      case ACTION_TYPES.MASS_DELETE:
+        if (action.data.notes) setNotes(prev => [...prev, ...action.data.notes]);
+        if (action.data.textBoxes) setTextBoxes(prev => [...prev, ...action.data.textBoxes]);
+        if (action.data.emojis) setEmojis(prev => [...prev, ...action.data.emojis]);
+        if (action.data.gifs) setGifs(prev => [...prev, ...action.data.gifs]);
+        if (action.data.shapes) setShapes(prev => [...prev, ...action.data.shapes]);
+        redrawCanvas();
+        historyRef.current.step = currentStep - 1;
+        setHistoryStep(currentStep - 1);
+        break;
+      // ----------------------------------
       default:
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
@@ -191,7 +214,7 @@ const Canvas = ({
       case ACTION_TYPES.DRAWING:
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
-        clearCanvas();
+        clearDrawingCanvas();
         redrawCanvas();
         break;
       case ACTION_TYPES.NOTE_CREATE:
@@ -254,15 +277,69 @@ const Canvas = ({
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
         break;
+
+      case ACTION_TYPES.MASS_DELETE:
+        // Ponownie usuwamy elementy
+        const idsToRemove = {
+          notes: action.data.notes?.map(x => x.id) || [],
+          textBoxes: action.data.textBoxes?.map(x => x.id) || [],
+          emojis: action.data.emojis?.map(x => x.id) || [],
+          gifs: action.data.gifs?.map(x => x.id) || [],
+          shapes: action.data.shapes?.map(x => x.id) || []
+        };
+
+        if (idsToRemove.notes.length) setNotes(prev => prev.filter(x => !idsToRemove.notes.includes(x.id)));
+        if (idsToRemove.textBoxes.length) setTextBoxes(prev => prev.filter(x => !idsToRemove.textBoxes.includes(x.id)));
+        if (idsToRemove.emojis.length) setEmojis(prev => prev.filter(x => !idsToRemove.emojis.includes(x.id)));
+        if (idsToRemove.gifs.length) setGifs(prev => prev.filter(x => !idsToRemove.gifs.includes(x.id)));
+        if (idsToRemove.shapes.length) setShapes(prev => prev.filter(x => !idsToRemove.shapes.includes(x.id)));
+
+        // Dla rysunków nie musimy nic robić, bo stan selectionSnapshot został wyczyszczony przy pierwotnej akcji
+        redrawCanvas();
+
+        historyRef.current.step = nextStep;
+        setHistoryStep(nextStep);
+        break;
       default:
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
     }
   };
 
+  const commitSelection = () => {
+    if (!selectionSnapshot || !selectionBox) return;
+
+    const ctx = drawingContextRef.current;
+    const img = new Image();
+    img.onload = () => {
+      // Restore drawing settings
+      setupDrawingContext();
+      // Draw image at current selection position
+      ctx.drawImage(img, selectionBox.x, selectionBox.y, selectionBox.width, selectionBox.height);
+
+      // Save to history
+      // Note: Ideally, you'd save the 'putImageData' or 'drawImage' action here
+      saveToHistory(ACTION_TYPES.DRAWING, {
+        tool: 'paste', // You might need to handle this in redrawCanvas specifically
+        // Simple fallback: just clear snapshot, we accept it's now rasterized
+      });
+    };
+    img.src = selectionSnapshot;
+
+    // Reset selection state
+    setSelectionSnapshot(null);
+    setSelectionBox(null);
+    setOriginalCaptureRect(null);
+  };
+
   const redrawCanvas = () => {
-    const context = contextRef.current;
+    const context = drawingContextRef.current;
     if (!context) return;
+
+    // Najpierw wyczyść drawing canvas
+    clearDrawingCanvas();
+
+    // Narysuj historię
     for (let i = 0; i <= historyRef.current.step; i++) {
       const action = historyRef.current.history[i];
       if (action.type === ACTION_TYPES.DRAWING && action.data && action.data.points && action.data.points.length > 1) {
@@ -340,19 +417,195 @@ const Canvas = ({
     { id: 'black', name: 'Czarne tło', icon: '🌑' },
   ];
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const container = canvas.parentElement;
-    canvas.width = container.clientWidth;
-    canvas.height = container.clientHeight;
-    const context = canvas.getContext('2d');
-    context.lineCap = 'round';
-    context.strokeStyle = color;
-    context.lineWidth = size;
-    contextRef.current = context;
-    clearCanvas();
+  // Funkcja do rysowania tła
+  const drawBackground = () => {
+    const canvas = backgroundCanvasRef.current;
+    const context = backgroundContextRef.current;
+    if (!canvas || !context) return;
 
+    const width = canvas.width;
+    const height = canvas.height;
+
+    // Wyczyść tło
+    context.clearRect(0, 0, width, height);
+
+    switch (backgroundMode) {
+      case 'white':
+        context.fillStyle = 'white';
+        context.fillRect(0, 0, width, height);
+        break;
+
+      case 'grid':
+        context.fillStyle = '#f0f0f0';
+        context.fillRect(0, 0, width, height);
+
+        // Rysuj kratkę
+        context.strokeStyle = '#d0d0d0';
+        context.lineWidth = 1;
+
+        const gridSize = 20;
+        context.beginPath();
+
+        // Pionowe linie
+        for (let x = 0; x <= width; x += gridSize) {
+          context.moveTo(x, 0);
+          context.lineTo(x, height);
+        }
+
+        // Poziome linie
+        for (let y = 0; y <= height; y += gridSize) {
+          context.moveTo(0, y);
+          context.lineTo(width, y);
+        }
+
+        context.stroke();
+        break;
+
+      case 'lines':
+        context.fillStyle = 'white';
+        context.fillRect(0, 0, width, height);
+
+        // Rysuj linie jak w zeszycie
+        context.strokeStyle = '#e0e0e0';
+        context.lineWidth = 1;
+
+        const lineSpacing = 24;
+        context.beginPath();
+
+        for (let y = lineSpacing; y < height; y += lineSpacing) {
+          context.moveTo(0, y);
+          context.lineTo(width, y);
+        }
+
+        context.stroke();
+        break;
+
+      case 'black':
+        context.fillStyle = 'black';
+        context.fillRect(0, 0, width, height);
+        break;
+
+      default:
+        context.fillStyle = 'white';
+        context.fillRect(0, 0, width, height);
+    }
+  };
+
+  // Funkcja do konfiguracji kontekstu rysowania
+  const setupDrawingContext = () => {
+    const ctx = drawingContextRef.current;
+    if (!ctx) return;
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : color;
+    ctx.lineWidth = getToolSize();
+    ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
+  };
+
+  // useEffect(() => {
+  //   // Jeśli zmieniamy narzędzie na cokolwiek innego niż 'select'
+  //   if (tool !== 'select') {
+
+  //     // 1. Jeśli mamy "wycięty" obrazek w powietrzu -> wklej go na stałe (commit)
+  //     if (selectionSnapshot) {
+  //       commitSelection();
+  //     }
+  //     // 2. Jeśli mamy samą ramkę (bez obrazka) -> po prostu ją usuń
+  //     else if (selectionBox) {
+  //       setSelectionBox(null);
+  //       setSelectionStart(null);
+  //     }
+
+  //     // 3. Zresetuj flagi przeciągania
+  //     setIsDraggingSelection(false);
+  //   }
+  //   // WAŻNE: Dodaj 'tool' do zależności, aby kod odpalał się przy każdej zmianie narzędzia
+  // }, [tool]);
+  // Canvas.jsx
+
+  useEffect(() => {
+    const canvas = drawingCanvasRef.current;
+    if (!canvas) return;
+
+    let cursorStyle = 'default';
+
+    switch (tool) {
+      case 'pencil':
+        cursorStyle = 'url("/cursors/pencil.png") 0 32, auto';
+        break;
+      case 'brush':
+        cursorStyle = 'url("/cursors/brush.png") 0 32, auto';
+        break;
+      case 'eraser':
+        cursorStyle = 'url("/cursors/rubber.png") 0 32, auto';
+        break;
+      case 'pointer':
+        cursorStyle = 'pointer';
+        break;
+      case 'select':
+        cursorStyle = 'crosshair';
+        break;
+      default:
+        cursorStyle = 'default';
+    }
+
+    canvas.style.cursor = cursorStyle;
+  }, [tool]);
+
+
+  // Inicjalizacja dwóch canvasów
+  useEffect(() => {
+    const backgroundCanvas = backgroundCanvasRef.current;
+    const drawingCanvas = drawingCanvasRef.current;
+    const container = containerRef.current;
+
+    if (!backgroundCanvas || !drawingCanvas || !container) return;
+
+    const updateCanvasSize = () => {
+      const rect = container.getBoundingClientRect();
+      const width = rect.width;
+      const height = rect.height;
+
+      // Ustaw rozmiar dla obu canvasów
+      backgroundCanvas.width = width;
+      backgroundCanvas.height = height;
+      drawingCanvas.width = width;
+      drawingCanvas.height = height;
+
+      // Inicjalizuj konteksty
+      backgroundContextRef.current = backgroundCanvas.getContext('2d');
+      drawingContextRef.current = drawingCanvas.getContext('2d');
+
+      // Skonfiguruj kontekst rysowania
+      setupDrawingContext();
+
+      // Narysuj tło
+      drawBackground();
+
+      // Przerysuj historię na canvasie rysowania
+      redrawCanvas();
+    };
+
+    updateCanvasSize();
+    window.addEventListener('resize', updateCanvasSize);
+
+    return () => {
+      window.removeEventListener('resize', updateCanvasSize);
+    };
+  }, []);
+
+  // Aktualizuj tło gdy zmieni się tryb
+  useEffect(() => {
+    drawBackground();
+  }, [backgroundMode]);
+
+  // 🔹 DODANE: Aktualizuj kontekst rysowania gdy zmieniają się narzędzia/kolor/rozmiar
+  useEffect(() => {
+    setupDrawingContext();
+  }, [color, size, tool]);
+
+  useEffect(() => {
     if (socket) {
       console.log("📡 Setting up canvas listeners");
       const handleRemoteDrawing = (data) => { drawRemote(data); };
@@ -372,10 +625,14 @@ const Canvas = ({
       };
       const handleWhiteboardState = (data) => {
         console.log("🎨 Redrawing", data.drawingData.length, "existing drawings");
-        clearCanvas();
+
+
+        clearDrawingCanvas();
         setTimeout(() => {
           data.drawingData.forEach(drawing => { drawRemote(drawing); });
         }, 100);
+
+
         const otherUsers = data.users.filter(user => user.id !== socket.id);
         const cursorsMap = new Map();
         otherUsers.forEach(user => {
@@ -416,28 +673,36 @@ const Canvas = ({
     }
   }, [socket]);
 
-  const clearCanvas = () => {
-    const context = contextRef.current;
-    const canvas = canvasRef.current;
+  const clearDrawingCanvas = () => {
+    const context = drawingContextRef.current;
+    const canvas = drawingCanvasRef.current;
     if (!context || !canvas) return;
     context.clearRect(0, 0, canvas.width, canvas.height);
-    if (backgroundMode === 'white') {
-      context.fillStyle = 'white';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-    } else if (backgroundMode === 'black') {
-      context.fillStyle = 'black';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-    }
   };
 
+  // const handleBackgroundUpdate = (data) => {
+  //   setBackgroundMode(data.mode);
+  // };
+
   const drawRemote = (data) => {
-    const context = contextRef.current;
-    if (!context || !data.points || data.points.length < 2) return;
+    const context = drawingContextRef.current;
+
+    // Zabezpieczenie przed brakiem kontekstu
+    if (!context) return;
+
+    // 🆕 NOWA CZĘŚĆ: Obsługa wymazywania z historii
+    if (data.type === 'erase-area') {
+      context.clearRect(data.x, data.y, data.width, data.height);
+      return;
+    }
+
+    // --- Stara logika rysowania ---
+    if (!data.points || data.points.length < 2) return;
     drawCompletePath(context, data.tool, data.color, data.size, data.points);
   };
 
   const getCanvasCoordinates = (clientX, clientY) => {
-    const canvas = canvasRef.current;
+    const canvas = drawingCanvasRef.current;
     const rect = canvas.getBoundingClientRect();
     return { x: clientX - rect.left, y: clientY - rect.top };
   };
@@ -447,27 +712,47 @@ const Canvas = ({
     if (onGifUpdate) onGifUpdate(id, updates);
   };
 
+  // 🔹 POPRAWIONE: updateCanvasSize teraz też aktualizuje kontekst
   const updateCanvasSize = () => {
-    const canvas = canvasRef.current;
+    const backgroundCanvas = backgroundCanvasRef.current;
+    const drawingCanvas = drawingCanvasRef.current;
     const container = containerRef.current;
-    const ctx = contextRef.current;
-    if (!canvas || !container || !ctx) return;
-    const rect = container.getBoundingClientRect();
-    if (canvas.width === rect.width && canvas.height === rect.height) return;
 
+    if (!backgroundCanvas || !drawingCanvas || !container) return;
+
+    const rect = container.getBoundingClientRect();
+    const width = rect.width;
+    const height = rect.height;
+
+    // Zapisz obraz z drawing canvas przed zmianą rozmiaru
     let imageData = null;
-    if (canvas.width > 0 && canvas.height > 0) {
-      try { imageData = ctx.getImageData(0, 0, canvas.width, canvas.height); }
+    if (drawingCanvas.width > 0 && drawingCanvas.height > 0) {
+      try {
+        imageData = drawingContextRef.current?.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height);
+      }
       catch (e) { console.warn("Nie udało się pobrać danych canvas:", e); }
     }
-    canvas.width = rect.width;
-    canvas.height = rect.height;
-    if (imageData) ctx.putImageData(imageData, 0, 0);
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = color;
-    const toolSize = getToolSize();
-    ctx.lineWidth = toolSize;
+
+    // Ustaw nowe rozmiary
+    backgroundCanvas.width = width;
+    backgroundCanvas.height = height;
+    drawingCanvas.width = width;
+    drawingCanvas.height = height;
+
+    // Ponownie zainicjalizuj konteksty
+    backgroundContextRef.current = backgroundCanvas.getContext('2d');
+    drawingContextRef.current = drawingCanvas.getContext('2d');
+
+    // Skonfiguruj kontekst rysowania
+    setupDrawingContext();
+
+    // Przywróć obraz na drawing canvas
+    if (imageData && drawingContextRef.current) {
+      drawingContextRef.current.putImageData(imageData, 0, 0);
+    }
+
+    // Ponownie narysuj tło
+    drawBackground();
   };
 
   const getToolSize = () => {
@@ -475,34 +760,30 @@ const Canvas = ({
     return getDisplaySize(tool, base);
   };
 
+  // 🔹 POPRAWIONE: useEffect do inicjalizacji
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    contextRef.current = ctx;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = color;
-    ctx.lineWidth = getToolSize();
+    const backgroundCanvas = backgroundCanvasRef.current;
+    const drawingCanvas = drawingCanvasRef.current;
+    if (!backgroundCanvas || !drawingCanvas) return;
+
+    // Inicjalizuj konteksty
+    backgroundContextRef.current = backgroundCanvas.getContext('2d');
+    drawingContextRef.current = drawingCanvas.getContext('2d');
+
+    // Skonfiguruj drawing context
+    setupDrawingContext();
+
     updateCanvasSize();
     window.addEventListener('resize', updateCanvasSize);
     return () => window.removeEventListener('resize', updateCanvasSize);
   }, []);
 
   useEffect(() => {
-    const ctx = contextRef.current;
-    if (!ctx) return;
-    ctx.strokeStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : color;
-    ctx.lineWidth = getToolSize();
-    ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
-  }, [color, size, tool]);
-
-  useEffect(() => {
     if (socket) {
       const handleEraseArea = (data) => {
-        const ctx = contextRef.current;
+        const ctx = drawingContextRef.current;
         if (ctx) {
-          // Wyczyść piksele na canvasie
+          // Wyczyść piksele na canvasie rysowania
           ctx.clearRect(data.x, data.y, data.width, data.height);
         }
       };
@@ -515,118 +796,119 @@ const Canvas = ({
   }, [socket]);
 
   const startDrawing = ({ nativeEvent }) => {
-    // ✅ ZMIANA: Sprawdzamy, czy wciśnięty przycisk to lewy (0).
-    // Jeśli to prawy (2) lub środkowy (1), przerywamy funkcję.
     if (nativeEvent.button !== 0) return;
+    const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
 
+    // --- HANDLE SELECTION TOOL ---
     if (tool === 'select') {
-      const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
+      // 1. Check if we are clicking INSIDE an existing active selection to Move it
+      if (selectionBox &&
+        x >= selectionBox.x && x <= selectionBox.x + selectionBox.width &&
+        y >= selectionBox.y && y <= selectionBox.y + selectionBox.height) {
+
+        setIsDraggingSelection(true);
+        setDragOffset({
+          x: x - selectionBox.x,
+          y: y - selectionBox.y
+        });
+        return;
+      }
+
+      // 2. If we have an active snapshot but clicked OUTSIDE, commit (paste) it first
+      if (selectionSnapshot) {
+        commitSelection();
+        // Don't return, allow falling through to start a NEW selection below
+      }
+      // If we just had a box but no snapshot (rare case), clear it
+      else if (selectionBox) {
+        setSelectionBox(null);
+      }
+
+      // 3. Start a NEW Selection
       setSelectionStart({ x, y });
       setSelectionBox({ x, y, width: 0, height: 0 });
       setIsDrawing(true);
       return;
     }
+    // -----------------------------
 
     if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
+    // ... rest of your existing drawing logic ...
     if (setShowColorPicker) setShowColorPicker(false);
-    const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
-    contextRef.current.beginPath();
-    contextRef.current.moveTo(x, y);
-    contextRef.current.lineTo(x, y);
-    contextRef.current.stroke();
+    const ctx = drawingContextRef.current;
+    setupDrawingContext();
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, y);
+    ctx.stroke();
     setIsDrawing(true);
     currentDrawingRef.current = { tool, color, size, points: [{ x, y }, { x, y }] };
   };
 
+
   const stopDrawing = () => {
-    if (!isDrawing) return;
+    // --- OBSŁUGA NARZĘDZIA SELECT (ZAZNACZANIE) ---
+    if (tool === 'select') {
+      setIsDrawing(false);
 
-    if (tool === 'select' && selectionBox) {
-      const { x, y, width, height } = selectionBox;
+      if (isDraggingSelection) {
+        setIsDraggingSelection(false);
+        return;
+      }
 
-      if (width > 5 && height > 5) { // Ignoruj mikroskopijne zaznaczenia
+      if (selectionBox) {
+        const { x, y, width, height } = selectionBox;
 
-        // 1. Usuń obiekty DOM (Notes, Shapes, Text, etc.)
-        const checkCollision = (objX, objY, objW, objH) => {
-          // Sprawdzenie czy obiekt koliduje/jest wewnątrz zaznaczenia
-          return (
-            objX < x + width &&
-            objX + objW > x &&
-            objY < y + height &&
-            objY + objH > y
-          );
-        };
+        if (width > 5 && height > 5) {
 
-        // Batch delete lists
-        const notesToDelete = [];
-        const shapesToDelete = [];
-        const emojisToDelete = [];
-        const gifsToDelete = [];
-        const textToDelete = [];
+          if (!selectionSnapshot) {
+            const ctx = drawingContextRef.current;
 
-        // Notatki
-        notes.forEach(note => {
-          if (checkCollision(note.x, note.y, note.width, note.height)) {
-            removeNote(note.id);
+            const imageData = ctx.getImageData(x, y, width, height);
+            ctx.clearRect(x, y, width, height);
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = width;
+            tempCanvas.height = height;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.putImageData(imageData, 0, 0);
+
+
+            const capturedImage = tempCanvas.toDataURL();
+            setSelectionSnapshot(capturedImage);
+
+            setOriginalCaptureRect({ x, y, width, height });
           }
-        });
-
-        // Kształty
-        shapes.forEach(shape => {
-          // Domyślne wymiary jeśli brak
-          const w = shape.width || 100;
-          const h = shape.height || 100;
-          if (checkCollision(shape.x, shape.y, w, h)) {
-            removeShape(shape.id);
+        } else {
+          if (!selectionSnapshot) {
+            setSelectionBox(null);
           }
-        });
-
-        // Teksty
-        textBoxes.forEach(tb => {
-          if (checkCollision(tb.x, tb.y, tb.width, tb.height)) {
-            removeTextBox(tb.id);
-          }
-        });
-
-        // Emojis
-        emojis.forEach(emoji => {
-          // Przyjmujemy ok. 48px dla emoji
-          if (checkCollision(emoji.x, emoji.y, 48, 48)) {
-            removeEmoji(emoji.id);
-          }
-        });
-
-        // Gify
-        gifs.forEach(gif => {
-          if (checkCollision(gif.x, gif.y, gif.width, gif.width)) { // Gify często kwadratowe
-            removeGif(gif.id);
-          }
-        });
-
-        // 2. Wyczyść rysunki na Canvas (Piksele)
-        if (contextRef.current) {
-          contextRef.current.clearRect(x, y, width, height);
-        }
-
-        // 3. Wyślij informację o wyczyszczeniu obszaru do innych
-        if (socket && whiteboardId) {
-          socket.emit('erase-area', {
-            whiteboardId,
-            x, y, width, height
-          });
         }
       }
 
-      // Reset
-      setSelectionBox(null);
       setSelectionStart(null);
+      return;
+    }
+    // ----------------------------------------------
+
+    // --- OBSŁUGA STANDARDOWEGO RYSOWANIA (OŁÓWEK, PĘDZEL, GUMKA) ---
+    if (!isDrawing) return;
+
+    if (!['pencil', 'brush', 'eraser'].includes(tool)) {
       setIsDrawing(false);
       return;
     }
 
-    if (!['pencil', 'brush', 'eraser'].includes(tool)) { setIsDrawing(false); return; }
-    contextRef.current.closePath();
+    // Upewnij się, że kontekst jest poprawny
+    setupDrawingContext();
+
+    // Zamknij ścieżkę
+    if (drawingContextRef.current) {
+      drawingContextRef.current.closePath();
+    }
+
     setIsDrawing(false);
+
+    // Zapisz do historii
     if (currentDrawingRef.current && onDrawing) {
       onDrawing(currentDrawingRef.current);
       saveToHistory(ACTION_TYPES.DRAWING, currentDrawingRef.current);
@@ -635,14 +917,18 @@ const Canvas = ({
   };
 
   const draw = ({ nativeEvent }) => {
-    if (!isDrawing || !contextRef.current) return;
+    if (!isDrawing || !drawingContextRef.current) return;
     if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
     const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
     if (currentDrawingRef.current) {
       const points = currentDrawingRef.current.points;
       const previousPoint = points[points.length - 1];
       points.push({ x, y });
-      drawPathSegment(contextRef.current, tool, color, size, previousPoint, { x, y });
+
+      // 🔹 DODANE: Upewnij się, że kontekst jest poprawnie skonfigurowany
+      setupDrawingContext();
+
+      drawPathSegment(drawingContextRef.current, tool, color, size, previousPoint, { x, y });
     }
   };
 
@@ -652,14 +938,14 @@ const Canvas = ({
   };
 
   const handleCanvasClick = (e) => {
-    // ✅ ZMIANA: Blokujemy stawianie elementów (tekst, notatki, gify) prawym przyciskiem.
+    // Blokujemy stawianie elementów prawym przyciskiem
     if (e.button !== 0) return;
 
     if (e.target.closest('.shape-item') || e.target.closest('.emoji-item')) return;
     setSelectedNoteId(null); setSelectedTextBoxId(null); setSelectedEmojiId(null); setSelectedGifId(null); setSelectedShapeId(null);
 
     if (tool === 'notes') {
-      const rect = canvasRef.current.getBoundingClientRect();
+      const rect = drawingCanvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       const newNote = { id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x, y, text: '', width: 180, height: 120 };
@@ -668,7 +954,7 @@ const Canvas = ({
       if (onNoteCreate) onNoteCreate(newNote);
       if (setTool) setTool('cursor');
     } else if (tool === 'text') {
-      const rect = canvasRef.current.getBoundingClientRect();
+      const rect = drawingCanvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       const newTextBox = { id: `text_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x, y, text: '', width: 200, height: 100 };
@@ -679,7 +965,7 @@ const Canvas = ({
     }
 
     if (tool === 'emoji' && activeEmoji) {
-      const rect = canvasRef.current.getBoundingClientRect();
+      const rect = drawingCanvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       const newEmoji = { id: `emoji_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x, y, emoji: activeEmoji, size: 48 };
@@ -690,7 +976,7 @@ const Canvas = ({
     }
 
     if (tool === 'gif' && activeGif) {
-      const rect = canvasRef.current.getBoundingClientRect();
+      const rect = drawingCanvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       const newGif = { id: `gif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: x - 75, y: y - 75, url: activeGif, width: 150 };
@@ -700,7 +986,7 @@ const Canvas = ({
       if (setTool) setTool('cursor');
     }
     if (tool === 'shape' && activeShape) {
-      const rect = canvasRef.current.getBoundingClientRect();
+      const rect = drawingCanvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       let defaultWidth = 100, defaultHeight = 100, startX = x - 50, startY = y - 50;
@@ -753,21 +1039,124 @@ const Canvas = ({
     if (socket) socket.emit('text-update', { whiteboardId, id, ...newProps });
   };
 
+  // Obsługa klawiszy (Delete, Backspace, Ctrl+Z etc.)
   useEffect(() => {
     const handleKeyDown = (e) => {
       const activeElement = document.activeElement;
+      // Ignoruj jeśli użytkownik pisze w polu tekstowym (np. wewnątrz notatki)
       if (activeElement && (activeElement.tagName.toLowerCase() === 'input' || activeElement.tagName.toLowerCase() === 'textarea')) return;
+
       if (e.key === 'Backspace' || e.key === 'Delete') {
+
+        // --- 1. OBSŁUGA NARZĘDZIA SELECT (USUWANIE OBSZAROWE) ---
+        if (selectionBox) {
+          e.preventDefault();
+
+          // Definicja funkcji sprawdzającej kolizję
+          const isInsideSelection = (objX, objY, objW, objH) => {
+            return (
+              objX < selectionBox.x + selectionBox.width &&
+              objX + objW > selectionBox.x &&
+              objY < selectionBox.y + selectionBox.height &&
+              objY + objH > selectionBox.y
+            );
+          };
+
+          // A. ZNAJDŹ WSZYSTKIE ELEMENTY DO USUNIĘCIA
+          const notesToDelete = notes.filter(n => isInsideSelection(n.x, n.y, n.width, n.height));
+          const textsToDelete = textBoxes.filter(t => isInsideSelection(t.x, t.y, t.width, t.height));
+          const emojisToDelete = emojis.filter(e => isInsideSelection(e.x, e.y, e.size || 48, e.size || 48));
+          const gifsToDelete = gifs.filter(g => isInsideSelection(g.x, g.y, g.width || 150, g.width || 150));
+          const shapesToDelete = shapes.filter(s => isInsideSelection(s.x, s.y, s.width || 100, Math.max(s.height || 100, 10)));
+
+          // B. ZAPISZ DO HISTORII JAKO JEDNA AKCJA
+          // Zapisujemy tylko jeśli faktycznie coś usuwamy (obiekty LUB wycięty rysunek)
+          if (notesToDelete.length > 0 || textsToDelete.length > 0 ||
+            emojisToDelete.length > 0 || gifsToDelete.length > 0 ||
+            shapesToDelete.length > 0 || selectionSnapshot) {
+
+            saveToHistory(ACTION_TYPES.MASS_DELETE, {
+              notes: notesToDelete,
+              textBoxes: textsToDelete,
+              emojis: emojisToDelete,
+              gifs: gifsToDelete,
+              shapes: shapesToDelete,
+              // Zapisujemy fakt, że usunięto snapshot, chociaż undo po prostu przerysuje canvas
+              wasSnapshotDeleted: !!selectionSnapshot
+            });
+          }
+
+          if (selectionSnapshot && originalCaptureRect && socket) {
+            socket.emit('erase-area', {
+              whiteboardId,
+              x: originalCaptureRect.x,
+              y: originalCaptureRect.y,
+              width: originalCaptureRect.width,
+              height: originalCaptureRect.height
+            });
+          }
+          // C. WYKONAJ USUWANIE ZE STANU (SOCKET + LOKALNIE)
+
+          // Usuwanie notatek
+          if (notesToDelete.length) {
+            setNotes(prev => prev.filter(n => !notesToDelete.some(del => del.id === n.id)));
+            notesToDelete.forEach(n => socket && socket.emit('note-delete', { whiteboardId, id: n.id }));
+          }
+
+          // Usuwanie tekstów
+          if (textsToDelete.length) {
+            setTextBoxes(prev => prev.filter(t => !textsToDelete.some(del => del.id === t.id)));
+            textsToDelete.forEach(t => socket && socket.emit('text-delete', { whiteboardId, id: t.id }));
+          }
+
+          // Usuwanie emoji
+          if (emojisToDelete.length) {
+            setEmojis(prev => prev.filter(e => !emojisToDelete.some(del => del.id === e.id)));
+            emojisToDelete.forEach(e => socket && socket.emit('emoji-delete', { whiteboardId, id: e.id }));
+          }
+
+          // Usuwanie gifów
+          if (gifsToDelete.length) {
+            setGifs(prev => prev.filter(g => !gifsToDelete.some(del => del.id === g.id)));
+            gifsToDelete.forEach(g => socket && socket.emit('gif-delete', { whiteboardId, id: g.id }));
+          }
+
+          // Usuwanie kształtów
+          if (shapesToDelete.length) {
+            setShapes(prev => prev.filter(s => !shapesToDelete.some(del => del.id === s.id)));
+            shapesToDelete.forEach(s => socket && socket.emit('shape-delete', { whiteboardId, id: s.id }));
+          }
+
+          // D. CZYSZCZENIE ZAZNACZENIA I SNAPSHOTA
+          setSelectionSnapshot(null);
+          setSelectionBox(null);
+          setOriginalCaptureRect(null);
+          return;
+        }
+        // -------------------------------------------------------
+
+        // --- 2. USUWANIE POJEDYNCZYCH ELEMENTÓW (przez kliknięcie) ---
         if (selectedNoteId) removeNote(selectedNoteId);
         if (selectedTextBoxId) removeTextBox(selectedTextBoxId);
         if (selectedEmojiId) removeEmoji(selectedEmojiId);
         if (selectedGifId) removeGif(selectedGifId);
         if (selectedShapeId) removeShape(selectedShapeId);
       }
+
+      // Undo/Redo
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
     };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedNoteId, selectedTextBoxId, selectedEmojiId, selectedGifId, selectedShapeId]);
+  }, [
+    // Lista zależności musi być pełna, aby funkcja widziała aktualny stan tablic
+    notes, textBoxes, emojis, gifs, shapes,
+    selectedNoteId, selectedTextBoxId, selectedEmojiId, selectedGifId, selectedShapeId,
+    selectionBox, selectionSnapshot,
+    undo, redo
+  ]);
 
   useEffect(() => {
     if (socket) {
@@ -830,19 +1219,32 @@ const Canvas = ({
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
     if (onCursorMove) onCursorMove({ x, y });
 
-    if (isDrawing && tool === 'select' && selectionStart) {
-      const newWidth = x - selectionStart.x;
-      const newHeight = y - selectionStart.y;
+    // --- HANDLE SELECTION DRAG/RESIZE ---
+    if (tool === 'select') {
+      // Case A: Moving the captured selection
+      if (isDraggingSelection && selectionBox) {
+        setSelectionBox({
+          ...selectionBox,
+          x: x - dragOffset.x,
+          y: y - dragOffset.y
+        });
+        return;
+      }
 
-      // Obliczamy znormalizowane koordynaty (obsługa ciągnięcia w lewo/górę)
-      setSelectionBox({
-        x: newWidth > 0 ? selectionStart.x : x,
-        y: newHeight > 0 ? selectionStart.y : y,
-        width: Math.abs(newWidth),
-        height: Math.abs(newHeight)
-      });
+      // Case B: Creating the selection box (resizing)
+      if (isDrawing && selectionStart) {
+        const newWidth = x - selectionStart.x;
+        const newHeight = y - selectionStart.y;
+        setSelectionBox({
+          x: newWidth > 0 ? selectionStart.x : x,
+          y: newHeight > 0 ? selectionStart.y : y,
+          width: Math.abs(newWidth),
+          height: Math.abs(newHeight)
+        });
+      }
       return;
     }
+    // ------------------------------------
 
     if (isDrawing) draw(e);
   };
@@ -850,20 +1252,24 @@ const Canvas = ({
   const toggleBackground = () => {
     const currentIndex = backgroundModes.findIndex(mode => mode.id === backgroundMode);
     const nextIndex = (currentIndex + 1) % backgroundModes.length;
-    setBackgroundMode(backgroundModes[nextIndex].id);
-    clearCanvas();
+    const newMode = backgroundModes[nextIndex].id;
+
+    // Wywołujemy funkcję z rodzica (Routera)
+    if (onBackgroundChange) {
+      onBackgroundChange(newMode);
+    }
   };
 
-  useEffect(() => { clearCanvas(); }, [backgroundMode]);
   const getCurrentBackgroundIcon = () => backgroundModes.find(mode => mode.id === backgroundMode)?.icon;
 
   const handleMouseLeave = () => {
-    if (tool === 'pointer' && canvasRef.current) canvasRef.current.style.cursor = 'default';
+    // Usuń linię ustawiającą cursor = 'default'
     stopDrawing();
   };
 
   const handleMouseEnter = () => {
-    if (tool === 'pointer' && canvasRef.current) canvasRef.current.style.cursor = 'pointer';
+    // Usuń linię ustawiającą cursor = 'pointer'
+    // Kursor zostanie obsłużony przez powyższy useEffect na podstawie aktualnego 'tool'
   };
 
   useEffect(() => {
@@ -906,16 +1312,40 @@ const Canvas = ({
 
   return (
     <div className="canvas-container" ref={containerRef}>
-      <div className={`canvas-area background-${backgroundMode}`} onClick={handleCanvasClick}>
+      <div
+        className={`canvas-area background-${backgroundMode} ${tool === 'select' ? 'is-selecting' : ''}`}
+        onClick={handleCanvasClick}>
         <canvas
-          ref={canvasRef}
+          ref={backgroundCanvasRef}
+          className="background-canvas"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            zIndex: 1,
+            pointerEvents: 'none'
+          }}
+        />
+
+        {/* Główny canvas do rysowania */}
+        <canvas
+          ref={drawingCanvasRef}
+          className="drawing-canvas"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            zIndex: 2,
+            backgroundColor: 'transparent'
+          }}
           onMouseDown={startDrawing}
           onMouseUp={stopDrawing}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
           onMouseEnter={handleMouseEnter}
         />
-        {/* 🔹 DODANE: Renderowanie prostokąta zaznaczania */}
+
+        {/* Renderowanie prostokąta zaznaczania */}
         {selectionBox && (
           <div
             className="selection-overlay"
@@ -923,9 +1353,20 @@ const Canvas = ({
               left: selectionBox.x,
               top: selectionBox.y,
               width: selectionBox.width,
-              height: selectionBox.height
+              height: selectionBox.height,
+              // Add a border if we have a snapshot to make it look like a selected object
+              border: '1px dashed #3498db'
             }}
-          />
+          >
+            {selectionSnapshot && (
+              <img
+                src={selectionSnapshot}
+                alt="Selected area"
+                className="selection-image"
+                draggable={false} // Prevent browser native drag
+              />
+            )}
+          </div>
         )}
 
         {notes.map(note => (
@@ -1043,7 +1484,7 @@ const Canvas = ({
           {getCurrentBackgroundIcon()}
         </button>
       </div>
-    </div>
+    </div >
   );
 };
 
