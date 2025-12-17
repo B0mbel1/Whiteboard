@@ -130,6 +130,7 @@ io.on("connection", (socket) => {
     console.log(`👤 Joined ${whiteboardId}. Name: ${user.name} -> SOCKET ID: ${socket.id}`);
 
     // 4. Wyślij pełne dane tablicy do nowego użytkownika
+    // W serwerze, w części gdzie wysyłasz dane do nowego użytkownika:
     const allData = {
       users: Array.from(whiteboard.users.values()),
       drawingData: whiteboard.drawingData || [],
@@ -140,6 +141,11 @@ io.on("connection", (socket) => {
       emojis: whiteboard.emojis || []
     };
     socket.emit("whiteboard-data", allData);
+    
+    // Dodaj też event, który aktualizuje listę użytkowników dla wszystkich w pokoju
+    io.to(whiteboardId).emit("users-updated", {
+      users: Array.from(whiteboard.users.values())
+    });
 
     // 5. Poinformuj innych o nowym użytkowniku (używając poprawionego userData)
     socket.to(whiteboardId).emit("user-joined", {
@@ -147,6 +153,40 @@ io.on("connection", (socket) => {
       users: Array.from(whiteboard.users.values())
     });
   });
+
+  // ========== AKTUALIZACJA UŻYTKOWNIKA ==========
+  socket.on("user-update", (d) => {
+  const wb = whiteboards.get(d.whiteboardId);
+  if (wb && wb.users.has(socket.id)) {
+    const user = wb.users.get(socket.id);
+    Object.assign(user, d.updates);
+    
+    // Powiadom wszystkich o aktualizacji użytkownika
+    io.to(d.whiteboardId).emit("users-updated", {
+      users: Array.from(wb.users.values())
+    });
+  }
+  });
+
+// ========== AKTUALIZACJA UŻYTKOWNIKA (ZMIANA KOLORU/NICKU) ==========
+socket.on("user-update", (d) => {
+  const wb = whiteboards.get(d.whiteboardId);
+  if (wb && wb.users.has(socket.id)) {
+    const user = wb.users.get(socket.id);
+    
+    // Aktualizuj dane użytkownika
+    Object.assign(user, d.updates);
+    
+    console.log(`👤 User updated: ${socket.id}`, d.updates);
+    
+    // Rozgłoś aktualizację do WSZYSTKICH użytkowników w pokoju
+    io.to(d.whiteboardId).emit("user-updated", {
+      userId: socket.id,
+      updates: d.updates
+    });
+  }
+});
+
 
   // ========== Handlery (pomocnicza funkcja broadcast) ==========
   const broadcast = (room, event, data) => socket.to(room).emit(event, data);
@@ -313,12 +353,31 @@ io.on("connection", (socket) => {
     broadcast(d.whiteboardId, "erase-area", d);
   });
 
-  // ========== KURSOR I WSKAŹNIK (POINTER) ==========
-  socket.on("cursor-move", (d) => broadcast(d.whiteboardId, "cursor-move", d));
+// ========== KURSOR I WSKAŹNIK (POINTER) ==========
+socket.on("cursor-move", (d) => broadcast(d.whiteboardId, "cursor-move", d));
 
-  // 🔹 NOWE: Obsługa pointera (szlak i kliknięcia) dla innych użytkowników
-  socket.on("pointer-move", (d) => broadcast(d.whiteboardId, "pointer-move", d));
-  socket.on("pointer-click", (d) => broadcast(d.whiteboardId, "pointer-click", d));
+// 🔹 AKTUALIZACJA UŻYTKOWNIKA (ZMIANA KOLORU/NICKU) - DODAJ TUTAJ
+socket.on("user-update", (d) => {
+  const wb = whiteboards.get(d.whiteboardId);
+  if (wb && wb.users.has(socket.id)) {
+    const user = wb.users.get(socket.id);
+    
+    // Aktualizuj dane użytkownika
+    Object.assign(user, d.updates);
+    
+    console.log(`👤 User updated: ${socket.id}`, d.updates);
+    
+    // Rozgłoś aktualizację do WSZYSTKICH użytkowników w pokoju
+    io.to(d.whiteboardId).emit("user-updated", {
+      userId: socket.id,
+      updates: d.updates
+    });
+  }
+});
+
+// 🔹 NOWE: Obsługa pointera (szlak i kliknięcia) dla innych użytkowników
+socket.on("pointer-move", (d) => broadcast(d.whiteboardId, "pointer-move", d));
+socket.on("pointer-click", (d) => broadcast(d.whiteboardId, "pointer-click", d));
 
   // ========== CZAT ==========
   socket.on("chat-message", (d) => io.to(d.whiteboardId).emit("chat-message", d.message));
