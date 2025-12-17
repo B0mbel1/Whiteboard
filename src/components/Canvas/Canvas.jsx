@@ -84,6 +84,7 @@ const Canvas = ({
   const [selectionSnapshot, setSelectionSnapshot] = useState(null); // Stores the cut image URL
   const [isDraggingSelection, setIsDraggingSelection] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [originalCaptureRect, setOriginalCaptureRect] = useState(null);
 
   const ACTION_TYPES = {
     DRAWING: 'drawing',
@@ -328,6 +329,7 @@ const Canvas = ({
     // Reset selection state
     setSelectionSnapshot(null);
     setSelectionBox(null);
+    setOriginalCaptureRect(null);
   };
 
   const redrawCanvas = () => {
@@ -849,53 +851,34 @@ const Canvas = ({
     if (tool === 'select') {
       setIsDrawing(false);
 
-      // 1. Jeśli właśnie przesuwaliśmy "wycięty" kawałek -> po prostu przestań przesuwać
       if (isDraggingSelection) {
         setIsDraggingSelection(false);
         return;
       }
 
-      // 2. Jeśli właśnie skończyliśmy RYSOWAĆ ramkę zaznaczenia -> WYKONAJ "WITIĘCIE" (LIFT)
       if (selectionBox) {
         const { x, y, width, height } = selectionBox;
 
-        // Ignoruj bardzo małe zaznaczenia (przypadkowe kliknięcia)
         if (width > 5 && height > 5) {
 
-          // Jeśli nie mamy jeszcze "snapshota" (wyciętego obrazka), to go tworzymy
           if (!selectionSnapshot) {
             const ctx = drawingContextRef.current;
 
-            // A. Pobierz dane pikseli z zaznaczonego obszaru
             const imageData = ctx.getImageData(x, y, width, height);
-
-            // B. Wyczyść ten obszar na oryginalnym canvasie (efekt "nożyczek")
             ctx.clearRect(x, y, width, height);
-
-            // C. Skonwertuj piksele na obrazek (DataURL), aby wyświetlić go w ruchomym divie
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = width;
             tempCanvas.height = height;
             const tempCtx = tempCanvas.getContext('2d');
             tempCtx.putImageData(imageData, 0, 0);
 
+
             const capturedImage = tempCanvas.toDataURL();
-            setSelectionSnapshot(capturedImage); // Zapisz obrazek do stanu
+            setSelectionSnapshot(capturedImage);
 
-            // D. Wyślij do innych użytkowników info, że ten kawałek zniknął (zrobiła się dziura)
-            if (socket && whiteboardId) {
-              socket.emit('erase-area', {
-                whiteboardId,
-                x, y, width, height
-              });
-            }
-
-            // Uwaga: Nie usuwamy tutaj notatek/kształtów DOM, 
-            // Paint zazwyczaj przenosi tylko piksele (rastry). 
-            // Jeśli chcesz też przenosić obiekty, logika musiałaby być bardziej złożona.
+            setOriginalCaptureRect({ x, y, width, height });
           }
         } else {
-          // Jeśli zaznaczenie było za małe i nie trzymamy żadnego obrazka -> reset
           if (!selectionSnapshot) {
             setSelectionBox(null);
           }
@@ -1103,6 +1086,15 @@ const Canvas = ({
             });
           }
 
+          if (selectionSnapshot && originalCaptureRect && socket) {
+            socket.emit('erase-area', {
+              whiteboardId,
+              x: originalCaptureRect.x,
+              y: originalCaptureRect.y,
+              width: originalCaptureRect.width,
+              height: originalCaptureRect.height
+            });
+          }
           // C. WYKONAJ USUWANIE ZE STANU (SOCKET + LOKALNIE)
 
           // Usuwanie notatek
@@ -1138,6 +1130,7 @@ const Canvas = ({
           // D. CZYSZCZENIE ZAZNACZENIA I SNAPSHOTA
           setSelectionSnapshot(null);
           setSelectionBox(null);
+          setOriginalCaptureRect(null);
           return;
         }
         // -------------------------------------------------------
