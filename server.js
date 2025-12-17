@@ -69,17 +69,20 @@ app.get('/api/whiteboard/:id', (req, res) => {
 io.on("connection", (socket) => {
   console.log("✅ Socket connected:", socket.id);
 
-  // Zmienna lokalna dla socketa - przechowuje ID pokoju
+  // Zmienna lokalna dla socketa - przechowuje ID pokoju, w którym jest użytkownik
+  // To jest KLUCZOWE dla poprawnego działania odświeżania
   let currentWhiteboardId = null;
 
   socket.on("join-whiteboard", (data) => {
     const { whiteboardId, user } = data;
 
-    // 1. Safety check: Usuń z poprzedniego pokoju jeśli socket tam wisiał
+    // 1. Safety check: Jeśli socket był już w innym pokoju (lub tym samym przy szybkim reconnect), usuń go stamtąd.
+    // To zapobiega dublowaniu użytkowników ("duchom")
     if (currentWhiteboardId && whiteboards.has(currentWhiteboardId)) {
       const prevWb = whiteboards.get(currentWhiteboardId);
       if (prevWb.users.has(socket.id)) {
         prevWb.users.delete(socket.id);
+        // Powiadom stary pokój, że wyszedłeś
         socket.to(currentWhiteboardId).emit("user-left", {
           userId: socket.id,
           users: Array.from(prevWb.users.values())
@@ -103,28 +106,31 @@ io.on("connection", (socket) => {
 
     const whiteboard = whiteboards.get(whiteboardId);
 
-    // 3. TWORZENIE POPRAWNEGO UŻYTKOWNIKA
-    // Nadpisujemy ID socketa dla komunikacji, ale zachowujemy persistentId z localStorage
+    // 3. TWORZENIE POPRAWNEGO UŻYTKOWNIKA (FIX WEBRTC)
+    // Kopiujemy dane usera, ale USUWAMY jego stare ID z frontendu (user_...)
+    const safeUser = { ...user };
+    if (safeUser.id) delete safeUser.id;
+
+    // Nadajemy ID socketa jako jedyne obowiązujące ID
     const userData = {
-      ...user,               // name, color, id (z localStorage)
-      persistentId: user.id, // zachowujemy oryginalne ID dla pewności
-      id: socket.id,         // socket.id jest kluczem dla WebRTC i kursorów
-      socketId: socket.id,
+      ...safeUser,
+      id: socket.id,
       position: { x: 0, y: 0 }
     };
 
     // Dodaj użytkownika do mapy
     whiteboard.users.set(socket.id, userData);
 
-    // Zapisz ID tablicy w zmiennej lokalnej
+    // Zapisz ID tablicy w zmiennej lokalnej socketa (dla disconnect)
     currentWhiteboardId = whiteboardId;
 
     // Dołącz do pokoju socket.io
     socket.join(whiteboardId);
 
-    console.log(`👤 Joined ${whiteboardId}. Name: ${userData.name}`);
+    console.log(`👤 Joined ${whiteboardId}. Name: ${user.name} -> SOCKET ID: ${socket.id}`);
 
     // 4. Wyślij pełne dane tablicy do nowego użytkownika
+    // W serwerze, w części gdzie wysyłasz dane do nowego użytkownika:
     const allData = {
       users: Array.from(whiteboard.users.values()),
       drawingData: whiteboard.drawingData || [],
@@ -135,13 +141,52 @@ io.on("connection", (socket) => {
       emojis: whiteboard.emojis || []
     };
     socket.emit("whiteboard-data", allData);
+    
+    // Dodaj też event, który aktualizuje listę użytkowników dla wszystkich w pokoju
+    io.to(whiteboardId).emit("users-updated", {
+      users: Array.from(whiteboard.users.values())
+    });
 
-    // 5. Poinformuj innych o nowym użytkowniku (wysyłamy całą listę users dla synchronizacji)
+    // 5. Poinformuj innych o nowym użytkowniku (używając poprawionego userData)
     socket.to(whiteboardId).emit("user-joined", {
       user: userData,
       users: Array.from(whiteboard.users.values())
     });
   });
+
+  // ========== AKTUALIZACJA UŻYTKOWNIKA ==========
+  socket.on("user-update", (d) => {
+  const wb = whiteboards.get(d.whiteboardId);
+  if (wb && wb.users.has(socket.id)) {
+    const user = wb.users.get(socket.id);
+    Object.assign(user, d.updates);
+    
+    // Powiadom wszystkich o aktualizacji użytkownika
+    io.to(d.whiteboardId).emit("users-updated", {
+      users: Array.from(wb.users.values())
+    });
+  }
+  });
+
+// ========== AKTUALIZACJA UŻYTKOWNIKA (ZMIANA KOLORU/NICKU) ==========
+socket.on("user-update", (d) => {
+  const wb = whiteboards.get(d.whiteboardId);
+  if (wb && wb.users.has(socket.id)) {
+    const user = wb.users.get(socket.id);
+    
+    // Aktualizuj dane użytkownika
+    Object.assign(user, d.updates);
+    
+    console.log(`👤 User updated: ${socket.id}`, d.updates);
+    
+    // Rozgłoś aktualizację do WSZYSTKICH użytkowników w pokoju
+    io.to(d.whiteboardId).emit("user-updated", {
+      userId: socket.id,
+      updates: d.updates
+    });
+  }
+});
+
 
   // ========== Handlery (pomocnicza funkcja broadcast) ==========
   const broadcast = (room, event, data) => socket.to(room).emit(event, data);
@@ -302,36 +347,43 @@ io.on("connection", (socket) => {
   });
 
   socket.on("erase-area", (d) => {
+    // Możemy tu opcjonalnie wyczyścić drawingData na serwerze, 
+    // ale to skomplikowane matematycznie.
+    // Najważniejsze, żeby rozesłać info do innych klientów.
     broadcast(d.whiteboardId, "erase-area", d);
   });
 
-  // ========== KURSOR I WSKAŹNIK (POINTER) ==========
-  
-  // 🔥 FIX KURSORA: Serwer dokleja dane użytkownika
-  socket.on("cursor-move", (d) => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (wb) {
-      const user = wb.users.get(socket.id);
-      if (user) {
-        user.position = d.position; // Aktualizuj pozycję w pamięci serwera
-        
-        // Wyślij do innych z pełnym obiektem użytkownika (name, color)
-        socket.to(d.whiteboardId).emit("cursor-move", {
-          position: d.position,
-          userId: socket.id,
-          user: user 
-        });
-      }
-    }
-  });
+// ========== KURSOR I WSKAŹNIK (POINTER) ==========
+socket.on("cursor-move", (d) => broadcast(d.whiteboardId, "cursor-move", d));
 
-  socket.on("pointer-move", (d) => broadcast(d.whiteboardId, "pointer-move", d));
-  socket.on("pointer-click", (d) => broadcast(d.whiteboardId, "pointer-click", d));
+// 🔹 AKTUALIZACJA UŻYTKOWNIKA (ZMIANA KOLORU/NICKU) - DODAJ TUTAJ
+socket.on("user-update", (d) => {
+  const wb = whiteboards.get(d.whiteboardId);
+  if (wb && wb.users.has(socket.id)) {
+    const user = wb.users.get(socket.id);
+    
+    // Aktualizuj dane użytkownika
+    Object.assign(user, d.updates);
+    
+    console.log(`👤 User updated: ${socket.id}`, d.updates);
+    
+    // Rozgłoś aktualizację do WSZYSTKICH użytkowników w pokoju
+    io.to(d.whiteboardId).emit("user-updated", {
+      userId: socket.id,
+      updates: d.updates
+    });
+  }
+});
+
+// 🔹 NOWE: Obsługa pointera (szlak i kliknięcia) dla innych użytkowników
+socket.on("pointer-move", (d) => broadcast(d.whiteboardId, "pointer-move", d));
+socket.on("pointer-click", (d) => broadcast(d.whiteboardId, "pointer-click", d));
 
   // ========== CZAT ==========
   socket.on("chat-message", (d) => io.to(d.whiteboardId).emit("chat-message", d.message));
 
-  // ========== WEBRTC SIGNALING ==========
+  // ========== WEBRTC SIGNALING (POPRAWIONE) ==========
+  // WAŻNE: data.to to teraz prawidłowe socket.id dzięki fixowi w join-whiteboard
   socket.on("call-user", (d) => {
     socket.to(d.to).emit("call-made", {
       offer: d.offer,
@@ -353,23 +405,25 @@ io.on("connection", (socket) => {
     });
   });
 
-  // ========== ROZŁĄCZENIE ==========
+  // ========== ROZŁĄCZENIE (POPRAWIONE) ==========
   socket.on("disconnect", () => {
     console.log("❌ User disconnected:", socket.id);
 
+    // Używamy zmiennej currentWhiteboardId, aby szybko znaleźć pokój i usunąć użytkownika
     if (currentWhiteboardId && whiteboards.has(currentWhiteboardId)) {
       const whiteboard = whiteboards.get(currentWhiteboardId);
 
       // 1. Usuń użytkownika z mapy
       whiteboard.users.delete(socket.id);
 
-      // 2. Wyślij ZAKTUALIZOWANĄ listę do pozostałych (Fix responsywności listy)
+      // 2. Wyślij natychmiastową aktualizację do pozostałych
+      // To sprawia, że inni widzą, że użytkownik zniknął (np. podczas odświeżania)
       socket.to(currentWhiteboardId).emit("user-left", {
         userId: socket.id,
         users: Array.from(whiteboard.users.values())
       });
 
-      // Sprzątanie pustych pokoi
+      // Sprzątanie pustych pokoi po godzinie
       if (whiteboard.users.size === 0) {
         setTimeout(() => {
           if (whiteboards.has(currentWhiteboardId) && whiteboards.get(currentWhiteboardId).users.size === 0) {
@@ -388,5 +442,5 @@ function generateId() {
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
-  console.log(`\n🚀 SERWER (PEŁNY) Running on: http://localhost:${PORT}\n`);
+  console.log(`\n🚀 SERWER POPRAWIONY! Running on: http://localhost:${PORT}\n`);
 });
