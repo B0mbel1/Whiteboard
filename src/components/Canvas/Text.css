@@ -3,10 +3,12 @@
   border: 1px solid transparent;
   padding: 5px;
   cursor: move;
+  z-index: 30 !important; 
 }
 
 .text-box.selected {
   border: 1px dashed #007bff;
+  z-index: 31 !important;
 }
 
 .text-input {
