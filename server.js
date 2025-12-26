@@ -463,7 +463,34 @@ io.on("connection", (socket) => {
       io.to(data.whiteboardId).emit("background-update", { mode: data.mode });
     }
   });
+
+  // server.js - w io.on("connection", ...) dodaj:
+socket.on("refresh-whiteboard-data", (data) => {
+  const { whiteboardId } = data;
+  const wb = whiteboards.get(whiteboardId);
+  
+  if (wb) {
+    console.log(`🔄 Refreshing whiteboard data for: ${whiteboardId}, user: ${socket.id}`);
+    
+    // Wyślij pełne dane tablicy (TEN SAM KOD co w join-whiteboard)
+    const allData = {
+      users: Array.from(wb.users.values()),
+      drawingData: wb.drawingData || [],
+      textBoxes: wb.textBoxes || [],
+      notes: wb.notes || [],
+      gifs: wb.gifs || [],
+      shapes: wb.shapes || [],
+      emojis: wb.emojis || [],
+      backgroundMode: wb.backgroundMode || 'grid'
+    };
+    
+    // Wyślij tylko do tego użytkownika
+    socket.emit("whiteboard-data", allData);
+  }
 });
+});
+
+
 
 function generateId() {
   return Math.random().toString(36).substring(2, 8) + Math.random().toString(36).substring(2, 8);
