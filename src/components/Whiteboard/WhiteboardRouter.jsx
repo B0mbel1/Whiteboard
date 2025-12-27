@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
+import html2canvas from 'html2canvas';
 import Toolbar from '../Toolbar/Toolbar';
 import Canvas from '../Canvas/Canvas';
 import Sidebar from '../Sidebar/Sidebar';
@@ -19,6 +20,8 @@ const WhiteboardRouter = () => {
 
   const [textBoxes, setTextBoxes] = useState([]);
   const [notes, setNotes] = useState([]);
+
+  const [backgroundMode, setBackgroundMode] = useState('grid');
 
   // Emojis
   const [emojis, setEmojis] = useState([]);
@@ -189,6 +192,14 @@ const WhiteboardRouter = () => {
       if (data.users) {
         setUsers(data.users);
       }
+      
+      if (data.backgroundMode) {
+        setBackgroundMode(data.backgroundMode);
+      }
+    });
+
+    newSocket.on('background-update', (data) => {
+      setBackgroundMode(data.mode);
     });
 
     newSocket.on('users-updated', (data) => {
@@ -222,6 +233,13 @@ const WhiteboardRouter = () => {
       console.error("❌ Connection error:", error);
       setIsLoading(false);
     });
+  };
+
+  const handleBackgroundChange = (newMode) => {
+    setBackgroundMode(newMode);
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('background-update', { whiteboardId, mode: newMode });
+    }
   };
 
   const handleShapeCreate = (shape) => {
@@ -351,6 +369,87 @@ const WhiteboardRouter = () => {
     }
   };
 
+  const handleSave = async () => {
+    try {
+      const canvasArea = document.querySelector('.canvas-area');
+      if (!canvasArea) {
+        alert('Nie znaleziono obszaru canvas!');
+        return;
+      }
+      
+      const elementsToHide = [
+        '.background-toggle',
+        '.remote-cursor',
+        '.selection-overlay'
+      ];
+      
+      const originalStyles = [];
+      
+      elementsToHide.forEach(selector => {
+        const elements = document.querySelectorAll(selector);
+        elements.forEach(el => {
+          originalStyles.push({
+            element: el,
+            display: el.style.display
+          });
+          el.style.display = 'none';
+        });
+      });
+      
+      const saveBtn = document.querySelector('.save-btn');
+      const originalText = saveBtn.textContent;
+      saveBtn.textContent = '⏳ Saving...';
+      
+      try {
+        const canvas = await html2canvas(canvasArea, {
+          backgroundColor: null,
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          logging: false,
+          ignoreElements: (element) => {
+            return (
+              element.classList?.contains('background-toggle') ||
+              element.classList?.contains('remote-cursor') ||
+              element.classList?.contains('selection-overlay')
+            );
+          }
+        });
+        
+        const dataUrl = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        
+        const now = new Date();
+        const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+        const timeStr = `${String(now.getHours()).padStart(2,'0')}-${String(now.getMinutes()).padStart(2,'0')}-${String(now.getSeconds()).padStart(2,'0')}`;
+        
+        link.download = `whiteboard-${whiteboardId || 'drawing'}_${dateStr}_${timeStr}.png`;
+        link.href = dataUrl;
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        console.log('✅ Whiteboard saved!');
+        
+      } finally {
+        originalStyles.forEach(({ element, display }) => {
+          if (display) {
+            element.style.display = display;
+          } else {
+            element.style.removeProperty('display');
+          }
+        });
+        
+        saveBtn.textContent = originalText;
+      }
+      
+    } catch (error) {
+      console.error('Error saving whiteboard:', error);
+      alert('Error saving whiteboard: ' + error.message);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="whiteboard-loading-screen">
@@ -360,7 +459,7 @@ const WhiteboardRouter = () => {
     );
   }
 
- return (
+  return (
     <div className="whiteboard">
       <div className="whiteboard-header">
         <div className="whiteboard-info">
@@ -381,7 +480,7 @@ const WhiteboardRouter = () => {
             />
           </span>
           
-           {/* Kropka koloru użytkownika z inputem color */}
+          {/* Kropka koloru użytkownika z inputem color */}
           <div className="user-color-wrapper">
             <label 
               htmlFor="user-color-input"
@@ -467,7 +566,7 @@ const WhiteboardRouter = () => {
             📋 Copy Invite Link
           </button>
           <button className="fullscreen-btn">⛶ Fullscreen</button>
-          <button className="save-btn">💾 Save</button>
+          <button className="save-btn" onClick={handleSave}>💾 Save</button>
         </div>
       </div>
 
@@ -524,6 +623,8 @@ const WhiteboardRouter = () => {
           onShapeCreate={handleShapeCreate}
           onShapeDelete={handleShapeDelete}
           onShapeUpdate={handleShapeUpdate}
+          backgroundMode={backgroundMode}
+          onBackgroundChange={handleBackgroundChange}
         />
 
         <Sidebar
