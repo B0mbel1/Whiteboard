@@ -553,6 +553,12 @@ const Canvas = ({
     canvas.style.cursor = cursorStyle;
   }, [tool]);
 
+  const refreshWhiteboardData = () => {
+  if (socket && whiteboardId) {
+    console.log("🔄 Requesting whiteboard data on resize...");
+    socket.emit('refresh-whiteboard-data', { whiteboardId });
+  }
+};
 
   // Inicjalizacja dwóch canvasów
   useEffect(() => {
@@ -584,7 +590,9 @@ const Canvas = ({
       drawBackground();
 
       // Przerysuj historię na canvasie rysowania
-      redrawCanvas();
+          setTimeout(() => {
+      refreshWhiteboardData();
+    }, 100);
     };
 
     updateCanvasSize();
@@ -712,71 +720,10 @@ const Canvas = ({
     if (onGifUpdate) onGifUpdate(id, updates);
   };
 
-  // 🔹 POPRAWIONE: updateCanvasSize teraz też aktualizuje kontekst
-  const updateCanvasSize = () => {
-    const backgroundCanvas = backgroundCanvasRef.current;
-    const drawingCanvas = drawingCanvasRef.current;
-    const container = containerRef.current;
-
-    if (!backgroundCanvas || !drawingCanvas || !container) return;
-
-    const rect = container.getBoundingClientRect();
-    const width = rect.width;
-    const height = rect.height;
-
-    // Zapisz obraz z drawing canvas przed zmianą rozmiaru
-    let imageData = null;
-    if (drawingCanvas.width > 0 && drawingCanvas.height > 0) {
-      try {
-        imageData = drawingContextRef.current?.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height);
-      }
-      catch (e) { console.warn("Nie udało się pobrać danych canvas:", e); }
-    }
-
-    // Ustaw nowe rozmiary
-    backgroundCanvas.width = width;
-    backgroundCanvas.height = height;
-    drawingCanvas.width = width;
-    drawingCanvas.height = height;
-
-    // Ponownie zainicjalizuj konteksty
-    backgroundContextRef.current = backgroundCanvas.getContext('2d');
-    drawingContextRef.current = drawingCanvas.getContext('2d');
-
-    // Skonfiguruj kontekst rysowania
-    setupDrawingContext();
-
-    // Przywróć obraz na drawing canvas
-    if (imageData && drawingContextRef.current) {
-      drawingContextRef.current.putImageData(imageData, 0, 0);
-    }
-
-    // Ponownie narysuj tło
-    drawBackground();
-  };
-
   const getToolSize = () => {
     const base = (typeof size === "object" && size?.[tool]) ? size[tool] : (typeof size === "number" ? size : 3);
     return getDisplaySize(tool, base);
   };
-
-  // 🔹 POPRAWIONE: useEffect do inicjalizacji
-  useEffect(() => {
-    const backgroundCanvas = backgroundCanvasRef.current;
-    const drawingCanvas = drawingCanvasRef.current;
-    if (!backgroundCanvas || !drawingCanvas) return;
-
-    // Inicjalizuj konteksty
-    backgroundContextRef.current = backgroundCanvas.getContext('2d');
-    drawingContextRef.current = drawingCanvas.getContext('2d');
-
-    // Skonfiguruj drawing context
-    setupDrawingContext();
-
-    updateCanvasSize();
-    window.addEventListener('resize', updateCanvasSize);
-    return () => window.removeEventListener('resize', updateCanvasSize);
-  }, []);
 
   useEffect(() => {
     if (socket) {

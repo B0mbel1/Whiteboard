@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
+import html2canvas from 'html2canvas';
 import Toolbar from '../Toolbar/Toolbar';
 import Canvas from '../Canvas/Canvas';
 import Sidebar from '../Sidebar/Sidebar';
@@ -390,6 +391,96 @@ const WhiteboardRouter = () => {
     }
   };
 
+ const handleSave = async () => {
+  try {
+    const canvasArea = document.querySelector('.canvas-area');
+    if (!canvasArea) {
+      alert('Nie znaleziono obszaru canvas!');
+      return;
+    }
+    
+    // Lista elementów do ukrycia przed screenshotem
+    const elementsToHide = [
+      '.background-toggle',
+      '.remote-cursor', // kursor innych użytkowników
+      '.selection-overlay' // zaznaczenia (jeśli są widoczne)
+    ];
+    
+    const originalStyles = [];
+    
+    // UKRYJ elementy
+    elementsToHide.forEach(selector => {
+      const elements = document.querySelectorAll(selector);
+      elements.forEach(el => {
+        originalStyles.push({
+          element: el,
+          display: el.style.display
+        });
+        el.style.display = 'none';
+      });
+    });
+    
+    // Pokaż loading na przycisku
+    const saveBtn = document.querySelector('.save-btn');
+    const originalText = saveBtn.textContent;
+    saveBtn.textContent = '⏳ Zapisuję...';
+    
+    try {
+      // Zrób screenshot
+      const canvas = await html2canvas(canvasArea, {
+        backgroundColor: null,
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        // Ignoruj dodatkowe elementy
+        ignoreElements: (element) => {
+          return (
+            element.classList?.contains('background-toggle') ||
+            element.classList?.contains('remote-cursor') ||
+            element.classList?.contains('selection-overlay')
+          );
+        }
+      });
+      
+      // Pobierz obrazek
+      const dataUrl = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      
+      // Polska nazwa pliku z datą
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+      const timeStr = `${String(now.getHours()).padStart(2,'0')}-${String(now.getMinutes()).padStart(2,'0')}-${String(now.getSeconds()).padStart(2,'0')}`;
+      
+      link.download = `tablica-${whiteboardId || 'rysunek'}_${dateStr}_${timeStr}.png`;
+      link.href = dataUrl;
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      console.log('✅ Tablica zapisana!');
+      
+    } finally {
+      // PRZYWRÓĆ ukryte elementy
+      originalStyles.forEach(({ element, display }) => {
+        if (display) {
+          element.style.display = display;
+        } else {
+          element.style.removeProperty('display');
+        }
+      });
+      
+      // Przywróć tekst przycisku
+      saveBtn.textContent = originalText;
+    }
+    
+  } catch (error) {
+    console.error('Błąd zapisywania tablicy:', error);
+    alert('Błąd zapisywania tablicy: ' + error.message);
+  }
+};
+
   if (isLoading) {
     return (
       <div style={{
@@ -600,7 +691,7 @@ const WhiteboardRouter = () => {
             📋 Copy Invite Link
           </button>
           <button className="fullscreen-btn">⛶ Fullscreen</button>
-          <button className="save-btn">💾 Save</button>
+          <button className="save-btn" onClick={handleSave}>💾 Save</button>
         </div>
       </div>
 

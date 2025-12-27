@@ -177,3 +177,12 @@
   flex-direction: column;
   gap: 20px;
 }
+
+.save-btn.saving {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.save-btn.saving:hover {
+  background: #34495e; /* Zapobiega zmianie koloru podczas ładowania */
+}
