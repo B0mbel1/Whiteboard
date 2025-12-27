@@ -42,11 +42,7 @@ const Whiteboard = () => {
   };
 
   localStorage.setItem("whiteboard-user", JSON.stringify(user));
-  return {
-    id: userId,
-    name: userName,
-    color: userColor
-  };
+  return user;
 });
 
   
