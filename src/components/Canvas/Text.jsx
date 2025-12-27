@@ -162,7 +162,8 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
         top: position.y,
         left: position.x,
         width: size.width,
-        height: size.height
+        height: size.height,
+        zIndex: 30
       }}
       onMouseDown={handleMouseDown}
       onDoubleClick={handleDoubleClick}
