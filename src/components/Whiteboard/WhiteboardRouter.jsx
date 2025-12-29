@@ -549,10 +549,6 @@ const WhiteboardRouter = () => {
                     </div>
                   ))}
                 </div>
-                
-                <div className="users-list-footer">
-                  Hover over counter to show users
-                </div>
               </div>
             )}
           </div>
