@@ -7,6 +7,7 @@ import Text from './Text';
 import Emoji from './Emoji';
 import Gif from './Gif';
 import Shape from './Shape';
+import Chat from './Chat';
 
 const Canvas = ({
   tool,
@@ -43,6 +44,7 @@ const Canvas = ({
   onBackgroundChange,
 }) => {
   const [remoteCursors, setRemoteCursors] = useState(new Map());
+  const [isChatVisible, setIsChatVisible] = useState(false);
 
   // Dwa canvasy: tło i rysunek
   const backgroundCanvasRef = useRef(null);
@@ -503,27 +505,6 @@ const Canvas = ({
     ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
   };
 
-  // useEffect(() => {
-  //   // Jeśli zmieniamy narzędzie na cokolwiek innego niż 'select'
-  //   if (tool !== 'select') {
-
-  //     // 1. Jeśli mamy "wycięty" obrazek w powietrzu -> wklej go na stałe (commit)
-  //     if (selectionSnapshot) {
-  //       commitSelection();
-  //     }
-  //     // 2. Jeśli mamy samą ramkę (bez obrazka) -> po prostu ją usuń
-  //     else if (selectionBox) {
-  //       setSelectionBox(null);
-  //       setSelectionStart(null);
-  //     }
-
-  //     // 3. Zresetuj flagi przeciągania
-  //     setIsDraggingSelection(false);
-  //   }
-  //   // WAŻNE: Dodaj 'tool' do zależności, aby kod odpalał się przy każdej zmianie narzędzia
-  // }, [tool]);
-  // Canvas.jsx
-
   useEffect(() => {
     const canvas = drawingCanvasRef.current;
     if (!canvas) return;
@@ -554,11 +535,11 @@ const Canvas = ({
   }, [tool]);
 
   const refreshWhiteboardData = () => {
-  if (socket && whiteboardId) {
-    console.log("🔄 Requesting whiteboard data on resize...");
-    socket.emit('refresh-whiteboard-data', { whiteboardId });
-  }
-};
+    if (socket && whiteboardId) {
+      console.log("🔄 Requesting whiteboard data on resize...");
+      socket.emit('refresh-whiteboard-data', { whiteboardId });
+    }
+  };
 
   // Inicjalizacja dwóch canvasów
   useEffect(() => {
@@ -590,9 +571,9 @@ const Canvas = ({
       drawBackground();
 
       // Przerysuj historię na canvasie rysowania
-          setTimeout(() => {
-      refreshWhiteboardData();
-    }, 100);
+      setTimeout(() => {
+        refreshWhiteboardData();
+      }, 100);
     };
 
     updateCanvasSize();
@@ -634,12 +615,10 @@ const Canvas = ({
       const handleWhiteboardState = (data) => {
         console.log("🎨 Redrawing", data.drawingData.length, "existing drawings");
 
-
         clearDrawingCanvas();
         setTimeout(() => {
           data.drawingData.forEach(drawing => { drawRemote(drawing); });
         }, 100);
-
 
         const otherUsers = data.users.filter(user => user.id !== socket.id);
         const cursorsMap = new Map();
@@ -687,10 +666,6 @@ const Canvas = ({
     if (!context || !canvas) return;
     context.clearRect(0, 0, canvas.width, canvas.height);
   };
-
-  // const handleBackgroundUpdate = (data) => {
-  //   setBackgroundMode(data.mode);
-  // };
 
   const drawRemote = (data) => {
     const context = drawingContextRef.current;
@@ -792,7 +767,6 @@ const Canvas = ({
     currentDrawingRef.current = { tool, color, size, points: [{ x, y }, { x, y }] };
   };
 
-
   const stopDrawing = () => {
     // --- OBSŁUGA NARZĘDZIA SELECT (ZAZNACZANIE) ---
     if (tool === 'select') {
@@ -818,7 +792,6 @@ const Canvas = ({
             tempCanvas.height = height;
             const tempCtx = tempCanvas.getContext('2d');
             tempCtx.putImageData(imageData, 0, 0);
-
 
             const capturedImage = tempCanvas.toDataURL();
             setSelectionSnapshot(capturedImage);
@@ -1430,6 +1403,25 @@ const Canvas = ({
         >
           {getCurrentBackgroundIcon()}
         </button>
+
+        <button
+          className={`chat-toggle ${isChatVisible ? 'active-chat' : ''}`}
+          onClick={() => setIsChatVisible(!isChatVisible)}
+          title={isChatVisible ? "Ukryj chat" : "Pokaż chat"}
+        >
+          {isChatVisible ? "✖" : "💬"}
+        </button>
+
+        {/* CHAT */}
+        {isChatVisible && (
+          <Chat 
+            socket={socket}
+            whiteboardId={whiteboardId}
+            currentUser={currentUser}
+            onClose={() => setIsChatVisible(false)}
+          />
+        )}
+
       </div>
     </div >
   );

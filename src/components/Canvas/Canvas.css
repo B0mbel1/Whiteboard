@@ -10,7 +10,6 @@
   flex: 1;
   position: relative;
   overflow: hidden;
-  /* Zmienione z auto na hidden */
 }
 
 /* Style dla różnych trybów tła */
@@ -46,12 +45,11 @@
   color: white;
 }
 
-/* 🔹 Przycisk przełączania tła — pozycja zależna od stanu toolbaru */
+/* 🔹 Przycisk przełączania tła */
 .background-toggle {
   position: absolute;
   top: 20px;
-  left: 150px;
-  /* startowa pozycja — obok otwartego toolbaru */
+  left: 150px; /* Obok otwartego toolbaru */
   z-index: 30;
   width: 50px;
   height: 50px;
@@ -67,19 +65,87 @@
   transition: all 0.3s ease;
 }
 
-/* 🔹 Gdy toolbar zwinięty, przesuwamy przycisk w lewo */
+/* 🔹 Przycisk chatu - NA DOLE, w tej samej pozycji co background-toggle */
+.chat-toggle {
+  position: absolute;
+  bottom: 20px; /* Na dole zamiast na górze */
+  left: 150px; /* TAKA SAMA pozycja jak background-toggle */
+  z-index: 30;
+  width: 50px;
+  height: 50px;
+  border: 2px solid #ff6b6b;
+  background: white;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
+}
+
+/* 🔹 Gdy toolbar zwinięty - OBA przyciski przesuwają się w lewo */
 .toolbar.collapsed~.canvas-container .background-toggle {
   left: 20px;
 }
 
+.toolbar.collapsed~.canvas-container .chat-toggle {
+  left: 20px; /* TAK SAMO jak background-toggle */
+}
+
+/* Hover efekty */
 .background-toggle:hover {
   background: #3498db;
   color: white;
   transform: scale(1.1);
 }
 
-.background-toggle:active {
+.chat-toggle:hover {
+  background: #ff6b6b;
+  color: white;
+  transform: scale(1.1);
+}
+
+/* Active efekty */
+.background-toggle:active,
+.chat-toggle:active {
   transform: scale(0.95);
+}
+
+/* Styl gdy chat jest aktywny */
+.chat-toggle.active-chat {
+  background: #ff6b6b;
+  color: white;
+  border-color: #ff4757;
+}
+
+/* 🔹 Animacja pulsowania dla chat-toggle */
+.chat-toggle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 30px;
+  height: 30px;
+  background: transparent;
+  border-radius: 50%;
+  animation: chatPulse 2s infinite;
+  pointer-events: none;
+  z-index: -1;
+}
+
+@keyframes chatPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(255, 107, 107, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 107, 107, 0);
+  }
 }
 
 /* Placeholder canvas */
@@ -138,12 +204,10 @@
     transform: scale(0.8);
     opacity: 0.7;
   }
-
   50% {
     transform: scale(1.1);
     opacity: 0.4;
   }
-
   100% {
     transform: scale(0.8);
     opacity: 0.7;
@@ -160,7 +224,6 @@
   border: 2px dashed #3498db;
   background-color: rgba(52, 152, 219, 0.1);
   pointer-events: none;
-  /* Kliknięcia przechodzą przez niego */
   z-index: 1000;
 }
 
@@ -172,7 +235,6 @@
   height: 100%;
   z-index: 1;
   pointer-events: none;
-  /* Kliknięcia przechodzą przez tło */
 }
 
 .drawing-canvas {
@@ -193,46 +255,11 @@
   background: transparent !important;
 }
 
-.background-toggle {
-  position: absolute;
-  top: 20px;
-  left: 150px;
-  z-index: 30;
-  width: 50px;
-  height: 50px;
-  border: 2px solid #3498db;
-  background: white;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
-  transition: all 0.3s ease;
-}
-
-.toolbar.collapsed~.canvas-container .background-toggle {
-  left: 20px;
-}
-
-.background-toggle:hover {
-  background: #3498db;
-  color: white;
-  transform: scale(1.1);
-}
-
-.background-toggle:active {
-  transform: scale(0.95);
-}
-
 .selection-overlay {
   position: absolute;
   border: 1px dashed #000;
-  /* Paint uses black dashed usually */
   background-color: transparent;
   pointer-events: none;
-  /* Let clicks pass through to the canvas handlers */
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -243,13 +270,12 @@
   width: 100%;
   height: 100%;
   object-fit: fill;
-  /* Ensure pixels stretch exactly to box */
   pointer-events: none;
   display: block;
 }
 
-.canvas-area.is-selecting>div:not(.selection-overlay):not(.background-toggle):not(.remote-cursor),
-.canvas-area.is-selecting>div:not(.selection-overlay):not(.background-toggle):not(.remote-cursor) * {
+.canvas-area.is-selecting>div:not(.selection-overlay):not(.background-toggle):not(.remote-cursor):not(.chat-toggle),
+.canvas-area.is-selecting>div:not(.selection-overlay):not(.background-toggle):not(.remote-cursor):not(.chat-toggle) * {
   pointer-events: none !important;
   user-select: none !important;
 }
@@ -263,4 +289,33 @@
 .canvas-area.is-selecting .note-container *, 
 .canvas-area.is-selecting .text-container * {
     pointer-events: none !important;
+}
+
+/* 🔹 Dla responsywności */
+@media (max-width: 768px) {
+  .background-toggle {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+    left: 120px;
+    top: 15px;
+  }
+  
+  .chat-toggle {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+    left: 120px;
+    bottom: 15px;
+  }
+  
+  .toolbar.collapsed~.canvas-container .background-toggle {
+    left: 15px;
+    top: 15px;
+  }
+  
+  .toolbar.collapsed~.canvas-container .chat-toggle {
+    left: 15px;
+    bottom: 15px;
+  }
 }

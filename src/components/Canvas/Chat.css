@@ -1,0 +1,380 @@
+/* Kontener chatu - NAD przyciskiem chatu */
+.chat-container {
+  position: absolute;
+  bottom: 90px; /* Nad przyciskiem chat-toggle */
+  left: 150px; /* TAKA SAMA pozycja jak przyciski */
+  z-index: 100;
+}
+
+/* Gdy toolbar zwinięty */
+.toolbar.collapsed~.canvas-container .chat-container {
+  left: 20px; /* TAK SAMO jak przyciski */
+}
+
+/* Okno chatu */
+.chat-window {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 350px;
+  height: 500px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Nagłówek */
+.chat-header {
+  background: linear-gradient(135deg, #0084ff, #00c6ff);
+  color: white;
+  padding: 15px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.chat-header-info h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.chat-users-count {
+  font-size: 13px;
+  opacity: 0.9;
+  margin-top: 3px;
+  display: block;
+}
+
+.chat-close-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background 0.2s;
+}
+
+.chat-close-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Użytkownicy online */
+.chat-online-users {
+  background: #f8f9fa;
+  padding: 10px 20px;
+  border-bottom: 1px solid #e9ecef;
+  flex-shrink: 0;
+}
+
+.chat-users-title {
+  font-size: 12px;
+  color: #6c757d;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.chat-users-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chat-user-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: white;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  border: 1px solid #dee2e6;
+}
+
+.chat-user-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.chat-user-name {
+  color: #495057;
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Kontener wiadomości */
+.chat-messages-container {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.chat-messages {
+  padding: 20px;
+  overflow-y: auto;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Pojedyncza wiadomość */
+.chat-message {
+  display: flex;
+  flex-direction: column;
+  max-width: 85%;
+}
+
+.chat-message.own {
+  align-self: flex-end;
+}
+
+.chat-message.other {
+  align-self: flex-start;
+}
+
+.chat-message.same-sender {
+  margin-top: 2px;
+}
+
+.chat-message-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.chat-message.own .chat-message-header {
+  justify-content: flex-end;
+}
+
+.chat-message-sender {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.chat-message-time {
+  font-size: 11px;
+  color: #6c757d;
+  opacity: 0.8;
+}
+
+.chat-message-bubble {
+  padding: 10px 14px;
+  border-radius: 18px;
+  word-wrap: break-word;
+  word-break: break-word;
+  line-height: 1.4;
+  font-size: 14px;
+}
+
+.chat-message.own .chat-message-bubble {
+  background: linear-gradient(135deg, #0084ff, #00c6ff);
+  color: white;
+  border-bottom-right-radius: 4px;
+}
+
+.chat-message.other .chat-message-bubble {
+  background: #f0f2f5;
+  color: #050505;
+  border-bottom-left-radius: 4px;
+}
+
+.chat-message.same-sender .chat-message-header {
+  display: none;
+}
+
+.chat-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #6c757d;
+  font-size: 14px;
+  text-align: center;
+  padding: 20px;
+}
+
+/* Pole wprowadzania */
+.chat-input-container {
+  padding: 15px 20px;
+  background: #f8f9fa;
+  border-top: 1px solid #e9ecef;
+  flex-shrink: 0;
+}
+
+.chat-input-wrapper {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.chat-textarea {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid #ced4da;
+  border-radius: 20px;
+  resize: none;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  max-height: 100px;
+  background: white;
+  outline: none;
+  transition: border 0.2s;
+}
+
+.chat-textarea:focus {
+  border-color: #0084ff;
+}
+
+.chat-send-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #0084ff, #00c6ff);
+  border: none;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.chat-send-btn:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 132, 255, 0.3);
+}
+
+.chat-send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chat-input-hint {
+  font-size: 11px;
+  color: #6c757d;
+  text-align: center;
+  margin-top: 8px;
+  opacity: 0.7;
+}
+
+/* Scrollbar styling */
+.chat-messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-messages::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.chat-messages::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.chat-messages::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Responsywność */
+@media (max-width: 768px) {
+  .chat-window {
+    width: 300px;
+    height: 400px;
+  }
+  
+  .chat-container {
+    bottom: 80px;
+    left: 120px;
+  }
+  
+  .toolbar.collapsed~.canvas-container .chat-container {
+    left: 15px;
+  }
+}
+/* ... istniejące style ... */
+
+/* Przycisk wysyłania - strzałka */
+.chat-send-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #0084ff, #00c6ff);
+  border: none;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: bold;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.chat-send-btn:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 132, 255, 0.3);
+}
+
+.chat-send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Usuń sekcję użytkowników online z CSS */
+.chat-online-users,
+.chat-users-title,
+.chat-users-list,
+.chat-user-item,
+.chat-user-dot,
+.chat-user-name {
+  display: none !important;
+}
+
+.chat-header-info h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* Możesz dodać podtytuł z ID tablicy */
+.chat-header-info small {
+  font-size: 11px;
+  opacity: 0.8;
+  display: block;
+  margin-top: 2px;
+  font-weight: normal;
+}

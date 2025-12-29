@@ -36,42 +36,41 @@ const WhiteboardRouter = () => {
   const [activeShape, setActiveShape] = useState(null);
 
   // Users
-  const [users, setUsers] = useState([]); // Dodano: Lista aktywnych użytkowników
+  const [users, setUsers] = useState([]);
 
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem("whiteboard-user");
-
+    
     if (saved) {
       return JSON.parse(saved);
     }
-
+    
     const userId = 'user_' + Math.random().toString(36).substring(2, 15);
     const userName = 'User' + Math.floor(Math.random() * 1000);
     const userColor = `hsl(${Math.random() * 360}, 80%, 60%)`;
-
+    
     console.log("👤 Generated user:", { id: userId, name: userName, color: userColor });
-
+    
     const user = {
       id: userId,
       name: userName,
       color: userColor
     };
-
+    
     localStorage.setItem("whiteboard-user", JSON.stringify(user));
     return user;
   });
 
   const [showUserColorPicker, setShowUserColorPicker] = useState(false);
-  const [showUsersList, setShowUsersList] = useState(false); // Dodano: Stan do pokazywania listy użytkowników
+  const [showUsersList, setShowUsersList] = useState(false);
 
   const socketRef = useRef(null);
   const hasJoinedRef = useRef(false);
   const userColorPickerRef = useRef(null);
   const userColorDotRef = useRef(null);
-  const usersListRef = useRef(null); // Dodano: Ref dla listy użytkowników
-  const usersCounterRef = useRef(null); // Dodano: Ref dla licznika użytkowników
+  const usersListRef = useRef(null);
+  const usersCounterRef = useRef(null);
 
-  // Funkcja do wysyłania aktualizacji użytkownika na serwer
   const updateUserOnServer = (updates) => {
     if (socketRef.current && whiteboardId) {
       socketRef.current.emit('user-update', {
@@ -82,57 +81,47 @@ const WhiteboardRouter = () => {
     }
   };
 
-  // Funkcja zmiany koloru użytkownika
   const handleUserColorChange = (newColor) => {
     const updatedUser = { ...currentUser, color: newColor };
     setCurrentUser(updatedUser);
     localStorage.setItem("whiteboard-user", JSON.stringify(updatedUser));
-
-    // WYSLIJ AKTUALIZACJE NA SERWER - DODANO
     updateUserOnServer({ color: newColor });
   };
 
-  // Funkcja zmiany nazwy użytkownika
   const handleUserNameChange = (newName) => {
     if (newName.trim() === '') return;
-
+    
     const updatedUser = { ...currentUser, name: newName };
     setCurrentUser(updatedUser);
     localStorage.setItem("whiteboard-user", JSON.stringify(updatedUser));
-
-    // WYSLIJ AKTUALIZACJE NA SERWER - DODANO
     updateUserOnServer({ name: newName });
   };
 
-  // Obsługa kliknięć poza pickerem koloru użytkownika
   useEffect(() => {
     const handleClickOutside = (event) => {
-      // Jeśli picker jest widoczny i kliknięto POZA nim i POZA kropką
-      if (showUserColorPicker &&
-        userColorPickerRef.current &&
-        !userColorPickerRef.current.contains(event.target) &&
-        userColorDotRef.current &&
-        !userColorDotRef.current.contains(event.target)) {
+      if (showUserColorPicker && 
+          userColorPickerRef.current && 
+          !userColorPickerRef.current.contains(event.target) &&
+          userColorDotRef.current && 
+          !userColorDotRef.current.contains(event.target)) {
         setShowUserColorPicker(false);
       }
-
-      // Dodano: Obsługa kliknięcia poza listą użytkowników
-      if (showUsersList &&
-        usersListRef.current &&
-        !usersListRef.current.contains(event.target) &&
-        usersCounterRef.current &&
-        !usersCounterRef.current.contains(event.target)) {
+      
+      if (showUsersList && 
+          usersListRef.current && 
+          !usersListRef.current.contains(event.target) &&
+          usersCounterRef.current && 
+          !usersCounterRef.current.contains(event.target)) {
         setShowUsersList(false);
       }
     };
 
-    // Dodaj listener zawsze
     document.addEventListener('mousedown', handleClickOutside);
-
+    
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showUserColorPicker, showUsersList]); // Dodano: showUsersList do zależności
+  }, [showUserColorPicker, showUsersList]);
 
   useEffect(() => {
     if (whiteboardId && !hasJoinedRef.current) {
@@ -199,12 +188,11 @@ const WhiteboardRouter = () => {
       if (data.emojis) {
         setEmojis(data.emojis);
       }
-
-      // Dodano: Pobieranie listy użytkowników z danych
+      
       if (data.users) {
         setUsers(data.users);
       }
-
+      
       if (data.backgroundMode) {
         setBackgroundMode(data.backgroundMode);
       }
@@ -214,32 +202,27 @@ const WhiteboardRouter = () => {
       setBackgroundMode(data.mode);
     });
 
-    // Dodano: Obsługa aktualizacji listy użytkowników
     newSocket.on('users-updated', (data) => {
       console.log("👥 Users updated:", data.users?.length || 0);
       setUsers(data.users || []);
     });
 
-    // Dodano: Obsługa dołączenia nowego użytkownika
     newSocket.on('user-joined', (data) => {
       console.log("👤 User joined:", data.user.name);
       setUsers(data.users || []);
     });
 
-    // Dodano: Obsługa wyjścia użytkownika
     newSocket.on('user-left', (data) => {
       console.log("👤 User left:", data.userId);
       setUsers(data.users || []);
     });
 
-    // Dodano: Obsługa aktualizacji użytkownika (np. zmiana koloru/nicku)
     newSocket.on('user-updated', (data) => {
       console.log("👤 User updated:", data.userId, data.updates);
-
-      // Aktualizuj lokalną listę użytkowników
-      setUsers(prevUsers =>
-        prevUsers.map(user =>
-          user.id === data.userId
+      
+      setUsers(prevUsers => 
+        prevUsers.map(user => 
+          user.id === data.userId 
             ? { ...user, ...data.updates }
             : user
         )
@@ -252,7 +235,6 @@ const WhiteboardRouter = () => {
     });
   };
 
-
   const handleBackgroundChange = (newMode) => {
     setBackgroundMode(newMode);
     if (socketRef.current && whiteboardId) {
@@ -260,7 +242,6 @@ const WhiteboardRouter = () => {
     }
   };
 
-  // Shapes
   const handleShapeCreate = (shape) => {
     if (socketRef.current && whiteboardId) {
       socketRef.current.emit('shape-create', { whiteboardId, shape });
@@ -283,7 +264,6 @@ const WhiteboardRouter = () => {
     }
   };
 
-  // Gif
   const handleGifCreate = (gif) => {
     if (socketRef.current && whiteboardId) {
       socketRef.current.emit('gif-create', { whiteboardId, gif });
@@ -302,7 +282,6 @@ const WhiteboardRouter = () => {
     }
   };
 
-  // Emojis
   const handleEmojiCreate = (emoji) => {
     if (socketRef.current && whiteboardId) {
       socketRef.current.emit('emoji-create', { whiteboardId, emoji });
@@ -325,7 +304,6 @@ const WhiteboardRouter = () => {
     }
   };
 
-  // Notatki
   const handleNoteCreate = (note) => {
     if (socketRef.current && whiteboardId) {
       socketRef.current.emit('note-create', {
@@ -391,107 +369,90 @@ const WhiteboardRouter = () => {
     }
   };
 
- const handleSave = async () => {
-  try {
-    const canvasArea = document.querySelector('.canvas-area');
-    if (!canvasArea) {
-      alert('Nie znaleziono obszaru canvas!');
-      return;
-    }
-    
-    // Lista elementów do ukrycia przed screenshotem
-    const elementsToHide = [
-      '.background-toggle',
-      '.remote-cursor', // kursor innych użytkowników
-      '.selection-overlay' // zaznaczenia (jeśli są widoczne)
-    ];
-    
-    const originalStyles = [];
-    
-    // UKRYJ elementy
-    elementsToHide.forEach(selector => {
-      const elements = document.querySelectorAll(selector);
-      elements.forEach(el => {
-        originalStyles.push({
-          element: el,
-          display: el.style.display
-        });
-        el.style.display = 'none';
-      });
-    });
-    
-    // Pokaż loading na przycisku
-    const saveBtn = document.querySelector('.save-btn');
-    const originalText = saveBtn.textContent;
-    saveBtn.textContent = '⏳ Zapisuję...';
-    
+  const handleSave = async () => {
     try {
-      // Zrób screenshot
-      const canvas = await html2canvas(canvasArea, {
-        backgroundColor: null,
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        // Ignoruj dodatkowe elementy
-        ignoreElements: (element) => {
-          return (
-            element.classList?.contains('background-toggle') ||
-            element.classList?.contains('remote-cursor') ||
-            element.classList?.contains('selection-overlay')
-          );
-        }
+      const canvasArea = document.querySelector('.canvas-area');
+      if (!canvasArea) {
+        alert('Nie znaleziono obszaru canvas!');
+        return;
+      }
+      
+      const elementsToHide = [
+        '.background-toggle',
+        '.remote-cursor',
+        '.selection-overlay'
+      ];
+      
+      const originalStyles = [];
+      
+      elementsToHide.forEach(selector => {
+        const elements = document.querySelectorAll(selector);
+        elements.forEach(el => {
+          originalStyles.push({
+            element: el,
+            display: el.style.display
+          });
+          el.style.display = 'none';
+        });
       });
       
-      // Pobierz obrazek
-      const dataUrl = canvas.toDataURL('image/png');
-      const link = document.createElement('a');
+      const saveBtn = document.querySelector('.save-btn');
+      const originalText = saveBtn.textContent;
+      saveBtn.textContent = '⏳ Saving...';
       
-      // Polska nazwa pliku z datą
-      const now = new Date();
-      const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-      const timeStr = `${String(now.getHours()).padStart(2,'0')}-${String(now.getMinutes()).padStart(2,'0')}-${String(now.getSeconds()).padStart(2,'0')}`;
+      try {
+        const canvas = await html2canvas(canvasArea, {
+          backgroundColor: null,
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          logging: false,
+          ignoreElements: (element) => {
+            return (
+              element.classList?.contains('background-toggle') ||
+              element.classList?.contains('remote-cursor') ||
+              element.classList?.contains('selection-overlay')
+            );
+          }
+        });
+        
+        const dataUrl = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        
+        const now = new Date();
+        const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+        const timeStr = `${String(now.getHours()).padStart(2,'0')}-${String(now.getMinutes()).padStart(2,'0')}-${String(now.getSeconds()).padStart(2,'0')}`;
+        
+        link.download = `whiteboard-${whiteboardId || 'drawing'}_${dateStr}_${timeStr}.png`;
+        link.href = dataUrl;
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        console.log('✅ Whiteboard saved!');
+        
+      } finally {
+        originalStyles.forEach(({ element, display }) => {
+          if (display) {
+            element.style.display = display;
+          } else {
+            element.style.removeProperty('display');
+          }
+        });
+        
+        saveBtn.textContent = originalText;
+      }
       
-      link.download = `tablica-${whiteboardId || 'rysunek'}_${dateStr}_${timeStr}.png`;
-      link.href = dataUrl;
-      
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      console.log('✅ Tablica zapisana!');
-      
-    } finally {
-      // PRZYWRÓĆ ukryte elementy
-      originalStyles.forEach(({ element, display }) => {
-        if (display) {
-          element.style.display = display;
-        } else {
-          element.style.removeProperty('display');
-        }
-      });
-      
-      // Przywróć tekst przycisku
-      saveBtn.textContent = originalText;
+    } catch (error) {
+      console.error('Error saving whiteboard:', error);
+      alert('Error saving whiteboard: ' + error.message);
     }
-    
-  } catch (error) {
-    console.error('Błąd zapisywania tablicy:', error);
-    alert('Błąd zapisywania tablicy: ' + error.message);
-  }
-};
+  };
 
   if (isLoading) {
     return (
-      <div style={{
-        height: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: '#f0f0f0',
-        flexDirection: 'column',
-        gap: '20px'
-      }}>
+      <div className="whiteboard-loading-screen">
         <h2>Joining whiteboard {whiteboardId}...</h2>
         <div>Please wait</div>
       </div>
@@ -501,8 +462,8 @@ const WhiteboardRouter = () => {
   return (
     <div className="whiteboard">
       <div className="whiteboard-header">
-        <div className="whiteboard-info" style={{ position: 'relative' }}>
-          <span className="whiteboard-id" style={{ display: "inline-block", margin: "0px 10px 0px 0px" }}>
+        <div className="whiteboard-info">
+          <span className="whiteboard-id">
             Room: {whiteboardId}
           </span>
           <span className="user-info">
@@ -515,168 +476,78 @@ const WhiteboardRouter = () => {
                   handleUserNameChange('User' + Math.floor(Math.random() * 1000));
                 }
               }}
-              style={{
-                border: "none",
-                borderBottom: "1px dashed rgba(255,255,255,0.6)",
-                background: "transparent",
-                color: "white",
-                width: "110px",
-                outline: "none"
-              }}
+              className="user-name-input"
             />
           </span>
-
-          {/* Kropka użytkownika - kliknięcie otwiera picker */}
-          <span
-            ref={userColorDotRef}
-            className="user-color"
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowUserColorPicker(true);
-            }}
-            style={{
-              display: "inline-block",
-              width: "14px",
-              height: "14px",
-              marginLeft: "8px",
-              background: currentUser.color,
-              borderRadius: "50%",
-              cursor: "pointer",
-              border: "1px solid #fff",
-              position: "relative"
-            }}
-          />
-
-          {/* ColorPicker dla koloru użytkownika */}
-          {showUserColorPicker && (
-            <div
-              ref={userColorPickerRef}
-              className="user-color-picker-wrapper"
-              style={{
-                position: "absolute",
-                top: "35px",
-                left: "50%",
-                transform: "translateX(-50%)",
-                zIndex: 1000,
-                background: "white",
-                borderRadius: "8px",
-                boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
-                overflow: 'hidden'
+          
+          {/* Kropka koloru użytkownika z inputem color */}
+          <div className="user-color-wrapper">
+            <label 
+              htmlFor="user-color-input"
+              ref={userColorDotRef}
+              className="user-color-dot"
+              style={{ 
+                backgroundColor: currentUser.color,
+                cursor: 'pointer'
               }}
-            >
-              <ColorPicker
-                color={currentUser.color}
-                setColor={handleUserColorChange}
-                setShowColorPicker={setShowUserColorPicker}
-              />
-            </div>
-          )}
-
-          {/* Dodano: Licznik aktywnych użytkowników z rozwijaną listą */}
-          <div style={{ position: 'relative', display: 'inline-block', marginLeft: '15px' }}>
+              title="Change your color"
+            />
+            
+            {/* Ukryty input type="color" */}
+            <input
+              id="user-color-input"
+              type="color"
+              value={currentUser.color}
+              onChange={(e) => handleUserColorChange(e.target.value)}
+              style={{
+                position: 'absolute',
+                opacity: 0,
+                width: '1px',
+                height: '1px',
+                pointerEvents: 'none'
+              }}
+            />
+          </div>
+          
+          <div className="users-container">
             <span
               ref={usersCounterRef}
               className="users-counter"
               onMouseEnter={() => setShowUsersList(true)}
               onMouseLeave={() => setShowUsersList(false)}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                cursor: 'pointer',
-                padding: '3px 10px',
-                background: 'rgba(255, 255, 255, 0.15)',
-                borderRadius: '12px',
-                fontSize: '13px',
-                color: 'white',
-                transition: 'all 0.2s ease',
-                border: '1px solid rgba(255, 255, 255, 0.2)'
-              }}
             >
-              👥 Active Users: <strong style={{ marginLeft: '4px' }}>{users.length}</strong>
+              👥 Active Users: <strong>{users.length}</strong>
             </span>
-
-            {/* Dodano: Lista użytkowników (pokazuje się na hover) */}
+            
             {showUsersList && users.length > 0 && (
               <div
                 ref={usersListRef}
                 className="users-list-popup"
                 onMouseEnter={() => setShowUsersList(true)}
                 onMouseLeave={() => setShowUsersList(false)}
-                style={{
-                  position: 'absolute',
-                  top: '35px',
-                  left: '0',
-                  background: 'white',
-                  borderRadius: '8px',
-                  boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
-                  zIndex: 1000,
-                  minWidth: '180px',
-                  maxWidth: '250px',
-                  padding: '12px',
-                  border: '1px solid #e1e1e1'
-                }}
               >
-                <div style={{
-                  fontSize: '12px',
-                  color: '#666',
-                  marginBottom: '8px',
-                  fontWeight: '500',
-                  borderBottom: '1px solid #eee',
-                  paddingBottom: '6px'
-                }}>
+                <div className="users-list-title">
                   Online Users ({users.length})
                 </div>
-
-                <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                
+                <div className="users-list-scroll">
                   {users.map(user => (
-                    <div
-                      key={user.id}
+                    <div 
+                      key={user.id} 
                       className="user-list-item"
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        padding: '6px 0',
-                        borderBottom: '1px solid #f5f5f5',
-                        fontSize: '13px'
-                      }}
                     >
-                      <div
-                        className="user-color-dot"
-                        style={{
-                          width: '10px',
-                          height: '10px',
-                          borderRadius: '50%',
-                          backgroundColor: user.color,
-                          marginRight: '8px',
-                          flexShrink: 0,
-                          border: '1px solid #ddd'
-                        }}
+                      <div 
+                        className="user-color-indicator"
+                        style={{ backgroundColor: user.color }}
                       />
-                      <span
+                      <span 
                         className="user-name"
-                        style={{
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          color: '#333',
-                          fontWeight: user.id === socketRef.current?.id ? '600' : '400'
-                        }}
                         title={user.name}
                       >
                         {user.name} {user.id === socketRef.current?.id && '(You)'}
                       </span>
                     </div>
                   ))}
-                </div>
-
-                <div style={{
-                  fontSize: '11px',
-                  color: '#999',
-                  marginTop: '8px',
-                  paddingTop: '6px',
-                  borderTop: '1px solid #eee',
-                  fontStyle: 'italic'
-                }}>
                 </div>
               </div>
             )}
@@ -711,8 +582,8 @@ const WhiteboardRouter = () => {
           setActiveShape={setActiveShape}
         />
 
-        <PointerTrail
-          active={tool === 'pointer'}
+        <PointerTrail 
+          active={tool === 'pointer'} 
           socket={socketRef.current}
           whiteboardId={whiteboardId}
         />
