@@ -27,6 +27,7 @@ const Canvas = ({
   onNoteDelete,
   emojis: initialEmojis,
   activeEmoji,
+  setActiveEmoji,
   onEmojiCreate,
   onEmojiUpdate,
   onEmojiDelete,
@@ -893,6 +894,7 @@ const Canvas = ({
       saveToHistory(ACTION_TYPES.EMOJI_CREATE, { emoji: newEmoji });
       if (onEmojiCreate) onEmojiCreate(newEmoji);
       if (setTool) setTool('cursor');
+      if (setActiveEmoji) setActiveEmoji(null);
     }
 
     if (tool === 'gif' && activeGif) {

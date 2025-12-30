@@ -606,6 +606,7 @@ const WhiteboardRouter = () => {
           onNoteDelete={handleNoteDelete}
           emojis={emojis}
           activeEmoji={activeEmoji}
+          setActiveEmoji={setActiveEmoji}
           onEmojiCreate={handleEmojiCreate}
           onEmojiUpdate={handleEmojiUpdate}
           onEmojiDelete={handleEmojiDelete}
