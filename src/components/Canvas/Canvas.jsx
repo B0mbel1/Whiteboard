@@ -89,6 +89,8 @@ const Canvas = ({
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [originalCaptureRect, setOriginalCaptureRect] = useState(null);
 
+  const [clipboard, setClipboard] = useState(null);
+
   const ACTION_TYPES = {
     DRAWING: 'drawing',
     NOTE_CREATE: 'note_create',
@@ -962,20 +964,112 @@ const Canvas = ({
   };
 
   // Obsługa klawiszy (Delete, Backspace, Ctrl+Z etc.)
-  useEffect(() => {
+useEffect(() => {
     const handleKeyDown = (e) => {
       const activeElement = document.activeElement;
-      // Ignoruj jeśli użytkownik pisze w polu tekstowym (np. wewnątrz notatki)
+      // Ignoruj jeśli użytkownik pisze w polu tekstowym
       if (activeElement && (activeElement.tagName.toLowerCase() === 'input' || activeElement.tagName.toLowerCase() === 'textarea')) return;
 
+      // --- KOPIOWANIE (Ctrl + C) ---
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        let itemToCopy = null;
+        let type = null;
+
+        if (selectedNoteId) {
+          itemToCopy = notes.find(n => n.id === selectedNoteId);
+          type = 'note';
+        } else if (selectedTextBoxId) {
+          itemToCopy = textBoxes.find(t => t.id === selectedTextBoxId);
+          type = 'text';
+        } else if (selectedEmojiId) {
+          itemToCopy = emojis.find(em => em.id === selectedEmojiId);
+          type = 'emoji';
+        } else if (selectedGifId) {
+          itemToCopy = gifs.find(g => g.id === selectedGifId);
+          type = 'gif';
+        } else if (selectedShapeId) {
+          itemToCopy = shapes.find(s => s.id === selectedShapeId);
+          type = 'shape';
+        }
+
+        if (itemToCopy) {
+          setClipboard({ type, data: { ...itemToCopy } }); // Kopiujemy dane
+          console.log(`📋 Copied ${type} to clipboard`);
+        }
+        return;
+      }
+
+      // --- WKLEJANIE (Ctrl + V) ---
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        if (!clipboard) return;
+
+        const offset = 20; // Przesunięcie wklejonego elementu
+        const newId = `${clipboard.type}_${Date.now()}_copy_${Math.random().toString(36).substr(2, 5)}`;
+        
+        // Tworzymy nowy obiekt z nowym ID i przesuniętą pozycją
+        const newItem = {
+          ...clipboard.data,
+          id: newId,
+          x: clipboard.data.x + offset,
+          y: clipboard.data.y + offset
+        };
+
+        switch (clipboard.type) {
+          case 'note':
+            setNotes(prev => [...prev, newItem]);
+            if (onNoteCreate) onNoteCreate(newItem); // Wyślij do serwera (używamy istniejących handlerów)
+            saveToHistory(ACTION_TYPES.NOTE_CREATE, { note: newItem });
+            setSelectedNoteId(newId); // Zaznacz nowy element
+            break;
+
+          case 'text':
+            setTextBoxes(prev => [...prev, newItem]);
+            if (socket) socket.emit('text-create', { whiteboardId, textBox: newItem });
+            saveToHistory(ACTION_TYPES.TEXT_CREATE, { textBox: newItem });
+            setSelectedTextBoxId(newId);
+            break;
+
+          case 'emoji':
+            setEmojis(prev => [...prev, newItem]);
+            if (onEmojiCreate) onEmojiCreate(newItem);
+            saveToHistory(ACTION_TYPES.EMOJI_CREATE, { emoji: newItem });
+            setSelectedEmojiId(newId);
+            break;
+
+          case 'gif':
+            setGifs(prev => [...prev, newItem]);
+            if (onGifCreate) onGifCreate(newItem);
+            saveToHistory(ACTION_TYPES.GIF_CREATE, { gif: newItem });
+            setSelectedGifId(newId);
+            break;
+
+          case 'shape':
+            setShapes(prev => [...prev, newItem]);
+            if (onShapeCreate) onShapeCreate(newItem);
+            saveToHistory(ACTION_TYPES.SHAPE_CREATE, { shape: newItem });
+            setSelectedShapeId(newId);
+            break;
+            
+          default:
+            break;
+        }
+        return;
+      }
+
+      // --- USUWANIE (Delete / Backspace) ---
       if (e.key === 'Backspace' || e.key === 'Delete') {
 
-        // --- 1. OBSŁUGA NARZĘDZIA SELECT (USUWANIE OBSZAROWE) ---
+        // ... (tutaj wklej całą istniejącą logikę usuwania obszarowego i pojedynczego, którą już miałeś w kodzie) ...
+        // PONIŻEJ WKLEJAM SKRÓCONĄ WERSJĘ TWOJEGO ORYGINALNEGO KODU USUWANIA DLA KONTEKSTU:
+        
         if (selectionBox) {
-          e.preventDefault();
-
-          // Definicja funkcji sprawdzającej kolizję
-          const isInsideSelection = (objX, objY, objW, objH) => {
+           e.preventDefault();
+           // ... (Twoja logika usuwania grupowego) ...
+           // Tu była logika z ACTION_TYPES.MASS_DELETE itd.
+           // Skopiuj to ze swojego starego pliku, nic tu nie zmieniałem w logice.
+           
+           // A. ZNAJDŹ WSZYSTKIE ELEMENTY DO USUNIĘCIA
+           const isInsideSelection = (objX, objY, objW, objH) => {
             return (
               objX < selectionBox.x + selectionBox.width &&
               objX + objW > selectionBox.x &&
@@ -984,80 +1078,40 @@ const Canvas = ({
             );
           };
 
-          // A. ZNAJDŹ WSZYSTKIE ELEMENTY DO USUNIĘCIA
           const notesToDelete = notes.filter(n => isInsideSelection(n.x, n.y, n.width, n.height));
           const textsToDelete = textBoxes.filter(t => isInsideSelection(t.x, t.y, t.width, t.height));
           const emojisToDelete = emojis.filter(e => isInsideSelection(e.x, e.y, e.size || 48, e.size || 48));
           const gifsToDelete = gifs.filter(g => isInsideSelection(g.x, g.y, g.width || 150, g.width || 150));
           const shapesToDelete = shapes.filter(s => isInsideSelection(s.x, s.y, s.width || 100, Math.max(s.height || 100, 10)));
 
-          // B. ZAPISZ DO HISTORII JAKO JEDNA AKCJA
-          // Zapisujemy tylko jeśli faktycznie coś usuwamy (obiekty LUB wycięty rysunek)
-          if (notesToDelete.length > 0 || textsToDelete.length > 0 ||
-            emojisToDelete.length > 0 || gifsToDelete.length > 0 ||
-            shapesToDelete.length > 0 || selectionSnapshot) {
-
+          if (notesToDelete.length > 0 || textsToDelete.length > 0 || emojisToDelete.length > 0 || gifsToDelete.length > 0 || shapesToDelete.length > 0 || selectionSnapshot) {
             saveToHistory(ACTION_TYPES.MASS_DELETE, {
               notes: notesToDelete,
               textBoxes: textsToDelete,
               emojis: emojisToDelete,
               gifs: gifsToDelete,
               shapes: shapesToDelete,
-              // Zapisujemy fakt, że usunięto snapshot, chociaż undo po prostu przerysuje canvas
               wasSnapshotDeleted: !!selectionSnapshot
             });
           }
 
           if (selectionSnapshot && originalCaptureRect && socket) {
-            socket.emit('erase-area', {
-              whiteboardId,
-              x: originalCaptureRect.x,
-              y: originalCaptureRect.y,
-              width: originalCaptureRect.width,
-              height: originalCaptureRect.height
-            });
-          }
-          // C. WYKONAJ USUWANIE ZE STANU (SOCKET + LOKALNIE)
-
-          // Usuwanie notatek
-          if (notesToDelete.length) {
-            setNotes(prev => prev.filter(n => !notesToDelete.some(del => del.id === n.id)));
-            notesToDelete.forEach(n => socket && socket.emit('note-delete', { whiteboardId, id: n.id }));
+            socket.emit('erase-area', { whiteboardId, x: originalCaptureRect.x, y: originalCaptureRect.y, width: originalCaptureRect.width, height: originalCaptureRect.height });
           }
 
-          // Usuwanie tekstów
-          if (textsToDelete.length) {
-            setTextBoxes(prev => prev.filter(t => !textsToDelete.some(del => del.id === t.id)));
-            textsToDelete.forEach(t => socket && socket.emit('text-delete', { whiteboardId, id: t.id }));
-          }
+          if (notesToDelete.length) { setNotes(prev => prev.filter(n => !notesToDelete.some(del => del.id === n.id))); notesToDelete.forEach(n => socket && socket.emit('note-delete', { whiteboardId, id: n.id })); }
+          if (textsToDelete.length) { setTextBoxes(prev => prev.filter(t => !textsToDelete.some(del => del.id === t.id))); textsToDelete.forEach(t => socket && socket.emit('text-delete', { whiteboardId, id: t.id })); }
+          if (emojisToDelete.length) { setEmojis(prev => prev.filter(e => !emojisToDelete.some(del => del.id === e.id))); emojisToDelete.forEach(e => socket && socket.emit('emoji-delete', { whiteboardId, id: e.id })); }
+          if (gifsToDelete.length) { setGifs(prev => prev.filter(g => !gifsToDelete.some(del => del.id === g.id))); gifsToDelete.forEach(g => socket && socket.emit('gif-delete', { whiteboardId, id: g.id })); }
+          if (shapesToDelete.length) { setShapes(prev => prev.filter(s => !shapesToDelete.some(del => del.id === s.id))); shapesToDelete.forEach(s => socket && socket.emit('shape-delete', { whiteboardId, id: s.id })); }
 
-          // Usuwanie emoji
-          if (emojisToDelete.length) {
-            setEmojis(prev => prev.filter(e => !emojisToDelete.some(del => del.id === e.id)));
-            emojisToDelete.forEach(e => socket && socket.emit('emoji-delete', { whiteboardId, id: e.id }));
-          }
-
-          // Usuwanie gifów
-          if (gifsToDelete.length) {
-            setGifs(prev => prev.filter(g => !gifsToDelete.some(del => del.id === g.id)));
-            gifsToDelete.forEach(g => socket && socket.emit('gif-delete', { whiteboardId, id: g.id }));
-          }
-
-          // Usuwanie kształtów
-          if (shapesToDelete.length) {
-            setShapes(prev => prev.filter(s => !shapesToDelete.some(del => del.id === s.id)));
-            shapesToDelete.forEach(s => socket && socket.emit('shape-delete', { whiteboardId, id: s.id }));
-          }
-
-          // D. CZYSZCZENIE ZAZNACZENIA I SNAPSHOTA
           setSelectionSnapshot(null);
           setSelectionBox(null);
           setOriginalCaptureRect(null);
           return;
         }
-        // -------------------------------------------------------
 
-        // --- 2. USUWANIE POJEDYNCZYCH ELEMENTÓW (przez kliknięcie) ---
+        // Usuwanie pojedyncze
         if (selectedNoteId) removeNote(selectedNoteId);
         if (selectedTextBoxId) removeTextBox(selectedTextBoxId);
         if (selectedEmojiId) removeEmoji(selectedEmojiId);
@@ -1073,11 +1127,11 @@ const Canvas = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
-    // Lista zależności musi być pełna, aby funkcja widziała aktualny stan tablic
+    // 🔹 WAŻNE: Dodaj 'clipboard' do tablicy zależności
     notes, textBoxes, emojis, gifs, shapes,
     selectedNoteId, selectedTextBoxId, selectedEmojiId, selectedGifId, selectedShapeId,
     selectionBox, selectionSnapshot,
-    undo, redo
+    undo, redo, clipboard 
   ]);
 
   useEffect(() => {
