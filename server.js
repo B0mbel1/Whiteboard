@@ -43,6 +43,7 @@ app.get('/api/create-whiteboard', (req, res) => {
       textBoxes: [],
       notes: [],
       gifs: [],
+      images: [],
       shapes: [],
       emojis: [],
       backgroundMode: 'grid',
@@ -94,10 +95,10 @@ io.on("connection", (socket) => {
         users: new Map(),
         drawingData: [],
         textBoxes: [],
-        notes: [],
-        gifs: [],
-        shapes: [],
-        emojis: [],
+              notes: [],
+              gifs: [],
+              images: [],
+              shapes: [],        emojis: [],
         backgroundMode: 'grid',
         chatMessages: []
       });
@@ -142,6 +143,7 @@ io.on("connection", (socket) => {
       textBoxes: whiteboard.textBoxes || [],
       notes: whiteboard.notes || [],
       gifs: whiteboard.gifs || [],
+      images: whiteboard.images || [],
       shapes: whiteboard.shapes || [],
       emojis: whiteboard.emojis || [],
       backgroundMode: whiteboard.backgroundMode || 'grid'
@@ -295,6 +297,35 @@ io.on("connection", (socket) => {
     if (wb && wb.gifs) {
       wb.gifs = wb.gifs.filter(x => x.id !== d.id);
       broadcast(d.whiteboardId, "gif-delete", d);
+    }
+  });
+
+  // ========== OBSŁUGA OBRAZKÓW ==========
+  socket.on("image-create", (d) => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb) {
+      if (!wb.images) wb.images = [];
+      wb.images.push(d.image);
+      broadcast(d.whiteboardId, "image-create", d);
+    }
+  });
+
+  socket.on("image-update", (d) => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb && wb.images) {
+      const img = wb.images.find(x => x.id === d.id);
+      if (img) {
+        Object.assign(img, d);
+        broadcast(d.whiteboardId, "image-update", d);
+      }
+    }
+  });
+
+  socket.on("image-delete", (d) => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb && wb.images) {
+      wb.images = wb.images.filter(x => x.id !== d.id);
+      broadcast(d.whiteboardId, "image-delete", d);
     }
   });
 
@@ -475,8 +506,9 @@ io.on("connection", (socket) => {
         drawingData: wb.drawingData || [],
         textBoxes: wb.textBoxes || [],
         notes: wb.notes || [],
-        gifs: wb.gifs || [],
-        shapes: wb.shapes || [],
+      gifs: whiteboard.gifs || [],
+      images: whiteboard.images || [],
+      shapes: whiteboard.shapes || [],
         emojis: wb.emojis || [],
         backgroundMode: wb.backgroundMode || 'grid'
       };
