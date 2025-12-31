@@ -1,40 +1,17 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import './MultimediaModal.css';
 
-const MultimediaModal = ({ onClose, onImageUpload }) => {
-  const fileInputRef = useRef(null);
-
-  const handleFileSelect = (e) => {
-    const file = e.target.files[0];
-    if (file && onImageUpload) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        onImageUpload(event.target.result);
-        onClose();
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
+const MultimediaModal = ({ onClose }) => {
   return (
     <div className="multimedia-modal-overlay">
       <div className="multimedia-modal-content">
         <button className="multimedia-close-btn" onClick={onClose} title="Zamknij">
           ✕
         </button>
-        
-        <input 
-          type="file" 
-          ref={fileInputRef} 
-          style={{ display: 'none' }} 
-          accept="image/*" 
-          onChange={handleFileSelect}
-        />
-
         <div className="multimedia-tiles-container">
           
           {/* Lewy kafelek - Dodaj zdjęcie */}
-          <div className="multimedia-tile" onClick={() => fileInputRef.current.click()}>
+          <div className="multimedia-tile" onClick={() => console.log('Dodaj zdjęcie')}>
             <div className="multimedia-icon">
               <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>

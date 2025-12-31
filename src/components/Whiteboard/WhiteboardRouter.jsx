@@ -31,9 +31,6 @@ const WhiteboardRouter = () => {
   const [gifs, setGifs] = useState([]);
   const [activeGif, setActiveGif] = useState(null);
 
-  // Images
-  const [images, setImages] = useState([]);
-
   // Shapes
   const [shapes, setShapes] = useState([]);
   const [activeShape, setActiveShape] = useState(null);
@@ -73,7 +70,6 @@ const WhiteboardRouter = () => {
   const userColorDotRef = useRef(null);
   const usersListRef = useRef(null);
   const usersCounterRef = useRef(null);
-  const canvasRef = useRef(null);
 
   const updateUserOnServer = (updates) => {
     if (socketRef.current && whiteboardId) {
@@ -186,9 +182,6 @@ const WhiteboardRouter = () => {
       if (data.gifs) {
         setGifs(data.gifs);
       }
-      if (data.images) {
-        setImages(data.images);
-      }
       if (data.shapes) {
         setShapes(data.shapes);
       }
@@ -268,33 +261,6 @@ const WhiteboardRouter = () => {
         id,
         ...updates
       });
-    }
-  };
-
-  const handleSocketImageCreate = (newImage) => {
-    setImages(prev => [...prev, newImage]);
-    if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('image-create', { whiteboardId, image: newImage });
-    }
-  };
-
-  const handleToolbarUpload = (imageUrl) => {
-    if (canvasRef.current) {
-      canvasRef.current.addImageToCanvas(imageUrl);
-    }
-  };
-
-  const handleImageUpdate = (id, updates) => {
-    setImages(prev => prev.map(img => img.id === id ? { ...img, ...updates } : img));
-    if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('image-update', { whiteboardId, id, ...updates });
-    }
-  };
-
-  const handleImageDelete = (id) => {
-    setImages(prev => prev.filter(img => img.id !== id));
-    if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('image-delete', { whiteboardId, id });
     }
   };
 
@@ -614,7 +580,6 @@ const WhiteboardRouter = () => {
           setActiveEmoji={setActiveEmoji}
           setActiveGif={setActiveGif}
           setActiveShape={setActiveShape}
-          onImageUpload={handleToolbarUpload}
         />
 
         <PointerTrail 
@@ -624,7 +589,6 @@ const WhiteboardRouter = () => {
         />
 
         <Canvas
-          ref={canvasRef}
           tool={tool}
           color={color}
           setTool={setTool}
@@ -651,10 +615,6 @@ const WhiteboardRouter = () => {
           onGifCreate={handleGifCreate}
           onGifDelete={handleGifDelete}
           onGifUpdate={handleGifUpdate}
-          images={images}
-          onImageCreate={handleSocketImageCreate}
-          onImageUpdate={handleImageUpdate}
-          onImageDelete={handleImageDelete}
           shapes={shapes}
           activeShape={activeShape}
           onShapeCreate={handleShapeCreate}

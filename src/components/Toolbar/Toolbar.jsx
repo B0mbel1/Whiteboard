@@ -4,7 +4,7 @@ import MultimediaModal from '../MultimediaModal/MultimediaModal.jsx';
 import PointerTrail from './PointerTrail.jsx';
 import ToolRangeCircle from './ToolRangeCircle.jsx';
 
-const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker, activeEmoji, setActiveEmoji, setActiveGif, setActiveShape, onImageUpload }) => {
+const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker, activeEmoji, setActiveEmoji, setActiveGif, setActiveShape }) => {
   // 🔹 Zmiana: Wszystkie stany popupów przechowują teraz tylko 'visible', bez x/y
   const [showShapes, setShowShapes] = useState({ visible: false });
   const [showEmojis, setShowEmojis] = useState({ visible: false });
@@ -495,7 +495,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
         <span className={`arrow ${collapsed ? 'arrow-right' : 'arrow-left'}`}>➤</span>
       </div>
 
-      {showMultimedia && <MultimediaModal onClose={() => setShowMultimedia(false)} onImageUpload={onImageUpload} />}
+      {showMultimedia && <MultimediaModal onClose={() => setShowMultimedia(false)} />}
 
       <ToolRangeCircle tool={tool} size={size} />
     </>
