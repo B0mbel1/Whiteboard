@@ -1,88 +1,116 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import './Toolbar.css';
 import MultimediaModal from '../MultimediaModal/MultimediaModal.jsx';
 import PointerTrail from './PointerTrail.jsx';
 import ToolRangeCircle from './ToolRangeCircle.jsx';
 
-const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker, activeEmoji, setActiveEmoji, setActiveGif, setActiveShape, onImageUpload }) => {
-  const [showShapes, setShowShapes] = useState({ visible: false, x: 0, y: 0 });
-  const [showEmojis, setShowEmojis] = useState({ visible: false, x: 0, y: 0 });
+const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker, activeEmoji, setActiveEmoji, setActiveGif, setActiveShape }) => {
+  // 🔹 Zmiana: Wszystkie stany popupów przechowują teraz tylko 'visible', bez x/y
+  const [showShapes, setShowShapes] = useState({ visible: false });
+  const [showEmojis, setShowEmojis] = useState({ visible: false });
+  const [showGifs, setShowGifs] = useState({ visible: false });
+  
   const [selectedShape, setSelectedShape] = useState(null);
-  // const [selectedEmoji, setSelectedEmoji] = useState(null);
   const [collapsed, setCollapsed] = useState(false);
 
   const [selectedColor, setSelectedColor] = useState(color || '#000000');
   const [recentColors, setRecentColors] = useState([]);
   const [tempColor, setTempColor] = useState(selectedColor);
 
-  const [showGifs, setShowGifs] = useState({ visible: false, x: 0, y: 0 });
-  const [showMultimedia, setShowMultimedia] = useState(false); // Stan dla modala multimediów
+  const [showMultimedia, setShowMultimedia] = useState(false);
   const [gifQuery, setGifQuery] = useState('');
 
-  const [gifs, setGifs] = useState([]); // lista gifów do wyświetlenia
+  const [gifs, setGifs] = useState([]);
   const searchTimeoutRef = useRef(null);
-  const [gifOffset, setGifOffset] = useState(0); // nowy offset
-  const [hasMoreGifs, setHasMoreGifs] = useState(true); // czy są jeszcze kolejne GIFy
+  const [gifOffset, setGifOffset] = useState(0);
+  const [hasMoreGifs, setHasMoreGifs] = useState(true);
   const gifCache = useRef({});
 
   const API_KEY = 'XpMqI44Eo56UVR4wh8kFgFdGtR71nNRb';
-  const GIF_LIMIT = 24; // np. 24 GIFy na stronę
+  const GIF_LIMIT = 24;
 
-  // 🔹 DODANE: Stan dla undo/redo
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+
+  // 🔹 REFS dla dynamicznego pozycjonowania (Kształty, Emoji, GIFy)
+  const shapesBtnRef = useRef(null);
+  const shapesPopupRef = useRef(null);
+  
+  const emojisBtnRef = useRef(null);
+  const emojisPopupRef = useRef(null);
+
+  const gifsBtnRef = useRef(null);
+  const gifsPopupRef = useRef(null);
+
+  const toolbarRef = useRef(null);
 
   const handleSizeChange = (toolKey, value) => {
     setSize(prev => ({ ...prev, [toolKey]: parseInt(value, 10) }));
   };
 
-  const handleShapeClick = (e) => {
-    const rect = e.target.getBoundingClientRect();
-    setShowShapes(prev => ({
-      visible: !prev.visible,
-      x: rect.right + 10,
-      y: rect.top - 20
-    }));
-  };
+  // 🔹 Uproszczone handlery - tylko przełączanie widoczności
+  const handleShapeClick = (e) => setShowShapes(prev => ({ visible: !prev.visible }));
+  const handleEmojiClick = (e) => setShowEmojis(prev => ({ visible: !prev.visible }));
+  const handleGifClick = (e) => setShowGifs(prev => ({ visible: !prev.visible }));
 
-  const handleEmojiClick = (e) => {
-    const rect = e.target.getBoundingClientRect();
-    setShowEmojis(prev => ({
-      visible: !prev.visible,
-      x: rect.right + 10,
-      y: rect.top - 20
-    }));
-  };
+  // 🔹 ZAKTUALIZOWANY EFEKT POZYCJONOWANIA
+  useLayoutEffect(() => {
+    // Funkcja aktualizująca pozycję aktywnego popupu
+    const updatePosition = () => {
+      // 1. Obsługa Kształtów
+      if (showShapes.visible && shapesBtnRef.current && shapesPopupRef.current) {
+        const btnRect = shapesBtnRef.current.getBoundingClientRect();
+        shapesPopupRef.current.style.left = `${btnRect.right + 10}px`;
+        shapesPopupRef.current.style.top = `${btnRect.top - 20}px`;
+      }
+      
+      // 2. Obsługa Emoji
+      if (showEmojis.visible && emojisBtnRef.current && emojisPopupRef.current) {
+        const btnRect = emojisBtnRef.current.getBoundingClientRect();
+        emojisPopupRef.current.style.left = `${btnRect.right + 10}px`;
+        emojisPopupRef.current.style.top = `${btnRect.top - 20}px`;
+      }
 
-  const handleGifClick = (e) => {
-    const rect = e.target.getBoundingClientRect();
-    setShowGifs(prev => ({
-      visible: !prev.visible,
-      x: rect.right + 10,
-      y: rect.top - 20
-    }));
-  };
+      // 3. Obsługa GIFów
+      if (showGifs.visible && gifsBtnRef.current && gifsPopupRef.current) {
+        const btnRect = gifsBtnRef.current.getBoundingClientRect();
+        gifsPopupRef.current.style.left = `${btnRect.right + 10}px`;
+        gifsPopupRef.current.style.top = `${btnRect.top - 20}px`;
+      }
+    };
+
+    // Wywołaj natychmiast, jeśli cokolwiek jest widoczne
+    if (showShapes.visible || showEmojis.visible || showGifs.visible) {
+      updatePosition();
+    }
+
+    // Nasłuchuj scrollowania i resize
+    const toolbar = toolbarRef.current;
+    if (toolbar) {
+      toolbar.addEventListener('scroll', updatePosition);
+    }
+    window.addEventListener('resize', updatePosition);
+
+    return () => {
+      if (toolbar) toolbar.removeEventListener('scroll', updatePosition);
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [showShapes.visible, showEmojis.visible, showGifs.visible]); // Zależności dla wszystkich popupów
 
   const handleMultimediaClick = () => {
     setShowMultimedia(true);
   };
 
-  // 🔹 DODANE: Funkcje undo/redo
   const handleUndo = () => {
     const toolbar = document.querySelector('.toolbar');
-    if (toolbar && toolbar.undo) {
-      toolbar.undo();
-    }
+    if (toolbar && toolbar.undo) toolbar.undo();
   };
 
   const handleRedo = () => {
     const toolbar = document.querySelector('.toolbar');
-    if (toolbar && toolbar.redo) {
-      toolbar.redo();
-    }
+    if (toolbar && toolbar.redo) toolbar.redo();
   };
 
-  // 🔹 DODANE: Aktualizuj stan przycisków undo/redo
   const updateUndoRedoState = () => {
     const toolbar = document.querySelector('.toolbar');
     if (toolbar) {
@@ -91,7 +119,6 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
     }
   };
 
-  // 🔹 DODANE: Udostępnij funkcję aktualizacji
   useEffect(() => {
     const toolbar = document.querySelector('.toolbar');
     if (toolbar) {
@@ -99,13 +126,8 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
     }
   }, []);
 
-  // 🔹 DODANE: Słuchaj zmian w historii
   useEffect(() => {
-    const checkState = () => {
-      updateUndoRedoState();
-    };
-
-    // Sprawdzaj stan co 100ms
+    const checkState = () => { updateUndoRedoState(); };
     const interval = setInterval(checkState, 100);
     return () => clearInterval(interval);
   }, []);
@@ -129,7 +151,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
       const data = await res.json();
       const urls = data.data.map(gif => gif.images.fixed_width.url);
 
-      gifCache.current[cacheKey] = urls; // zapis do cache
+      gifCache.current[cacheKey] = urls; 
       if (append) {
         setGifs(prev => [...prev, ...urls]);
       } else {
@@ -145,37 +167,28 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
   const handleGifQueryChange = (e) => {
     const value = e.target.value;
     setGifQuery(value);
-
-    // clear poprzedni timer
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-
-    // ustaw nowy timer na szybki debounce (np. 200ms)
     searchTimeoutRef.current = setTimeout(() => {
       fetchGifs(value.trim());
-      setGifOffset(0); // reset offset przy nowym wyszukiwaniu
+      setGifOffset(0);
     }, 100);
   };
 
   useEffect(() => {
     if (!showGifs.visible) return;
-
-    // natychmiastowy fetch przy otwarciu popupu (trending GIFy)
     if (gifQuery.trim() === '') {
       fetchGifs();
       return;
     }
-
-    // debounce przy wpisywaniu
     const timer = setTimeout(() => {
       fetchGifs(gifQuery.trim());
     }, 300);
-
     return () => clearTimeout(timer);
   }, [showGifs.visible, gifQuery]);
 
   const handleGifScroll = (e) => {
     const { scrollTop, scrollHeight, clientHeight } = e.target;
-    if (scrollTop + clientHeight >= scrollHeight - 10) { // blisko dołu
+    if (scrollTop + clientHeight >= scrollHeight - 10) { 
       if (hasMoreGifs) {
         const newOffset = gifOffset + GIF_LIMIT;
         fetchGifs(gifQuery.trim(), newOffset, true);
@@ -184,28 +197,19 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
     }
   };
 
-  const handleColorClick = () => {
-    setShowColorPicker(prev => !prev);
-  };
-
   const handleSelectShape = (shapeObj) => {
     setSelectedShape(shapeObj.name);
-    if (setActiveShape) {
-      setActiveShape(shapeObj.type); // Przekazujemy typ (np. 'star') wyżej
-    }
-    setTool('shape'); // Ustawiamy narzędzie na 'shape'
-    setShowShapes({ visible: false, x: 0, y: 0 });
+    if (setActiveShape) setActiveShape(shapeObj.type);
+    setTool('shape');
+    setShowShapes({ visible: false });
   };
 
   const handleSelectEmoji = (emoji) => {
-    if (setActiveEmoji) {
-      setActiveEmoji(emoji); // Ustawiamy emoji w stanie nadrzędnym (WhiteboardRouter)
-    }
-    setTool('emoji'); // Przełączamy narzędzie na 'emoji'
-    setShowEmojis({ visible: false, x: 0, y: 0 }); // Zamykamy popup
+    if (setActiveEmoji) setActiveEmoji(emoji);
+    setTool('emoji');
+    setShowEmojis({ visible: false });
   };
 
-  // 🖌️ Zmiana kursora tylko dla canvas
   useEffect(() => {
     const canvas = document.querySelector('canvas');
     const canvasArea = document.querySelector('.canvas-area');
@@ -214,60 +218,24 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
     let cursorStyle = 'default';
 
     switch (tool) {
-      case 'pencil':
-        cursorStyle = 'url("/cursors/pencil.png") 0 32, auto';
-        break;
-      case 'brush':
-        cursorStyle = 'url("/cursors/brush.png") 0 32, auto';
-        break;
-      case 'eraser':
-        cursorStyle = 'url("/cursors/rubber.png") 0 32, auto';
-        break;
-      case 'pointer':
-        cursorStyle = 'pointer';
-        break;
-      case 'select':
-        cursorStyle = 'url("/cursors/select.png") 0 0, crosshair';
-        break;
-      case 'emoji':
-        cursorStyle = 'default';
-        break;
+      case 'pencil': cursorStyle = 'url("/cursors/pencil.png") 0 32, auto'; break;
+      case 'brush': cursorStyle = 'url("/cursors/brush.png") 0 32, auto'; break;
+      case 'eraser': cursorStyle = 'url("/cursors/rubber.png") 0 32, auto'; break;
+      case 'pointer': cursorStyle = 'pointer'; break;
+      case 'select': cursorStyle = 'url("/cursors/select.png") 0 0, crosshair'; break;
+      case 'emoji': cursorStyle = 'default'; break;
       case 'cursor':
-      default:
-        cursorStyle = 'default';
+      default: cursorStyle = 'default';
     }
 
-    // Ustaw kursor tylko dla canvas i jego kontenera
-    if (canvas) {
-      canvas.style.cursor = cursorStyle;
-    }
-    if (canvasArea) {
-      canvasArea.style.cursor = cursorStyle;
-    }
-    if (canvasContainer) {
-      canvasContainer.style.cursor = cursorStyle;
-    }
-
-    // Ustaw domyślny kursor dla reszty strony
+    if (canvas) canvas.style.cursor = cursorStyle;
+    if (canvasArea) canvasArea.style.cursor = cursorStyle;
+    if (canvasContainer) canvasContainer.style.cursor = cursorStyle;
     document.body.style.cursor = 'default';
 
-    // Ustaw domyślny kursor dla paneli (górny i prawy)
-    const topPanel = document.querySelector('.panel-top, .top-panel, .header, .top-bar');
-    const rightPanel = document.querySelector('.panel-right, .right-panel, .sidebar-right');
-
-    if (topPanel) {
-      topPanel.style.cursor = 'default';
-    }
-    if (rightPanel) {
-      rightPanel.style.cursor = 'default';
-    }
-
-    // Reset kursora gdy komponent się odmontowuje
     return () => {
       document.body.style.cursor = 'default';
       if (canvas) canvas.style.cursor = 'default';
-      if (canvasArea) canvasArea.style.cursor = 'default';
-      if (canvasContainer) canvasContainer.style.cursor = 'default';
     };
   }, [tool]);
 
@@ -308,17 +276,26 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
 
   return (
     <>
-      <div className={`toolbar toolbar-${position} ${collapsed ? 'collapsed' : ''}`}>
+      <div 
+        ref={toolbarRef}
+        className={`toolbar toolbar-${position} ${collapsed ? 'collapsed' : ''}`}
+      >
         <div className="toolbar-section">
           <h4>Narzędzia</h4>
           {tools.map((toolItem, index) => (
             <div key={index} className="tool-item">
               <button
+                /* 🔹 Przypisanie odpowiedniego Ref do odpowiedniego przycisku */
+                ref={
+                    toolItem.type === 'shape' ? shapesBtnRef :
+                    toolItem.type === 'emoji' ? emojisBtnRef :
+                    toolItem.type === 'gifs' ? gifsBtnRef : null
+                }
                 className={`tool-btn ${tool === toolItem.type ? 'selected' : ''}`}
                 title={toolItem.name}
                 onClick={(e) => {
-                  if (toolItem.type) setTool(toolItem.type); // ustaw tool
-                  if (toolItem.onClick) toolItem.onClick(e); // ← przekaż event!
+                  if (toolItem.type) setTool(toolItem.type);
+                  if (toolItem.onClick) toolItem.onClick(e);
                 }}
               >
                 {toolItem.icon}
@@ -341,7 +318,6 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
           ))}
         </div>
 
-        {/* 🔹 DODANE: Przyciski undo/redo z poprawioną funkcjonalnością */}
         <div className="toolbar-section">
           <h4>Akcje</h4>
           <div className="tool-undo-redo">
@@ -366,7 +342,6 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
           </div>
         </div>
 
-        {/* Kolor i historia */}
         <div className="toolbar-section">
           <h4>Kolor</h4>
           <div className="color-picker">
@@ -380,13 +355,10 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
               }}
               onMouseUp={() => {
                 if (tempColor !== selectedColor) {
-                  // Ustawiamy wybrany kolor jako aktualny
                   setSelectedColor(tempColor);
-
-                  // Aktualizujemy listę ostatnich kolorów
                   setRecentColors(prev => {
                     const newList = [tempColor, ...prev.filter(c => c !== tempColor)];
-                    return newList.slice(0, 3); // ograniczamy do 3 ostatnich
+                    return newList.slice(0, 3);
                   });
                 }
               }}
@@ -406,12 +378,9 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
                   title={`Kliknij, aby użyć ${clr}`}
                   style={{ backgroundColor: clr, cursor: 'default' }}
                   onClick={() => {
-                    // Ustawiamy kolor kliknięty w historii
                     setSelectedColor(clr);
                     setColor(clr);
                     setTempColor(clr);
-
-                    // Przesuwamy kolor na początek historii
                     setRecentColors(prev => {
                       const newList = [clr, ...prev.filter(c => c !== clr)];
                       return newList.slice(0, 3);
@@ -423,11 +392,12 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
           </div>
         </div>
 
-        {/* Popupy */}
+        {/* 🔹 Popup Kształtów */}
         {showShapes.visible && (
           <div
+            ref={shapesPopupRef}
             className="floating-shapes-popup"
-            style={{ top: `${showShapes.y}px`, left: `${showShapes.x}px`, cursor: 'default' }}
+            style={{ position: 'fixed', cursor: 'default' }}
           >
             {shapes.map((shape, i) => (
               <button
@@ -443,15 +413,16 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
           </div>
         )}
 
+        {/* 🔹 Popup Emoji - dodano Ref i usunięto ręczne x/y */}
         {showEmojis.visible && (
           <div
+            ref={emojisPopupRef}
             className="floating-emojis-popup"
-            style={{ top: `${showEmojis.y}px`, left: `${showEmojis.x}px`, cursor: 'default' }}
+            style={{ position: 'fixed', cursor: 'default' }}
           >
             {emojis.map((emoji, i) => (
               <button
                 key={i}
-                // Używamy activeEmoji z propsów do warunkowej klasy
                 className={`emoji-btn ${activeEmoji === emoji ? 'selected' : ''}`}
                 title={emoji}
                 onClick={() => handleSelectEmoji(emoji)}
@@ -462,17 +433,20 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
             ))}
           </div>
         )}
+
+        {/* 🔹 Popup GIFów - dodano Ref i usunięto ręczne x/y */}
         {showGifs.visible && (
           <div
+            ref={gifsPopupRef}
             className="floating-gifs-popup"
-            style={{ top: `${showGifs.y}px`, left: `${showGifs.x}px` }}
-            onScroll={handleGifScroll} // <-- dodane
+            style={{ position: 'fixed' }}
+            onScroll={handleGifScroll}
           >
             <input
               type="text"
               placeholder="Szukaj gifów..."
               value={gifQuery}
-              onChange={handleGifQueryChange} // <-- nowa funkcja
+              onChange={handleGifQueryChange}
               style={{
                 width: '200px',
                 padding: '6px 8px',
@@ -499,10 +473,9 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
                         cursor: 'pointer'
                       }}
                       onClick={() => {
-                        console.log('Wybrano GIF:', url);
-                        setActiveGif(url);      // Ustaw URL
-                        setTool('gif');         // Zmień narzędzie na 'gif'
-                        setShowGifs({ visible: false, x: 0, y: 0 }); // Zamknij popup
+                        setActiveGif(url);
+                        setTool('gif');
+                        setShowGifs({ visible: false });
                       }}
                     />
                   ))}
@@ -522,15 +495,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
         <span className={`arrow ${collapsed ? 'arrow-right' : 'arrow-left'}`}>➤</span>
       </div>
 
-      {showMultimedia && (
-        <MultimediaModal 
-          onClose={() => {
-            setShowMultimedia(false);
-            setTool('cursor'); // Resetuj narzędzie po zamknięciu modalu
-          }} 
-          onImageUpload={onImageUpload}
-        />
-      )}
+      {showMultimedia && <MultimediaModal onClose={() => setShowMultimedia(false)} />}
 
       <ToolRangeCircle tool={tool} size={size} />
     </>

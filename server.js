@@ -44,7 +44,9 @@ app.get('/api/create-whiteboard', (req, res) => {
       notes: [],
       gifs: [],
       shapes: [],
-      emojis: []
+      emojis: [],
+      backgroundMode: 'grid',
+      chatMessages: []
     });
     console.log(`📝 Created new whiteboard: ${whiteboardId}`);
     res.json({
@@ -69,20 +71,16 @@ app.get('/api/whiteboard/:id', (req, res) => {
 io.on("connection", (socket) => {
   console.log("✅ Socket connected:", socket.id);
 
-  // Zmienna lokalna dla socketa - przechowuje ID pokoju, w którym jest użytkownik
-  // To jest KLUCZOWE dla poprawnego działania odświeżania
   let currentWhiteboardId = null;
 
   socket.on("join-whiteboard", (data) => {
     const { whiteboardId, user } = data;
 
-    // 1. Safety check: Jeśli socket był już w innym pokoju (lub tym samym przy szybkim reconnect), usuń go stamtąd.
-    // To zapobiega dublowaniu użytkowników ("duchom")
+    // 1. Safety check - opuść poprzednią tablicę jeśli jesteś w innej
     if (currentWhiteboardId && whiteboards.has(currentWhiteboardId)) {
       const prevWb = whiteboards.get(currentWhiteboardId);
       if (prevWb.users.has(socket.id)) {
         prevWb.users.delete(socket.id);
-        // Powiadom stary pokój, że wyszedłeś
         socket.to(currentWhiteboardId).emit("user-left", {
           userId: socket.id,
           users: Array.from(prevWb.users.values())
@@ -99,19 +97,19 @@ io.on("connection", (socket) => {
         notes: [],
         gifs: [],
         shapes: [],
-        emojis: []
+        emojis: [],
+        backgroundMode: 'grid',
+        chatMessages: []
       });
       console.log(`📝 Created whiteboard on join: ${whiteboardId}`);
     }
 
     const whiteboard = whiteboards.get(whiteboardId);
 
-    // 3. TWORZENIE POPRAWNEGO UŻYTKOWNIKA (FIX WEBRTC)
-    // Kopiujemy dane usera, ale USUWAMY jego stare ID z frontendu (user_...)
+    // 3. TWORZENIE POPRAWNEGO UŻYTKOWNIKA
     const safeUser = { ...user };
     if (safeUser.id) delete safeUser.id;
 
-    // Nadajemy ID socketa jako jedyne obowiązujące ID
     const userData = {
       ...safeUser,
       id: socket.id,
@@ -121,15 +119,23 @@ io.on("connection", (socket) => {
     // Dodaj użytkownika do mapy
     whiteboard.users.set(socket.id, userData);
 
-    // Zapisz ID tablicy w zmiennej lokalnej socketa (dla disconnect)
+    // Zapisz ID tablicy
     currentWhiteboardId = whiteboardId;
 
     // Dołącz do pokoju socket.io
     socket.join(whiteboardId);
 
     console.log(`👤 Joined ${whiteboardId}. Name: ${user.name} -> SOCKET ID: ${socket.id}`);
+    console.log(`👤 Users in ${whiteboardId}: ${Array.from(whiteboard.users.values()).map(u => u.name).join(', ')}`);
 
-    // 4. Wyślij pełne dane tablicy do nowego użytkownika
+    // 4. WYŚLIJ HISTORIĘ CZATU OD RAZU DO NOWEGO UŻYTKOWNIKA
+    console.log(`💬 Chat: Sending ${whiteboard.chatMessages.length} chat messages to new user`);
+    socket.emit("chat-history", {
+      whiteboardId,
+      messages: whiteboard.chatMessages || []
+    });
+
+    // 5. Wyślij pełne dane tablicy do nowego użytkownika
     const allData = {
       users: Array.from(whiteboard.users.values()),
       drawingData: whiteboard.drawingData || [],
@@ -137,18 +143,43 @@ io.on("connection", (socket) => {
       notes: whiteboard.notes || [],
       gifs: whiteboard.gifs || [],
       shapes: whiteboard.shapes || [],
-      emojis: whiteboard.emojis || []
+      emojis: whiteboard.emojis || [],
+      backgroundMode: whiteboard.backgroundMode || 'grid'
     };
+    
     socket.emit("whiteboard-data", allData);
 
-    // 5. Poinformuj innych o nowym użytkowniku (używając poprawionego userData)
+    // 6. Aktualizuj listę użytkowników
+    io.to(whiteboardId).emit("users-updated", {
+      users: Array.from(whiteboard.users.values())
+    });
+
+    // 7. Poinformuj innych o nowym użytkowniku
     socket.to(whiteboardId).emit("user-joined", {
       user: userData,
       users: Array.from(whiteboard.users.values())
     });
   });
 
-  // ========== Handlery (pomocnicza funkcja broadcast) ==========
+  // ========== AKTUALIZACJA UŻYTKOWNIKA ==========
+  socket.on("user-update", (d) => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb && wb.users.has(socket.id)) {
+      const user = wb.users.get(socket.id);
+      Object.assign(user, d.updates);
+
+      io.to(d.whiteboardId).emit("users-updated", {
+        users: Array.from(wb.users.values())
+      });
+
+      io.to(d.whiteboardId).emit("user-updated", {
+        userId: socket.id,
+        updates: d.updates
+      });
+    }
+  });
+
+  // ========== HANDLERY ==========
   const broadcast = (room, event, data) => socket.to(room).emit(event, data);
 
   // ========== OBSŁUGA TEKSTU ==========
@@ -307,24 +338,100 @@ io.on("connection", (socket) => {
   });
 
   socket.on("erase-area", (d) => {
-    // Możemy tu opcjonalnie wyczyścić drawingData na serwerze, 
-    // ale to skomplikowane matematycznie.
-    // Najważniejsze, żeby rozesłać info do innych klientów.
-    broadcast(d.whiteboardId, "erase-area", d);
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb) {
+      const eraseAction = {
+        type: 'erase-area',
+        x: d.x,
+        y: d.y,
+        width: d.width,
+        height: d.height,
+        whiteboardId: d.whiteboardId
+      };
+
+      wb.drawingData.push(eraseAction);
+      if (wb.drawingData.length > 10000) wb.drawingData.shift();
+      broadcast(d.whiteboardId, "erase-area", d);
+    }
   });
 
-  // ========== KURSOR I WSKAŹNIK (POINTER) ==========
+  // ========== KURSOR I WSKAŹNIK ==========
   socket.on("cursor-move", (d) => broadcast(d.whiteboardId, "cursor-move", d));
-
-  // 🔹 NOWE: Obsługa pointera (szlak i kliknięcia) dla innych użytkowników
   socket.on("pointer-move", (d) => broadcast(d.whiteboardId, "pointer-move", d));
   socket.on("pointer-click", (d) => broadcast(d.whiteboardId, "pointer-click", d));
 
   // ========== CZAT ==========
-  socket.on("chat-message", (d) => io.to(d.whiteboardId).emit("chat-message", d.message));
+  socket.on("chat-message", (data) => {
+    const { whiteboardId, message } = data;
+    
+    console.log(`💬 Chat: Message from ${socket.id} in whiteboard ${whiteboardId}: "${message.text}"`);
+    console.log(`💬 Chat: Message user: ${JSON.stringify(message.user)}`);
+    
+    if (!message || !message.text || !whiteboardId) {
+      console.error("💬 Chat: Invalid message data");
+      return;
+    }
+    
+    const wb = whiteboards.get(whiteboardId);
+    if (!wb) {
+      console.error(`💬 Chat: Whiteboard ${whiteboardId} not found`);
+      return;
+    }
+    
+    // Upewnij się, że user ma poprawne dane
+    const messageUser = {
+      id: message.user?.id || socket.id,
+      name: message.user?.name || 'Unknown',
+      color: message.user?.color || '#666'
+    };
+    
+    const completeMessage = {
+      id: message.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      user: messageUser,
+      text: message.text,
+      timestamp: message.timestamp || new Date().toISOString(),
+      whiteboardId
+    };
+    
+    // Zapisz wiadomość w historii TEJ TABLICY
+    if (!wb.chatMessages) wb.chatMessages = [];
+    wb.chatMessages.push(completeMessage);
+    
+    // Ogranicz historię do 200 wiadomości
+    if (wb.chatMessages.length > 200) {
+      wb.chatMessages.shift();
+    }
+    
+    console.log(`💬 Chat: Broadcasting to whiteboard room: ${whiteboardId}`);
+    console.log(`💬 Chat: Room has ${wb.chatMessages.length} messages`);
+    console.log(`💬 Chat: Users in room: ${Array.from(wb.users.values()).map(u => u.name)}`);
+    
+    // Wysyłamy do WSZYSTKICH w tym samym pokoju (włącznie z nadawcą)
+    io.to(whiteboardId).emit("chat-message", {
+      whiteboardId,
+      message: completeMessage
+    });
+  });
 
-  // ========== WEBRTC SIGNALING (POPRAWIONE) ==========
-  // WAŻNE: data.to to teraz prawidłowe socket.id dzięki fixowi w join-whiteboard
+  // Pobieranie historii czatu
+  socket.on("get-chat-history", (data) => {
+    const { whiteboardId } = data;
+    const wb = whiteboards.get(whiteboardId);
+    
+    if (wb) {
+      console.log(`💬 Chat: History requested for whiteboard: ${whiteboardId} by ${socket.id}`);
+      console.log(`💬 Chat: Sending ${wb.chatMessages?.length || 0} messages`);
+      
+      socket.emit("chat-history", {
+        whiteboardId,
+        messages: wb.chatMessages || []
+      });
+    } else {
+      console.error(`💬 Chat: Whiteboard ${whiteboardId} not found for history request`);
+    }
+  });
+
+  // ========== WEBRTC SIGNALING ==========
   socket.on("call-user", (d) => {
     socket.to(d.to).emit("call-made", {
       offer: d.offer,
@@ -346,19 +453,55 @@ io.on("connection", (socket) => {
     });
   });
 
-  // ========== ROZŁĄCZENIE (POPRAWIONE) ==========
+  // ========== TŁO ==========
+  socket.on("background-update", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
+    if (wb) {
+      wb.backgroundMode = data.mode;
+      io.to(data.whiteboardId).emit("background-update", { mode: data.mode });
+    }
+  });
+
+  // ========== ODTWORZENIE DANYCH ==========
+  socket.on("refresh-whiteboard-data", (data) => {
+    const { whiteboardId } = data;
+    const wb = whiteboards.get(whiteboardId);
+    
+    if (wb) {
+      console.log(`🔄 Refreshing whiteboard data for: ${whiteboardId}, user: ${socket.id}`);
+      
+      const allData = {
+        users: Array.from(wb.users.values()),
+        drawingData: wb.drawingData || [],
+        textBoxes: wb.textBoxes || [],
+        notes: wb.notes || [],
+        gifs: wb.gifs || [],
+        shapes: wb.shapes || [],
+        emojis: wb.emojis || [],
+        backgroundMode: wb.backgroundMode || 'grid'
+      };
+      
+      socket.emit("whiteboard-data", allData);
+      
+      // Wyślij również historię czatu
+      socket.emit("chat-history", {
+        whiteboardId,
+        messages: wb.chatMessages || []
+      });
+    }
+  });
+
+  // ========== ROZŁĄCZENIE ==========
   socket.on("disconnect", () => {
     console.log("❌ User disconnected:", socket.id);
 
-    // Używamy zmiennej currentWhiteboardId, aby szybko znaleźć pokój i usunąć użytkownika
     if (currentWhiteboardId && whiteboards.has(currentWhiteboardId)) {
       const whiteboard = whiteboards.get(currentWhiteboardId);
 
-      // 1. Usuń użytkownika z mapy
+      // Usuń użytkownika z mapy
       whiteboard.users.delete(socket.id);
 
-      // 2. Wyślij natychmiastową aktualizację do pozostałych
-      // To sprawia, że inni widzą, że użytkownik zniknął (np. podczas odświeżania)
+      // Wyślij aktualizację
       socket.to(currentWhiteboardId).emit("user-left", {
         userId: socket.id,
         users: Array.from(whiteboard.users.values())
@@ -371,7 +514,7 @@ io.on("connection", (socket) => {
             whiteboards.delete(currentWhiteboardId);
             console.log(`🧹 Cleaned up empty whiteboard: ${currentWhiteboardId}`);
           }
-        }, 3600000); // 1 hour
+        }, 3600000);
       }
     }
   });
@@ -383,5 +526,7 @@ function generateId() {
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
-  console.log(`\n🚀 SERWER POPRAWIONY! Running on: http://localhost:${PORT}\n`);
+  console.log(`\n🚀 SERWER CZATU DZIAŁA! Running on: http://localhost:${PORT}\n`);
+  console.log(`💬 Chat system: ACTIVE`);
+  console.log(`📋 Whiteboards in memory: ${whiteboards.size}`);
 });

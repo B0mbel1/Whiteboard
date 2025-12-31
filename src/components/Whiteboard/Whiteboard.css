@@ -12,7 +12,238 @@
   justify-content: space-between;
   align-items: center;
   flex-shrink: 0;
-  /* Zapobiega kurczeniu się nagłówka */
+  position: relative;
+  z-index: 100;
+}
+
+.whiteboard-info {
+  display: flex;
+  align-items: center;
+  position: relative;
+  gap: 10px;
+}
+
+.whiteboard-id {
+  font-weight: bold;
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 4px 8px;
+  border-radius: 4px;
+  display: inline-block;
+  margin: 0;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 14px;
+}
+
+.user-name-input {
+  border: none;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.6);
+  background: transparent;
+  color: white;
+  width: 110px;
+  outline: none;
+  font-size: 14px;
+  padding: 2px 4px;
+}
+
+.user-name-input:focus {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+/* Kontener dla koloru użytkownika */
+.user-color-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.user-color-dot {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid #fff;
+  position: relative;
+  transition: transform 0.2s, box-shadow 0.2s;
+  margin-left: 8px;
+}
+
+.user-color-dot:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+}
+
+/* Ukryty input type="color" */
+#user-color-input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+/* Kontener dla ColorPickera użytkownika (alternatywa z react-color) */
+.user-color-picker-wrapper {
+  position: absolute;
+  top: 35px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.user-color {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-left: 8px;
+  background: var(--user-color);
+  border-radius: 50%;
+  cursor: pointer;
+  border: 1px solid #fff;
+  position: relative;
+  transition: transform 0.2s;
+}
+
+.user-color:hover {
+  transform: scale(1.2);
+}
+
+.users-container {
+  position: relative;
+  display: inline-block;
+  margin-left: 15px;
+}
+
+.users-counter {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 5px 12px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  font-size: 13px;
+  color: white;
+  transition: all 0.2s ease;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.users-counter:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.users-counter strong {
+  margin-left: 4px;
+}
+
+.users-list-popup {
+  position: absolute;
+  top: 35px;
+  left: 0;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  min-width: 180px;
+  max-width: 250px;
+  padding: 12px;
+  border: 1px solid #e1e1e1;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.users-list-title {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 8px;
+  font-weight: 500;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 6px;
+}
+
+.users-list-scroll {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.user-list-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid #f5f5f5;
+  font-size: 13px;
+}
+
+.user-color-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 8px;
+  flex-shrink: 0;
+  border: 1px solid #ddd;
+}
+
+.user-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #333;
+  font-weight: 400;
+}
+
+.user-name[data-current-user="true"] {
+  font-weight: 600;
+}
+
+.users-list-footer {
+  font-size: 11px;
+  color: #999;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid #eee;
+  font-style: italic;
+}
+
+.header-controls {
+  display: flex;
+  gap: 10px;
+}
+
+.invite-btn,
+.fullscreen-btn,
+.save-btn {
+  padding: 6px 12px;
+  background: #34495e;
+  border: none;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.2s;
+}
+
+.invite-btn:hover,
+.fullscreen-btn:hover,
+.save-btn:hover {
+  background: #3d566e;
+}
+
+.save-btn.saving {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.save-btn.saving:hover {
+  background: #34495e; /* Zapobiega zmianie koloru podczas ładowania */
 }
 
 .whiteboard-main {
@@ -20,44 +251,178 @@
   display: flex;
   overflow: hidden;
   min-height: 0;
-  /* Ważne dla poprawnego flexbox */
   position: relative;
-  /* Add this */
 }
 
+/* Styl dla głównego ColorPickera (z Toolbar) */
 .color-picker-wrapper {
   position: absolute;
   left: 150px;
-  /* Toolbar width + margin */
   top: 10px;
   z-index: 1000;
 }
 
-.fullscreen-btn,
-.file-menu {
-  padding: 5px 10px;
-  background: #34495e;
-  border: none;
-  color: white;
-  border-radius: 3px;
-  cursor: pointer;
+.whiteboard-loading-screen {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f0f0f0;
+  flex-direction: column;
+  gap: 20px;
+  font-family: Arial, sans-serif;
 }
 
-.fullscreen-btn,
-.file-menu {
-  padding: 5px 10px;
-  background: #34495e;
-  border: none;
-  color: white;
-  border-radius: 3px;
-  cursor: pointer;
+.whiteboard-loading-screen h2 {
+  color: #2c3e50;
+  margin: 0;
 }
 
-.save-btn {
-  padding: 5px 10px;
-  background: #34495e;
-  border: none;
-  color: white;
-  border-radius: 3px;
+.whiteboard-loading-screen div {
+  color: #7f8c8d;
+  font-size: 14px;
+}
+
+.loading-screen {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f0f0f0;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Style dla ColorPicker (komponentu react-color) */
+.color-picker-panel {
+  position: absolute;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 220px;
+}
+
+/* Poprawka dla ColorPickera użytkownika (alternatywa) */
+.user-color-picker-dropdown .color-picker-panel {
+  position: relative;
+  margin-top: 5px;
+  left: 0 !important; /* Nadpisanie domyślnego left: 100% */
+  top: 0 !important; /* Nadpisanie domyślnego top: 0 */
+  margin-left: 0 !important; /* Nadpisanie domyślnego margin-left: 10px */
+}
+
+.sketch-picker {
+  box-shadow: none !important;
+  padding: 0 !important;
+  width: 200px !important;
+}
+
+.sketch-picker > div {
+  border-radius: 6px !important;
+}
+
+.sketch-picker input {
+  border-radius: 4px !important;
+}
+
+/* Stare klasy (dla kompatybilności) */
+.user-count-wrapper {
+  position: relative;
+  display: inline-block;
+  margin-left: 10px;
   cursor: pointer;
+  font-weight: bold;
+}
+
+.user-list-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: #2d3a45;
+  border: 1px solid #1f2a33;
+  border-radius: 4px;
+  padding: 5px;
+  min-width: 120px;
+  z-index: 9999;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.user-list-wrapper:hover .user-list-dropdown,
+.user-count-wrapper:hover .user-list-dropdown {
+  display: block;
+}
+
+/* Responsywność */
+@media (max-width: 768px) {
+  .whiteboard-header {
+    padding: 8px 12px;
+    flex-wrap: wrap;
+  }
+  
+  .whiteboard-info {
+    order: 1;
+    width: 100%;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  
+  .header-controls {
+    order: 2;
+    justify-content: flex-end;
+    width: 100%;
+  }
+  
+  .whiteboard-id {
+    font-size: 12px;
+  }
+  
+  .user-name-input {
+    width: 80px;
+  }
+  
+  .invite-btn,
+  .fullscreen-btn,
+  .save-btn {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+  
+  .users-counter {
+    font-size: 11px;
+    padding: 3px 8px;
+  }
+  
+  .color-picker-wrapper {
+    left: 10px;
+    top: 50px;
+  }
+}
+
+/* Animacje */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.user-color-picker-wrapper,
+.users-list-popup {
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Dodatkowe klasy pomocnicze */
+.user-color-picker-dropdown {
+  position: absolute;
+  top: 25px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  animation: fadeIn 0.2s ease-out;
 }
