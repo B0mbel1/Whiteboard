@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import './Canvas.css';
 import { getStandardizedSize, getDisplaySize, getToolEffects } from '../../utils/toolSizes';
 import { drawCompletePath, drawPathSegment } from '../../utils/drawingUtils';
@@ -6,10 +6,11 @@ import Note from './Note';
 import Text from './Text';
 import Emoji from './Emoji';
 import Gif from './Gif';
+import UploadedImage from './UploadedImage';
 import Shape from './Shape';
 import Chat from './Chat';
 
-const Canvas = ({
+const Canvas = forwardRef(({
   tool,
   color,
   size,
@@ -36,6 +37,10 @@ const Canvas = ({
   onGifCreate,
   onGifDelete,
   onGifUpdate,
+  images: initialImages,
+  onImageCreate,
+  onImageUpdate,
+  onImageDelete,
   shapes: initialShapes,
   activeShape,
   onShapeCreate,
@@ -43,7 +48,7 @@ const Canvas = ({
   onShapeUpdate,
   backgroundMode,
   onBackgroundChange,
-}) => {
+}, ref) => {
   const [remoteCursors, setRemoteCursors] = useState(new Map());
   const [isChatVisible, setIsChatVisible] = useState(false);
 
@@ -76,9 +81,35 @@ const Canvas = ({
   const [gifs, setGifs] = useState(initialGifs || []);
   const [selectedGifId, setSelectedGifId] = useState(null);
 
+  // Images
+  const [images, setImages] = useState(initialImages || []);
+  const [selectedImageId, setSelectedImageId] = useState(null);
+
   // Shapes
   const [shapes, setShapes] = useState(initialShapes || []);
   const [selectedShapeId, setSelectedShapeId] = useState(null);
+
+  useImperativeHandle(ref, () => ({
+    addImageToCanvas: (url) => {
+      const newImage = {
+        id: `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        x: window.innerWidth / 2 - 100,
+        y: window.innerHeight / 2 - 100,
+        url: url,
+        width: 200
+      };
+      
+      setImages(prev => [...prev, newImage]);
+      saveToHistory(ACTION_TYPES.IMAGE_CREATE, { image: newImage });
+      setSelectedImageId(newImage.id);
+      
+      if (onImageCreate) {
+        onImageCreate(newImage);
+      }
+      
+      if (setTool) setTool('cursor');
+    }
+  }));
 
   // Zaznaczenie
   const [selectionBox, setSelectionBox] = useState(null);
@@ -101,6 +132,8 @@ const Canvas = ({
     EMOJI_DELETE: 'emoji_delete',
     GIF_CREATE: 'gif_create',
     GIF_DELETE: 'gif_delete',
+    IMAGE_CREATE: 'image_create',
+    IMAGE_DELETE: 'image_delete',
     SHAPE_CREATE: 'shape_create',
     SHAPE_DELETE: 'shape_delete',
     CLEAR_AREA: 'clear_area',
@@ -181,6 +214,18 @@ const Canvas = ({
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
         break;
+      case ACTION_TYPES.IMAGE_CREATE:
+        setImages(prev => prev.filter(img => img.id !== action.data.image.id));
+        if (onImageDelete && action.data.image.id) onImageDelete(action.data.image.id);
+        historyRef.current.step = currentStep - 1;
+        setHistoryStep(currentStep - 1);
+        break;
+      case ACTION_TYPES.IMAGE_DELETE:
+        setImages(prev => [...prev, action.data.image]);
+        if (onImageCreate && action.data.image) onImageCreate(action.data.image);
+        historyRef.current.step = currentStep - 1;
+        setHistoryStep(currentStep - 1);
+        break;
       case ACTION_TYPES.SHAPE_CREATE:
         setShapes(prev => prev.filter(s => s.id !== action.data.shape.id));
         if (onShapeDelete) onShapeDelete(action.data.shape.id);
@@ -198,6 +243,7 @@ const Canvas = ({
         if (action.data.textBoxes) setTextBoxes(prev => [...prev, ...action.data.textBoxes]);
         if (action.data.emojis) setEmojis(prev => [...prev, ...action.data.emojis]);
         if (action.data.gifs) setGifs(prev => [...prev, ...action.data.gifs]);
+        if (action.data.images) setImages(prev => [...prev, ...action.data.images]);
         if (action.data.shapes) setShapes(prev => [...prev, ...action.data.shapes]);
         redrawCanvas();
         historyRef.current.step = currentStep - 1;
@@ -270,6 +316,18 @@ const Canvas = ({
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
         break;
+      case ACTION_TYPES.IMAGE_CREATE:
+        setImages(prev => [...prev, action.data.image]);
+        if (onImageCreate) onImageCreate(action.data.image);
+        historyRef.current.step = nextStep;
+        setHistoryStep(nextStep);
+        break;
+      case ACTION_TYPES.IMAGE_DELETE:
+        setImages(prev => prev.filter(img => img.id !== action.data.image.id));
+        if (onImageDelete) onImageDelete(action.data.image.id);
+        historyRef.current.step = nextStep;
+        setHistoryStep(nextStep);
+        break;
       case ACTION_TYPES.SHAPE_CREATE:
         setShapes(prev => [...prev, action.data.shape]);
         if (onShapeCreate) onShapeCreate(action.data.shape);
@@ -290,6 +348,7 @@ const Canvas = ({
           textBoxes: action.data.textBoxes?.map(x => x.id) || [],
           emojis: action.data.emojis?.map(x => x.id) || [],
           gifs: action.data.gifs?.map(x => x.id) || [],
+          images: action.data.images?.map(x => x.id) || [],
           shapes: action.data.shapes?.map(x => x.id) || []
         };
 
@@ -297,6 +356,7 @@ const Canvas = ({
         if (idsToRemove.textBoxes.length) setTextBoxes(prev => prev.filter(x => !idsToRemove.textBoxes.includes(x.id)));
         if (idsToRemove.emojis.length) setEmojis(prev => prev.filter(x => !idsToRemove.emojis.includes(x.id)));
         if (idsToRemove.gifs.length) setGifs(prev => prev.filter(x => !idsToRemove.gifs.includes(x.id)));
+        if (idsToRemove.images.length) setImages(prev => prev.filter(x => !idsToRemove.images.includes(x.id)));
         if (idsToRemove.shapes.length) setShapes(prev => prev.filter(x => !idsToRemove.shapes.includes(x.id)));
 
         // Dla rysunków nie musimy nic robić, bo stan selectionSnapshot został wyczyszczony przy pierwotnej akcji
@@ -373,6 +433,16 @@ const Canvas = ({
     }
   };
 
+  const removeImage = (id) => {
+    const imgToDelete = images.find(img => img.id === id);
+    if (imgToDelete) {
+      saveToHistory(ACTION_TYPES.IMAGE_DELETE, { imageId: id, image: imgToDelete });
+      setImages(prev => prev.filter(img => img.id !== id));
+      if (selectedImageId === id) setSelectedImageId(null);
+      if (onImageDelete) onImageDelete(id);
+    }
+  };
+
   const removeEmoji = (id) => {
     const emojiToDelete = emojis.find(e => e.id === id);
     if (emojiToDelete) {
@@ -384,6 +454,7 @@ const Canvas = ({
   };
 
   useEffect(() => { setGifs(initialGifs || []); }, [initialGifs]);
+  useEffect(() => { setImages(initialImages || []); }, [initialImages]);
   useEffect(() => { setEmojis(initialEmojis || []); }, [initialEmojis]);
 
   useEffect(() => {
@@ -698,6 +769,11 @@ const Canvas = ({
     if (onGifUpdate) onGifUpdate(id, updates);
   };
 
+  const handleLocalImageUpdate = (id, updates) => {
+    setImages(prev => prev.map(img => img.id === id ? { ...img, ...updates } : img));
+    if (onImageUpdate) onImageUpdate(id, updates);
+  };
+
   const getToolSize = () => {
     const base = (typeof size === "object" && size?.[tool]) ? size[tool] : (typeof size === "number" ? size : 3);
     return getDisplaySize(tool, base);
@@ -865,7 +941,7 @@ const Canvas = ({
     if (e.button !== 0) return;
 
     if (e.target.closest('.shape-item') || e.target.closest('.emoji-item')) return;
-    setSelectedNoteId(null); setSelectedTextBoxId(null); setSelectedEmojiId(null); setSelectedGifId(null); setSelectedShapeId(null);
+    setSelectedNoteId(null); setSelectedTextBoxId(null); setSelectedEmojiId(null); setSelectedGifId(null); setSelectedShapeId(null); setSelectedImageId(null);
 
     if (tool === 'notes') {
       const rect = drawingCanvasRef.current.getBoundingClientRect();
@@ -987,6 +1063,9 @@ useEffect(() => {
         } else if (selectedGifId) {
           itemToCopy = gifs.find(g => g.id === selectedGifId);
           type = 'gif';
+        } else if (selectedImageId) {
+          itemToCopy = images.find(i => i.id === selectedImageId);
+          type = 'image';
         } else if (selectedShapeId) {
           itemToCopy = shapes.find(s => s.id === selectedShapeId);
           type = 'shape';
@@ -1043,6 +1122,13 @@ useEffect(() => {
             setSelectedGifId(newId);
             break;
 
+          case 'image':
+            setImages(prev => [...prev, newItem]);
+            if (onImageCreate) onImageCreate(newItem);
+            saveToHistory(ACTION_TYPES.IMAGE_CREATE, { image: newItem });
+            setSelectedImageId(newId);
+            break;
+
           case 'shape':
             setShapes(prev => [...prev, newItem]);
             if (onShapeCreate) onShapeCreate(newItem);
@@ -1082,14 +1168,16 @@ useEffect(() => {
           const textsToDelete = textBoxes.filter(t => isInsideSelection(t.x, t.y, t.width, t.height));
           const emojisToDelete = emojis.filter(e => isInsideSelection(e.x, e.y, e.size || 48, e.size || 48));
           const gifsToDelete = gifs.filter(g => isInsideSelection(g.x, g.y, g.width || 150, g.width || 150));
+          const imagesToDelete = images.filter(img => isInsideSelection(img.x, img.y, img.width || 200, img.width || 200));
           const shapesToDelete = shapes.filter(s => isInsideSelection(s.x, s.y, s.width || 100, Math.max(s.height || 100, 10)));
 
-          if (notesToDelete.length > 0 || textsToDelete.length > 0 || emojisToDelete.length > 0 || gifsToDelete.length > 0 || shapesToDelete.length > 0 || selectionSnapshot) {
+          if (notesToDelete.length > 0 || textsToDelete.length > 0 || emojisToDelete.length > 0 || gifsToDelete.length > 0 || imagesToDelete.length > 0 || shapesToDelete.length > 0 || selectionSnapshot) {
             saveToHistory(ACTION_TYPES.MASS_DELETE, {
               notes: notesToDelete,
               textBoxes: textsToDelete,
               emojis: emojisToDelete,
               gifs: gifsToDelete,
+              images: imagesToDelete,
               shapes: shapesToDelete,
               wasSnapshotDeleted: !!selectionSnapshot
             });
@@ -1103,6 +1191,13 @@ useEffect(() => {
           if (textsToDelete.length) { setTextBoxes(prev => prev.filter(t => !textsToDelete.some(del => del.id === t.id))); textsToDelete.forEach(t => socket && socket.emit('text-delete', { whiteboardId, id: t.id })); }
           if (emojisToDelete.length) { setEmojis(prev => prev.filter(e => !emojisToDelete.some(del => del.id === e.id))); emojisToDelete.forEach(e => socket && socket.emit('emoji-delete', { whiteboardId, id: e.id })); }
           if (gifsToDelete.length) { setGifs(prev => prev.filter(g => !gifsToDelete.some(del => del.id === g.id))); gifsToDelete.forEach(g => socket && socket.emit('gif-delete', { whiteboardId, id: g.id })); }
+          if (imagesToDelete.length) { 
+            setImages(prev => prev.filter(img => !imagesToDelete.some(del => del.id === img.id))); 
+            imagesToDelete.forEach(img => {
+              if (onImageDelete) onImageDelete(img.id);
+              else if (socket) socket.emit('image-delete', { whiteboardId, id: img.id });
+            }); 
+          }
           if (shapesToDelete.length) { setShapes(prev => prev.filter(s => !shapesToDelete.some(del => del.id === s.id))); shapesToDelete.forEach(s => socket && socket.emit('shape-delete', { whiteboardId, id: s.id })); }
 
           setSelectionSnapshot(null);
@@ -1116,6 +1211,7 @@ useEffect(() => {
         if (selectedTextBoxId) removeTextBox(selectedTextBoxId);
         if (selectedEmojiId) removeEmoji(selectedEmojiId);
         if (selectedGifId) removeGif(selectedGifId);
+        if (selectedImageId) removeImage(selectedImageId);
         if (selectedShapeId) removeShape(selectedShapeId);
       }
 
@@ -1128,11 +1224,64 @@ useEffect(() => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
     // 🔹 WAŻNE: Dodaj 'clipboard' do tablicy zależności
-    notes, textBoxes, emojis, gifs, shapes,
-    selectedNoteId, selectedTextBoxId, selectedEmojiId, selectedGifId, selectedShapeId,
+    notes, textBoxes, emojis, gifs, images, shapes,
+    selectedNoteId, selectedTextBoxId, selectedEmojiId, selectedGifId, selectedImageId, selectedShapeId,
     selectionBox, selectionSnapshot,
     undo, redo, clipboard 
   ]);
+
+  // 🔹 NOWE: Obsługa wklejania obrazków ze schowka systemowego (np. Google Grafika)
+  useEffect(() => {
+    const handlePaste = (e) => {
+      // Ignoruj, jeśli użytkownik wkleja tekst w pole input/textarea
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+      const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+
+      for (const item of items) {
+        if (item.type.indexOf('image') !== -1) {
+          e.preventDefault(); // Zatrzymaj domyślne wklejanie
+          
+          const blob = item.getAsFile();
+          const reader = new FileReader();
+          
+          reader.onload = (event) => {
+            const imageDataUrl = event.target.result;
+            
+            // Generuj pozycję - najlepiej lekko przesuniętą od rogu lub na środku widoku
+            // Tutaj dajemy bezpieczny offset
+            const newImage = {
+              id: `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              x: window.innerWidth / 2 - 150, // Wyśrodkuj mniej więcej
+              y: window.innerHeight / 2 - 150,
+              url: imageDataUrl,
+              width: 300 // Domyślnie trochę większy dla wklejanych grafik
+            };
+
+            // Dodaj lokalnie dla płynności
+            setImages(prev => [...prev, newImage]);
+            
+            // Zaznacz nowo wklejony obrazek
+            setSelectedImageId(newImage.id);
+
+            // Zapisz w historii Undo/Redo
+            saveToHistory(ACTION_TYPES.IMAGE_CREATE, { image: newImage });
+
+            // Wyślij do rodzica (Routera), aby zaktualizował główny stan i wysłał socket
+            if (onImageCreate) {
+              onImageCreate(newImage);
+            }
+          };
+          
+          reader.readAsDataURL(blob);
+          return; // Obsłuż tylko pierwszy obrazek ze schowka
+        }
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [socket, whiteboardId]);
 
   useEffect(() => {
     if (socket) {
@@ -1152,12 +1301,15 @@ useEffect(() => {
       const handleNoteDelete = (data) => setNotes(prev => prev.filter(note => note.id !== data.id));
       const handleEmojiUpdate = (data) => setEmojis(prev => prev.map(e => e.id === data.id ? { ...e, ...data } : e));
       const handleGifUpdate = (data) => setGifs(prev => prev.map(g => g.id === data.id ? { ...g, ...data } : g));
+      const handleImageUpdateSocket = (data) => setImages(prev => prev.map(img => img.id === data.id ? { ...img, ...data } : img));
       const handleShapeUpdate = (data) => setShapes(prev => prev.map(s => s.id === data.id ? { ...s, ...data } : s));
 
       const handleEmojiCreateSocket = (data) => setEmojis(prev => prev.some(e => e.id === data.emoji.id) ? prev : [...prev, data.emoji]);
       const handleEmojiDeleteSocket = (data) => setEmojis(prev => prev.filter(e => e.id !== data.id));
       const handleGifCreateSocket = (data) => setGifs(prev => prev.some(g => g.id === data.gif.id) ? prev : [...prev, data.gif]);
       const handleGifDeleteSocket = (data) => setGifs(prev => prev.filter(g => g.id !== data.id));
+      const handleImageCreateSocket = (data) => setImages(prev => prev.some(img => img.id === data.image.id) ? prev : [...prev, data.image]);
+      const handleImageDeleteSocket = (data) => setImages(prev => prev.filter(img => img.id !== data.id));
       const handleShapeCreateSocket = (data) => setShapes(prev => prev.some(s => s.id === data.shape.id) ? prev : [...prev, data.shape]);
       const handleShapeDeleteSocket = (data) => setShapes(prev => prev.filter(s => s.id !== data.id));
 
@@ -1166,11 +1318,14 @@ useEffect(() => {
       socket.on('note-delete', handleNoteDelete);
       socket.on('emoji-update', handleEmojiUpdate);
       socket.on('gif-update', handleGifUpdate);
+      socket.on('image-update', handleImageUpdateSocket);
       socket.on('shape-update', handleShapeUpdate);
       socket.on('emoji-create', handleEmojiCreateSocket);
       socket.on('emoji-delete', handleEmojiDeleteSocket);
       socket.on('gif-create', handleGifCreateSocket);
       socket.on('gif-delete', handleGifDeleteSocket);
+      socket.on('image-create', handleImageCreateSocket);
+      socket.on('image-delete', handleImageDeleteSocket);
       socket.on('shape-create', handleShapeCreateSocket);
       socket.on('shape-delete', handleShapeDeleteSocket);
 
@@ -1180,11 +1335,14 @@ useEffect(() => {
         socket.off('note-delete', handleNoteDelete);
         socket.off('emoji-update', handleEmojiUpdate);
         socket.off('gif-update', handleGifUpdate);
+        socket.off('image-update', handleImageUpdateSocket);
         socket.off('shape-update', handleShapeUpdate);
         socket.off('emoji-create', handleEmojiCreateSocket);
         socket.off('emoji-delete', handleEmojiDeleteSocket);
         socket.off('gif-create', handleGifCreateSocket);
         socket.off('gif-delete', handleGifDeleteSocket);
+        socket.off('image-create', handleImageCreateSocket);
+        socket.off('image-delete', handleImageDeleteSocket);
         socket.off('shape-create', handleShapeCreateSocket);
         socket.off('shape-delete', handleShapeDeleteSocket);
       };
@@ -1396,6 +1554,15 @@ useEffect(() => {
             onUpdate={handleGifUpdate}
           />
         ))}
+        {images.map(img => (
+          <UploadedImage
+            key={img.id}
+            {...img}
+            selected={selectedImageId === img.id}
+            onSelect={setSelectedImageId}
+            onUpdate={handleLocalImageUpdate}
+          />
+        ))}
         {shapes.map(shape => (
           <Shape
             key={shape.id}
@@ -1481,6 +1648,6 @@ useEffect(() => {
       </div>
     </div >
   );
-};
+});
 
 export default Canvas;
