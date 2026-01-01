@@ -100,6 +100,8 @@ const Canvas = ({
 
   const [clipboard, setClipboard] = useState(null);
 
+  const isWorkingTool = ['select', 'pencil', 'brush', 'eraser'].includes(tool);
+
   const ACTION_TYPES = {
     DRAWING: 'drawing',
     NOTE_CREATE: 'note_create',
@@ -1628,6 +1630,7 @@ const Canvas = ({
           className="background-toggle"
           onClick={toggleBackground}
           title={`Tło: ${backgroundModes.find(mode => mode.id === backgroundMode)?.name}`}
+          style={{ pointerEvents: isWorkingTool ? 'none' : 'auto' }}
         >
           {getCurrentBackgroundIcon()}
         </button>
@@ -1636,6 +1639,7 @@ const Canvas = ({
           className={`chat-toggle ${isChatVisible ? 'active-chat' : ''}`}
           onClick={() => setIsChatVisible(!isChatVisible)}
           title={isChatVisible ? "Ukryj chat" : "Pokaż chat"}
+          style={{ pointerEvents: isWorkingTool ? 'none' : 'auto' }}
         >
           {isChatVisible ? "✖" : "💬"}
         </button>
