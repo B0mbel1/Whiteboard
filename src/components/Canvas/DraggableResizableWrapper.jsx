@@ -10,7 +10,8 @@ const DraggableResizableWrapper = ({
   onUpdate,
   children,
   minWidth = 50,
-  aspectRatioLocked = true
+  aspectRatioLocked = true,
+  style
 }) => {
   const [localPos, setLocalPos] = useState({ x, y });
   const [localWidth, setLocalWidth] = useState(width);
@@ -133,7 +134,8 @@ const DraggableResizableWrapper = ({
         border: isSelected ? '2px solid #3498db' : '2px solid transparent',
         zIndex: isSelected ? 100 : 10,
         userSelect: 'none',
-        touchAction: 'none'
+        touchAction: 'none',
+        ...style
       }}
     >
       {children}

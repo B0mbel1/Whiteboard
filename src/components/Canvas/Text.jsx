@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './Text.css';
 
-const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, selected, setSelected, socket }) => {
+const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, selected, setSelected, socket,tool }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [text, setText] = useState(initialText || '');
   const [position, setPosition] = useState({ x: x || 0, y: y || 0 });
@@ -10,6 +10,8 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
   const isDragging = useRef(false);
   const dragOffset = useRef({ x: 0, y: 0 });
   const isResizing = useRef(false);
+
+  const isDrawingTool = ['pencil', 'brush', 'eraser'].includes(tool);
 
   // Synchronizuj zmiany z serwera
   // Text.jsx - ZASTĄP obecny useEffect obsługujący socket tym:
@@ -45,6 +47,8 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
   }, [x, y]);
 
   const handleMouseDown = (e) => {
+
+    if (isDrawingTool) return;
     if (isEditing || e.target.classList.contains('resize-handle')) {
       return;
     }
@@ -87,6 +91,7 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
   };
 
   const handleResizeMouseDown = (e) => {
+    if (isDrawingTool) return; // Blokada resize przy rysowaniu
     e.stopPropagation();
     isResizing.current = true;
     const startX = e.clientX;
@@ -163,7 +168,8 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
         left: position.x,
         width: size.width,
         height: size.height,
-        zIndex: 30
+        zIndex: 30,
+        pointerEvents: isDrawingTool ? 'none' : 'auto'
       }}
       onMouseDown={handleMouseDown}
       onDoubleClick={handleDoubleClick}
@@ -179,6 +185,7 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
           className="text-input"
           style={{ width: '100%', height: '100%' }}
           onMouseDown={(e) => e.stopPropagation()}
+          disabled={isDrawingTool}
         />
       ) : (
         <div className="text-display">

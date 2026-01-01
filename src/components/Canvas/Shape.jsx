@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate }) => {
+const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, tool }) => {
     // Domyślne wymiary
     const [dims, setDims] = useState({
         w: width || 100,
@@ -14,7 +14,7 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate }) 
     const dragStartRef = useRef({ x: 0, y: 0 });
     const initialPosRef = useRef({ x: 0, y: 0 });
     const initialDimsRef = useRef({ w: 0, h: 0 });
-
+    const isDrawingTool = ['pencil', 'brush', 'eraser'].includes(tool);
     // Synchronizacja z propsami z serwera
     useEffect(() => {
         if (!isDragging && !isResizing) {
@@ -24,6 +24,7 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate }) 
     }, [x, y, width, height, isDragging, isResizing, type]);
 
     const handleMouseDown = (e) => {
+        if (isDrawingTool) return;
         e.stopPropagation();
         onSelect(id);
 
@@ -121,8 +122,8 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate }) 
             style: { display: 'block', pointerEvents: 'none' }
         };
 
-        const interactableStyle = { pointerEvents: 'auto' };
-        const strokeStyle = { pointerEvents: 'visibleStroke' };
+        const interactableStyle = { pointerEvents: isDrawingTool ? 'none' : 'auto' };
+        const strokeStyle = { pointerEvents: isDrawingTool ? 'none' : 'visibleStroke' };
 
         switch (type) {
             case 'square': return <div style={{ width: '100%', height: '100%', background: 'black', ...interactableStyle }} />;
@@ -156,18 +157,18 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate }) 
                         }}
                     >
                         <defs>
-                            <marker 
-                                id={`arrowhead-${id}`} 
-                                markerWidth={markerSize} 
-                                markerHeight={markerSize} 
-                                refX={9} 
-                                refY={markerSize / 2} 
+                            <marker
+                                id={`arrowhead-${id}`}
+                                markerWidth={markerSize}
+                                markerHeight={markerSize}
+                                refX={9}
+                                refY={markerSize / 2}
                                 orient="auto"
                             >
                                 {/* Ścieżka trójkąta dopasowana do markerSize */}
-                                <path 
-                                    d={`M 0 0 L ${markerSize} ${markerSize / 2} L 0 ${markerSize} Z`} 
-                                    fill="black" 
+                                <path
+                                    d={`M 0 0 L ${markerSize} ${markerSize / 2} L 0 ${markerSize} Z`}
+                                    fill="black"
                                 />
                             </marker>
                         </defs>
@@ -211,27 +212,27 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate }) 
                         onMouseDown={handleResizeStart}
                         style={{
                             position: 'absolute',
-                            width: 12, 
+                            width: 12,
                             height: 12,
-                            background: 'white', 
-                            border: '1px solid #3498db', 
+                            background: 'white',
+                            border: '1px solid #3498db',
                             // Dla strzałki robimy kółeczko, dla reszty kwadrat (opcjonalnie)
-                            borderRadius: type === 'arrow' ? '50%' : '0', 
-                            zIndex: 101, 
+                            borderRadius: type === 'arrow' ? '50%' : '0',
+                            zIndex: 101,
                             pointerEvents: 'auto',
                             // Logika pozycji:
-                            ...(type === 'arrow' 
-                                ? { 
-                                    left: dims.w, 
-                                    top: dims.h, 
-                                    transform: 'translate(-50%, -50%)', 
-                                    cursor: 'crosshair' 
-                                  }
-                                : { 
-                                    bottom: -6, 
-                                    right: -6, 
-                                    cursor: 'nwse-resize' 
-                                  }
+                            ...(type === 'arrow'
+                                ? {
+                                    left: dims.w,
+                                    top: dims.h,
+                                    transform: 'translate(-50%, -50%)',
+                                    cursor: 'crosshair'
+                                }
+                                : {
+                                    bottom: -6,
+                                    right: -6,
+                                    cursor: 'nwse-resize'
+                                }
                             )
                         }}
                     />

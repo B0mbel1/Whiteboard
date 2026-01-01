@@ -1501,6 +1501,7 @@ const Canvas = ({
             selectedNoteId={selectedNoteId}
             setSelectedNoteId={setSelectedNoteId}
             socket={socket}
+            tool={tool}
           />
         ))}
         {textBoxes.map(textBox => (
@@ -1512,6 +1513,7 @@ const Canvas = ({
             width={textBox.width}
             height={textBox.height}
             text={textBox.text}
+            tool={tool}
             onUpdate={handleTextUpdate}
             onRemove={removeTextBox}
             selected={selectedTextBoxId === textBox.id}
@@ -1523,6 +1525,7 @@ const Canvas = ({
           <Emoji
             key={emojiData.id}
             {...emojiData}
+            tool={tool}
             selected={selectedEmojiId === emojiData.id}
             onSelect={setSelectedEmojiId}
             onRemove={removeEmoji}
@@ -1536,6 +1539,7 @@ const Canvas = ({
             selected={selectedGifId === gif.id}
             onSelect={setSelectedGifId}
             onUpdate={handleGifUpdate}
+            tool={tool}
           />
         ))}
         {images.map(image => (
@@ -1555,6 +1559,7 @@ const Canvas = ({
             onSelect={setSelectedShapeId}
             onRemove={removeShape}
             onUpdate={handleShapeUpdate}
+            tool={tool}
           />
         ))}
 

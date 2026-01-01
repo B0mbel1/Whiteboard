@@ -9,7 +9,8 @@ const Emoji = ({
   selected,
   onSelect,
   onRemove,
-  onUpdate
+  onUpdate,
+  tool
 }) => {
   // --- Stan dla skalowania ---
   const [isResizing, setIsResizing] = useState(false);
@@ -91,6 +92,7 @@ const Emoji = ({
     };
   }, [isDragging, id, onUpdate]);
 
+  const isDrawingTool = ['pencil', 'brush', 'eraser'].includes(tool);
   return (
     <div
       className="emoji-item"
@@ -112,7 +114,8 @@ const Emoji = ({
         transform: 'translate(-50%, -50%)',
         userSelect: 'none',
         zIndex: isDragging || isResizing ? 100 : (selected ? 11 : 10),
-        touchAction: 'none'
+        touchAction: 'none',
+        pointerEvents: isDrawingTool ? 'none' : 'auto'
       }}
     >
       {emoji}
