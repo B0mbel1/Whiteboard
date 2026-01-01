@@ -387,7 +387,25 @@ io.on("connection", (socket) => {
   });
 
   // ========== KURSOR I WSKAŹNIK ==========
-  socket.on("cursor-move", (d) => broadcast(d.whiteboardId, "cursor-move", d));
+  socket.on("cursor-move", (d) => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb) {
+      // 1. Pobierz pełne dane użytkownika z pamięci serwera (tam jest nazwa i kolor)
+      const user = wb.users.get(socket.id);
+      
+      // 2. Jeśli użytkownik istnieje, wyślij jego pozycję ORAZ dane do innych
+      if (user) {
+        // Aktualizujemy pozycję w pamięci serwera (opcjonalne, ale dobre dla nowych userów)
+        user.position = d.position;
+
+        socket.to(d.whiteboardId).emit("cursor-move", {
+          userId: socket.id,
+          position: d.position,
+          user: user // <--- TO JEST KLUCZOWE: Wysyłamy obiekt user (name, color)
+        });
+      }
+    }
+  });
   socket.on("pointer-move", (d) => broadcast(d.whiteboardId, "pointer-move", d));
   socket.on("pointer-click", (d) => broadcast(d.whiteboardId, "pointer-click", d));
 

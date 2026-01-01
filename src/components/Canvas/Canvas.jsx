@@ -1037,10 +1037,10 @@ const Canvas = ({
             const container = document.querySelector('.canvas-container');
             let centerX = 300;
             let centerY = 300;
-            
+
             if (container) {
-                centerX = container.scrollLeft + container.clientWidth / 2 - 150;
-                centerY = container.scrollTop + container.clientHeight / 2 - 100;
+              centerX = container.scrollLeft + container.clientWidth / 2 - 150;
+              centerY = container.scrollTop + container.clientHeight / 2 - 100;
             }
 
             const newImage = {
@@ -1050,7 +1050,7 @@ const Canvas = ({
               url: url,
               width: 300
             };
-            
+
             if (onImageCreate) onImageCreate(newImage);
           };
           reader.readAsDataURL(blob);
@@ -1064,7 +1064,7 @@ const Canvas = ({
   }, [onImageCreate]);
 
   // Obsługa klawiszy (Delete, Backspace, Ctrl+Z etc.)
-useEffect(() => {
+  useEffect(() => {
     const handleKeyDown = (e) => {
       const activeElement = document.activeElement;
       // Ignoruj jeśli użytkownik pisze w polu tekstowym
@@ -1108,7 +1108,7 @@ useEffect(() => {
 
         const offset = 20; // Przesunięcie wklejonego elementu
         const newId = `${clipboard.type}_${Date.now()}_copy_${Math.random().toString(36).substr(2, 5)}`;
-        
+
         // Tworzymy nowy obiekt z nowym ID i przesuniętą pozycją
         const newItem = {
           ...clipboard.data,
@@ -1159,7 +1159,7 @@ useEffect(() => {
             saveToHistory(ACTION_TYPES.SHAPE_CREATE, { shape: newItem });
             setSelectedShapeId(newId);
             break;
-            
+
           default:
             break;
         }
@@ -1171,15 +1171,15 @@ useEffect(() => {
 
         // ... (tutaj wklej całą istniejącą logikę usuwania obszarowego i pojedynczego, którą już miałeś w kodzie) ...
         // PONIŻEJ WKLEJAM SKRÓCONĄ WERSJĘ TWOJEGO ORYGINALNEGO KODU USUWANIA DLA KONTEKSTU:
-        
+
         if (selectionBox) {
-           e.preventDefault();
-           // ... (Twoja logika usuwania grupowego) ...
-           // Tu była logika z ACTION_TYPES.MASS_DELETE itd.
-           // Skopiuj to ze swojego starego pliku, nic tu nie zmieniałem w logice.
-           
-           // A. ZNAJDŹ WSZYSTKIE ELEMENTY DO USUNIĘCIA
-           const isInsideSelection = (objX, objY, objW, objH) => {
+          e.preventDefault();
+          // ... (Twoja logika usuwania grupowego) ...
+          // Tu była logika z ACTION_TYPES.MASS_DELETE itd.
+          // Skopiuj to ze swojego starego pliku, nic tu nie zmieniałem w logice.
+
+          // A. ZNAJDŹ WSZYSTKIE ELEMENTY DO USUNIĘCIA
+          const isInsideSelection = (objX, objY, objW, objH) => {
             return (
               objX < selectionBox.x + selectionBox.width &&
               objX + objW > selectionBox.x &&
@@ -1245,7 +1245,7 @@ useEffect(() => {
     notes, textBoxes, emojis, gifs, shapes,
     selectedNoteId, selectedTextBoxId, selectedEmojiId, selectedGifId, selectedShapeId,
     selectionBox, selectionSnapshot,
-    undo, redo, clipboard 
+    undo, redo, clipboard
   ]);
 
   useEffect(() => {
@@ -1539,50 +1539,66 @@ useEffect(() => {
           />
         ))}
 
-        {/* FIX: Dodano klucz fall-back dla kursorów */}
-        {remoteCursorsArray.map((cursor, index) => (
-          cursor.position && (
-            <div
-              key={cursor.userId || `cursor_${index}`}
-              className="remote-cursor"
-              style={{
-                position: 'absolute',
-                left: cursor.position.x,
-                top: cursor.position.y,
-                pointerEvents: 'none',
-                zIndex: 1000,
-                transform: 'translate(-50%, -50%)',
-                transition: 'left 0.1s linear, top 0.1s linear'
-              }}
-            >
-              <div style={{
-                width: '8px',
-                height: '8px',
-                backgroundColor: cursor.user?.color || '#ff4444',
-                borderRadius: '50%',
-                border: '2px solid white',
-                boxShadow: '0 0 4px rgba(0,0,0,0.5)'
-              }} />
-              <div style={{
-                position: 'absolute',
-                top: '15px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                fontSize: '12px',
-                background: cursor.user?.color || '#ff4444',
-                color: 'white',
-                padding: '3px 8px',
-                borderRadius: '10px',
-                whiteSpace: 'nowrap',
-                fontWeight: 'bold',
-                border: '1px solid white',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
-              }}>
-                {cursor.user?.name || 'Unknown'}
+        {remoteCursorsArray.map((cursor, index) => {
+          // Pobierz dane usera z obiektu kursora
+          const userName = cursor.user?.name || 'Unknown';
+          const userColor = cursor.user?.color || '#ff4444';
+
+          return (
+            cursor.position && (
+              <div
+                key={cursor.userId || `cursor_${index}`}
+                className="remote-cursor"
+                style={{
+                  position: 'absolute',
+                  left: cursor.position.x,
+                  top: cursor.position.y,
+                  pointerEvents: 'none',
+                  zIndex: 1000,
+                  transition: 'left 0.1s linear, top 0.1s linear' // Płynne przesuwanie
+                }}
+              >
+                {/* Ikona kursora (kropka) */}
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    transform: 'translate(-2px, -2px)', // Lekka korekta, by grot był w punkcie (x,y)
+                    fill: userColor,
+                    stroke: 'white',
+                    strokeWidth: 2,
+                    filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))'
+                  }}
+                >
+                  <path d="M5.5 3.21l10.08 5.31c1.26.66 1.13 2.51-.2 2.98l-3.32 1.17a1 1 0 0 1-.65.25l-3.46.74a1 1 0 0 0-.71.56l-1.24 3.06c-.52 1.28-2.35 1.18-2.7-.15L2.1 4.38c-.2-.77.58-1.5 1.32-1.17H5.5z" />
+                </svg>
+
+                {/* Etykieta z nazwą */}
+                <div style={{
+                  position: 'absolute',
+                  left: '16px', // Odsunięcie od grota kursora
+                  top: '12px',
+                  backgroundColor: userColor,
+                  color: 'white',
+                  padding: '4px 8px',
+                  borderRadius: '12px',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                  border: '2px solid white',
+                  pointerEvents: 'none'
+                }}>
+                  {userName}
+                </div>
               </div>
-            </div>
-          )
-        ))}
+            )
+          );
+        })}
 
         <button
           className="background-toggle"
@@ -1602,7 +1618,7 @@ useEffect(() => {
 
         {/* CHAT */}
         {isChatVisible && (
-          <Chat 
+          <Chat
             socket={socket}
             whiteboardId={whiteboardId}
             currentUser={currentUser}
