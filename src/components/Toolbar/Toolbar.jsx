@@ -14,7 +14,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
   const [showShapes, setShowShapes] = useState({ visible: false });
   const [showEmojis, setShowEmojis] = useState({ visible: false });
   const [showGifs, setShowGifs] = useState({ visible: false });
-  
+
   const [selectedShape, setSelectedShape] = useState(null);
   const [collapsed, setCollapsed] = useState(false);
 
@@ -40,7 +40,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
   // 🔹 REFS dla dynamicznego pozycjonowania (Kształty, Emoji, GIFy)
   const shapesBtnRef = useRef(null);
   const shapesPopupRef = useRef(null);
-  
+
   const emojisBtnRef = useRef(null);
   const emojisPopupRef = useRef(null);
 
@@ -54,9 +54,32 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
   };
 
   // 🔹 Uproszczone handlery - tylko przełączanie widoczności
-  const handleShapeClick = (e) => setShowShapes(prev => ({ visible: !prev.visible }));
-  const handleEmojiClick = (e) => setShowEmojis(prev => ({ visible: !prev.visible }));
-  const handleGifClick = (e) => setShowGifs(prev => ({ visible: !prev.visible }));
+  const handleShapeClick = (e) => {
+    setSelectedShape(null); // Czyścimy wybór (z poprzedniej naprawy)
+
+    // Zamykamy pozostałe okna
+    setShowEmojis(prev => ({ ...prev, visible: false }));
+    setShowGifs(prev => ({ ...prev, visible: false }));
+
+    // Przełączamy to okno
+    setShowShapes(prev => ({ ...prev, visible: !prev.visible }));
+  };
+  const handleEmojiClick = (e) => {
+    // Zamykamy pozostałe okna
+    setShowShapes(prev => ({ ...prev, visible: false }));
+    setShowGifs(prev => ({ ...prev, visible: false }));
+
+    // Przełączamy to okno
+    setShowEmojis(prev => ({ ...prev, visible: !prev.visible }));
+  };
+  const handleGifClick = (e) => {
+    // Zamykamy pozostałe okna
+    setShowShapes(prev => ({ ...prev, visible: false }));
+    setShowEmojis(prev => ({ ...prev, visible: false }));
+
+    // Przełączamy to okno
+    setShowGifs(prev => ({ ...prev, visible: !prev.visible }));
+  };
 
   // 🔹 ZAKTUALIZOWANY EFEKT POZYCJONOWANIA
   useLayoutEffect(() => {
@@ -68,7 +91,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
         shapesPopupRef.current.style.left = `${btnRect.right + 10}px`;
         shapesPopupRef.current.style.top = `${btnRect.top - 20}px`;
       }
-      
+
       // 2. Obsługa Emoji
       if (showEmojis.visible && emojisBtnRef.current && emojisPopupRef.current) {
         const btnRect = emojisBtnRef.current.getBoundingClientRect();
@@ -156,7 +179,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
       const data = await res.json();
       const urls = data.data.map(gif => gif.images.fixed_width.url);
 
-      gifCache.current[cacheKey] = urls; 
+      gifCache.current[cacheKey] = urls;
       if (append) {
         setGifs(prev => [...prev, ...urls]);
       } else {
@@ -193,7 +216,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
 
   const handleGifScroll = (e) => {
     const { scrollTop, scrollHeight, clientHeight } = e.target;
-    if (scrollTop + clientHeight >= scrollHeight - 10) { 
+    if (scrollTop + clientHeight >= scrollHeight - 10) {
       if (hasMoreGifs) {
         const newOffset = gifOffset + GIF_LIMIT;
         fetchGifs(gifQuery.trim(), newOffset, true);
@@ -281,7 +304,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
 
   return (
     <>
-      <div 
+      <div
         ref={toolbarRef}
         className={`toolbar toolbar-${position} ${collapsed ? 'collapsed' : ''}`}
       >
@@ -292,9 +315,9 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
               <button
                 /* 🔹 Przypisanie odpowiedniego Ref do odpowiedniego przycisku */
                 ref={
-                    toolItem.type === 'shape' ? shapesBtnRef :
+                  toolItem.type === 'shape' ? shapesBtnRef :
                     toolItem.type === 'emoji' ? emojisBtnRef :
-                    toolItem.type === 'gifs' ? gifsBtnRef : null
+                      toolItem.type === 'gifs' ? gifsBtnRef : null
                 }
                 className={`tool-btn ${tool === toolItem.type ? 'selected' : ''}`}
                 title={toolItem.name}

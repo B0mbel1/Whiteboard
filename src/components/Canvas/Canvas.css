@@ -274,10 +274,14 @@
   display: block;
 }
 
-.canvas-area.is-selecting>div:not(.selection-overlay):not(.background-toggle):not(.remote-cursor):not(.chat-toggle),
-.canvas-area.is-selecting>div:not(.selection-overlay):not(.background-toggle):not(.remote-cursor):not(.chat-toggle) * {
+.canvas-area.is-selecting>div:not(.selection-overlay):not(.background-toggle):not(.remote-cursor):not(.chat-toggle):not(.chat-container),
+.canvas-area.is-selecting>div:not(.selection-overlay):not(.background-toggle):not(.remote-cursor):not(.chat-toggle):not(.chat-container) * {
   pointer-events: none !important;
   user-select: none !important;
+}
+
+.canvas-area .chat-container {
+  pointer-events: auto !important;
 }
 
 .canvas-area.is-selecting .shape-item,
