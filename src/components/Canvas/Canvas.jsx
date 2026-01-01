@@ -758,6 +758,25 @@ const Canvas = ({
   };
 
   useEffect(() => {
+    // Jeśli zmieniamy narzędzie na jakiekolwiek inne niż 'select'
+    if (tool !== 'select') {
+      if (selectionSnapshot) {
+        // Jeśli mamy "wycięty" obrazek w pamięci (selectionSnapshot),
+        // musimy go "przykleić" z powrotem do płótna (commit), żeby nie zniknął.
+        commitSelection();
+      } else {
+        // Jeśli tylko rysowaliśmy ramkę, ale nic nie wycięliśmy -> po prostu czyścimy ramkę
+        setSelectionBox(null);
+        setSelectionStart(null);
+        setOriginalCaptureRect(null);
+      }
+      // Resetujemy stan przeciągania
+      setIsDraggingSelection(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tool]);
+
+  useEffect(() => {
     if (socket) {
       const handleEraseArea = (data) => {
         const ctx = drawingContextRef.current;
