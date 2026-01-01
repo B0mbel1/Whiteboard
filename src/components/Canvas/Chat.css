@@ -3,7 +3,7 @@
   position: absolute;
   bottom: 90px;
   left: 150px;
-  z-index: 100;
+  z-index: 2000;
   /* 🔹 To sprawia, że kursor wraca do zwykłej strzałki po najechaniu na czat */
   cursor: default !important;
 }
