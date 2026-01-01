@@ -95,11 +95,11 @@ io.on("connection", (socket) => {
         users: new Map(),
         drawingData: [],
         textBoxes: [],
-              notes: [],
-              gifs: [],
-              images: [],
-              shapes: [],
-              emojis: [],        backgroundMode: 'grid',
+        notes: [],
+        gifs: [],
+        images: [],
+        shapes: [],
+        emojis: [], backgroundMode: 'grid',
         chatMessages: []
       });
       console.log(`📝 Created whiteboard on join: ${whiteboardId}`);
@@ -148,7 +148,7 @@ io.on("connection", (socket) => {
       emojis: whiteboard.emojis || [],
       backgroundMode: whiteboard.backgroundMode || 'grid'
     };
-    
+
     socket.emit("whiteboard-data", allData);
 
     // 6. Aktualizuj listę użytkowników
@@ -167,9 +167,33 @@ io.on("connection", (socket) => {
   socket.on("user-update", (d) => {
     const wb = whiteboards.get(d.whiteboardId);
     if (wb && wb.users.has(socket.id)) {
+      // 1. Aktualizuj dane w liście użytkowników (istniejąca logika)
       const user = wb.users.get(socket.id);
       Object.assign(user, d.updates);
 
+      // 2. NOWOŚĆ: Aktualizuj dane autora w historii czatu
+      if (wb.chatMessages && wb.chatMessages.length > 0) {
+        let historyUpdated = false;
+        wb.chatMessages.forEach((msg) => {
+          // Jeśli wiadomość należy do użytkownika, który właśnie zmienił dane
+          if (msg.user && msg.user.id === socket.id) {
+            // Nadpisz nazwę i kolor w historycznej wiadomości
+            Object.assign(msg.user, d.updates);
+            historyUpdated = true;
+          }
+        });
+
+        // 3. Jeśli zaktualizowano historię, wyślij ją ponownie do wszystkich w pokoju
+        // Dzięki temu frontend (Chat.jsx) przerysuje stare wiadomości z nową nazwą
+        if (historyUpdated) {
+          io.to(d.whiteboardId).emit("chat-history", {
+            whiteboardId: d.whiteboardId,
+            messages: wb.chatMessages
+          });
+        }
+      }
+
+      // Standardowe powiadomienia o zmianie użytkownika (listy online, kursory itp.)
       io.to(d.whiteboardId).emit("users-updated", {
         users: Array.from(wb.users.values())
       });
@@ -392,7 +416,7 @@ io.on("connection", (socket) => {
     if (wb) {
       // 1. Pobierz pełne dane użytkownika z pamięci serwera (tam jest nazwa i kolor)
       const user = wb.users.get(socket.id);
-      
+
       // 2. Jeśli użytkownik istnieje, wyślij jego pozycję ORAZ dane do innych
       if (user) {
         // Aktualizujemy pozycję w pamięci serwera (opcjonalne, ale dobre dla nowych userów)
@@ -412,28 +436,28 @@ io.on("connection", (socket) => {
   // ========== CZAT ==========
   socket.on("chat-message", (data) => {
     const { whiteboardId, message } = data;
-    
+
     console.log(`💬 Chat: Message from ${socket.id} in whiteboard ${whiteboardId}: "${message.text}"`);
     console.log(`💬 Chat: Message user: ${JSON.stringify(message.user)}`);
-    
+
     if (!message || !message.text || !whiteboardId) {
       console.error("💬 Chat: Invalid message data");
       return;
     }
-    
+
     const wb = whiteboards.get(whiteboardId);
     if (!wb) {
       console.error(`💬 Chat: Whiteboard ${whiteboardId} not found`);
       return;
     }
-    
+
     // Upewnij się, że user ma poprawne dane
     const messageUser = {
       id: message.user?.id || socket.id,
       name: message.user?.name || 'Unknown',
       color: message.user?.color || '#666'
     };
-    
+
     const completeMessage = {
       id: message.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       user: messageUser,
@@ -441,20 +465,20 @@ io.on("connection", (socket) => {
       timestamp: message.timestamp || new Date().toISOString(),
       whiteboardId
     };
-    
+
     // Zapisz wiadomość w historii TEJ TABLICY
     if (!wb.chatMessages) wb.chatMessages = [];
     wb.chatMessages.push(completeMessage);
-    
+
     // Ogranicz historię do 200 wiadomości
     if (wb.chatMessages.length > 200) {
       wb.chatMessages.shift();
     }
-    
+
     console.log(`💬 Chat: Broadcasting to whiteboard room: ${whiteboardId}`);
     console.log(`💬 Chat: Room has ${wb.chatMessages.length} messages`);
     console.log(`💬 Chat: Users in room: ${Array.from(wb.users.values()).map(u => u.name)}`);
-    
+
     // Wysyłamy do WSZYSTKICH w tym samym pokoju (włącznie z nadawcą)
     io.to(whiteboardId).emit("chat-message", {
       whiteboardId,
@@ -466,11 +490,11 @@ io.on("connection", (socket) => {
   socket.on("get-chat-history", (data) => {
     const { whiteboardId } = data;
     const wb = whiteboards.get(whiteboardId);
-    
+
     if (wb) {
       console.log(`💬 Chat: History requested for whiteboard: ${whiteboardId} by ${socket.id}`);
       console.log(`💬 Chat: Sending ${wb.chatMessages?.length || 0} messages`);
-      
+
       socket.emit("chat-history", {
         whiteboardId,
         messages: wb.chatMessages || []
@@ -515,10 +539,10 @@ io.on("connection", (socket) => {
   socket.on("refresh-whiteboard-data", (data) => {
     const { whiteboardId } = data;
     const wb = whiteboards.get(whiteboardId);
-    
+
     if (wb) {
       console.log(`🔄 Refreshing whiteboard data for: ${whiteboardId}, user: ${socket.id}`);
-      
+
       const allData = {
         users: Array.from(wb.users.values()),
         drawingData: wb.drawingData || [],
@@ -530,9 +554,9 @@ io.on("connection", (socket) => {
         emojis: wb.emojis || [],
         backgroundMode: wb.backgroundMode || 'grid'
       };
-      
+
       socket.emit("whiteboard-data", allData);
-      
+
       // Wyślij również historię czatu
       socket.emit("chat-history", {
         whiteboardId,
