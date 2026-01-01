@@ -20,6 +20,7 @@ const Whiteboard = () => {
   const [error, setError] = useState(null);
   const [textBoxes, setTextBoxes] = useState([]);
   const [notes, setNotes] = useState([]); 
+  const [images, setImages] = useState([]); // DODANE: stan zdjęć 
   
  
  const [currentUser, setCurrentUser] = useState(() => {
@@ -126,6 +127,7 @@ const Whiteboard = () => {
       newSocket.on('whiteboard-data', (data) => {
           setTextBoxes(data.textBoxes || []);
           setNotes(data.notes || []); 
+          setImages(data.images || []); // DODANE
       });
 
        
@@ -164,6 +166,44 @@ const Whiteboard = () => {
   const handleNoteDelete = (id) => {
     if (socketRef.current && whiteboardId) {
       socketRef.current.emit('note-delete', {
+        whiteboardId,
+        id
+      });
+    }
+  };
+
+  // DODANE: Handlery dla zdjęć
+  const handleImageCreate = (image) => {
+    // Aktualizuj lokalny stan
+    setImages(prev => [...prev, image]);
+    
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('image-create', {
+        whiteboardId,
+        image
+      });
+    }
+  };
+
+  const handleImageUpdate = (id, updates) => {
+    // Aktualizuj lokalny stan
+    setImages(prev => prev.map(img => img.id === id ? { ...img, ...updates } : img));
+
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('image-update', {
+        whiteboardId,
+        id,
+        ...updates
+      });
+    }
+  };
+
+  const handleImageDelete = (id) => {
+    // Aktualizuj lokalny stan
+    setImages(prev => prev.filter(img => img.id !== id));
+
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('image-delete', {
         whiteboardId,
         id
       });
@@ -285,6 +325,7 @@ const Whiteboard = () => {
       </div>
 
       <div className="whiteboard-main">
+        {console.log("🎨 Whiteboard rendering. handleImageCreate is:", typeof handleImageCreate)}
         <Toolbar 
         position="left"
           tool={tool}
@@ -295,6 +336,7 @@ const Whiteboard = () => {
           setSize={setSize}
           showColorPicker={showColorPicker}
           setShowColorPicker={setShowColorPicker}
+          onImageCreate={handleImageCreate} // DODANE
         />
 
          <PointerTrail active={tool === 'pointer'} />
@@ -315,6 +357,10 @@ const Whiteboard = () => {
           onNoteCreate={handleNoteCreate} // DODANE
           onNoteUpdate={handleNoteUpdate} // DODANE
           onNoteDelete={handleNoteDelete} // DODANE
+          images={images} // DODANE
+          onImageCreate={handleImageCreate} // DODANE
+          onImageUpdate={handleImageUpdate} // DODANE
+          onImageDelete={handleImageDelete} // DODANE
         />
         
         <Sidebar 

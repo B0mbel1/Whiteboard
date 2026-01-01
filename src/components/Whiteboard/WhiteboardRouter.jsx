@@ -31,6 +31,9 @@ const WhiteboardRouter = () => {
   const [gifs, setGifs] = useState([]);
   const [activeGif, setActiveGif] = useState(null);
 
+  // Images
+  const [images, setImages] = useState([]); // DODANE
+
   // Shapes
   const [shapes, setShapes] = useState([]);
   const [activeShape, setActiveShape] = useState(null);
@@ -182,6 +185,9 @@ const WhiteboardRouter = () => {
       if (data.gifs) {
         setGifs(data.gifs);
       }
+      if (data.images) { // DODANE
+        setImages(data.images);
+      }
       if (data.shapes) {
         setShapes(data.shapes);
       }
@@ -227,6 +233,19 @@ const WhiteboardRouter = () => {
             : user
         )
       );
+    });
+
+    // Images listeners
+    newSocket.on('image-create', (data) => {
+      setImages(prev => [...prev, data.image]);
+    });
+
+    newSocket.on('image-delete', (data) => {
+      setImages(prev => prev.filter(img => img.id !== data.id));
+    });
+
+    newSocket.on('image-update', (data) => {
+      setImages(prev => prev.map(img => img.id === data.id ? { ...img, ...data } : img));
     });
 
     newSocket.on('connect_error', (error) => {
@@ -279,6 +298,34 @@ const WhiteboardRouter = () => {
   const handleGifUpdate = (id, updates) => {
     if (socketRef.current && whiteboardId) {
       socketRef.current.emit('gif-update', { whiteboardId, id, ...updates });
+    }
+  };
+
+  // Images Handlers
+  const handleImageCreate = (image) => {
+    // Aktualizuj lokalny stan natychmiast
+    setImages(prev => [...prev, image]);
+
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('image-create', { whiteboardId, image });
+    }
+  };
+
+  const handleImageDelete = (id) => {
+    // Aktualizuj lokalny stan natychmiast
+    setImages(prev => prev.filter(img => img.id !== id));
+
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('image-delete', { whiteboardId, id });
+    }
+  };
+
+  const handleImageUpdate = (id, updates) => {
+    // Aktualizuj lokalny stan natychmiast
+    setImages(prev => prev.map(img => img.id === id ? { ...img, ...updates } : img));
+
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('image-update', { whiteboardId, id, ...updates });
     }
   };
 
@@ -580,6 +627,7 @@ const WhiteboardRouter = () => {
           setActiveEmoji={setActiveEmoji}
           setActiveGif={setActiveGif}
           setActiveShape={setActiveShape}
+          onImageCreate={handleImageCreate} // DODANE
         />
 
         <PointerTrail 
@@ -615,6 +663,10 @@ const WhiteboardRouter = () => {
           onGifCreate={handleGifCreate}
           onGifDelete={handleGifDelete}
           onGifUpdate={handleGifUpdate}
+          images={images} // DODANE
+          onImageCreate={handleImageCreate} // DODANE
+          onImageUpdate={handleImageUpdate} // DODANE
+          onImageDelete={handleImageDelete} // DODANE
           shapes={shapes}
           activeShape={activeShape}
           onShapeCreate={handleShapeCreate}
