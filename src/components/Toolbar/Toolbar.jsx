@@ -55,11 +55,31 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
 
   // 🔹 Uproszczone handlery - tylko przełączanie widoczności
   const handleShapeClick = (e) => {
-    setSelectedShape(null); // <--- To resetuje zaznaczenie kształtu
-    setShowShapes(prev => ({ visible: !prev.visible }));
+    setSelectedShape(null); // Czyścimy wybór (z poprzedniej naprawy)
+
+    // Zamykamy pozostałe okna
+    setShowEmojis(prev => ({ ...prev, visible: false }));
+    setShowGifs(prev => ({ ...prev, visible: false }));
+
+    // Przełączamy to okno
+    setShowShapes(prev => ({ ...prev, visible: !prev.visible }));
   };
-  const handleEmojiClick = (e) => setShowEmojis(prev => ({ visible: !prev.visible }));
-  const handleGifClick = (e) => setShowGifs(prev => ({ visible: !prev.visible }));
+  const handleEmojiClick = (e) => {
+    // Zamykamy pozostałe okna
+    setShowShapes(prev => ({ ...prev, visible: false }));
+    setShowGifs(prev => ({ ...prev, visible: false }));
+
+    // Przełączamy to okno
+    setShowEmojis(prev => ({ ...prev, visible: !prev.visible }));
+  };
+  const handleGifClick = (e) => {
+    // Zamykamy pozostałe okna
+    setShowShapes(prev => ({ ...prev, visible: false }));
+    setShowEmojis(prev => ({ ...prev, visible: false }));
+
+    // Przełączamy to okno
+    setShowGifs(prev => ({ ...prev, visible: !prev.visible }));
+  };
 
   // 🔹 ZAKTUALIZOWANY EFEKT POZYCJONOWANIA
   useLayoutEffect(() => {
