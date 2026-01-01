@@ -10,7 +10,7 @@ const DraggableResizableWrapper = ({
   onUpdate,
   children,
   minWidth = 50,
-  aspectRatioLocked = true,
+  aspectRatioLocked = true, // Zakładamy, że dla GIFów to jest true
   style
 }) => {
   const [localPos, setLocalPos] = useState({ x, y });
@@ -19,10 +19,10 @@ const DraggableResizableWrapper = ({
   const [isResizing, setIsResizing] = useState(false);
   
   const dragStartRef = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
-  const resizeStartRef = useRef({ x: 0, y: 0, startWidth: 0 });
+  // 1. Dodajemy startTop, startHeight i aspectRatio do refa
+  const resizeStartRef = useRef({ x: 0, y: 0, startWidth: 0, startLeft: 0, startTop: 0, startHeight: 0, aspectRatio: 1 });
   const wrapperRef = useRef(null);
 
-  // Synchronizacja z propsami
   useEffect(() => {
     if (!isDragging && !isResizing) {
       setLocalPos({ x, y });
@@ -49,14 +49,23 @@ const DraggableResizableWrapper = ({
   const handleResizeMouseDown = (e, handleType) => {
     e.stopPropagation();
     setIsResizing(handleType);
+    
+    // 2. Pobieramy aktualne wymiary z DOM
+    const currentHeight = wrapperRef.current ? wrapperRef.current.offsetHeight : 0;
+    const ratio = localWidth / (currentHeight || 1); // Zabezpieczenie przed dzieleniem przez 0
+
     resizeStartRef.current = {
       x: e.clientX,
       y: e.clientY,
-      startWidth: localWidth
+      startWidth: localWidth,
+      startLeft: localPos.x,
+      // Zapisujemy dane potrzebne do pionowego skalowania
+      startTop: localPos.y,
+      startHeight: currentHeight,
+      aspectRatio: ratio
     };
   };
 
-  // Obsługa przeciągania i zmiany rozmiaru
   useEffect(() => {
     if (!isDragging && !isResizing) return;
 
@@ -70,7 +79,6 @@ const DraggableResizableWrapper = ({
         
         setLocalPos({ x: newX, y: newY });
         
-        // ✅ WYŚLIJ UPDATE NATYCHMIAST dla real-time
         if (onUpdate) {
           onUpdate(id, { x: newX, y: newY });
         }
@@ -78,32 +86,59 @@ const DraggableResizableWrapper = ({
       
       if (isResizing) {
         const dx = e.clientX - resizeStartRef.current.x;
-        let newWidth = resizeStartRef.current.startWidth + dx;
+        // eslint-disable-next-line no-unused-vars
+        const dy = e.clientY - resizeStartRef.current.y; // dy przydałoby się, gdyby aspectRatioLocked było false
         
-        if (newWidth < minWidth) newWidth = minWidth;
+        const { startWidth, startLeft, startTop, startHeight, aspectRatio } = resizeStartRef.current;
+        
+        let newWidth = startWidth;
+        let newX = startLeft;
+        let newY = startTop;
+
+        // --- Logika pozioma (bez zmian) ---
+        if (isResizing.includes('w')) {
+          newWidth = startWidth - dx;
+          newX = startLeft + dx;
+        } else {
+          newWidth = startWidth + dx;
+        }
+        
+        // Zabezpieczenie minimalnej szerokości
+        if (newWidth < minWidth) {
+          if (isResizing.includes('w')) {
+             newX = (startLeft + startWidth) - minWidth;
+          }
+          newWidth = minWidth;
+        }
+
+        // --- Nowa logika pionowa dla górnych uchwytów ---
+        // Jeśli proporcje są zablokowane (GIFy), zmiana szerokości wymusza zmianę wysokości.
+        if (aspectRatioLocked) {
+            // Obliczamy jaka będzie nowa wysokość na podstawie nowej szerokości i proporcji
+            const newHeight = newWidth / aspectRatio;
+
+            // Jeśli ciągniemy za górny uchwyt ('n' - north), musimy przesunąć Y.
+            // Jeśli element rośnie, newHeight > startHeight, różnica jest ujemna -> Y maleje (idzie w górę).
+            // Jeśli element maleje, newHeight < startHeight, różnica jest dodatnia -> Y rośnie (idzie w dół).
+            if (isResizing.includes('n')) {
+                newY = startTop + (startHeight - newHeight);
+            }
+            // Dla dolnych uchwytów ('s') Y pozostaje bez zmian (startTop), co jest poprawne,
+            // bo element rośnie "w dół".
+        }
         
         setLocalWidth(newWidth);
+        // Aktualizujemy X i Y jednocześnie
+        setLocalPos({ x: newX, y: newY });
         
-        // ✅ WYŚLIJ UPDATE NATYCHMIAST dla real-time
         if (onUpdate) {
-          const updates = { width: newWidth };
-          
-          // Jeśli zmieniamy rozmiar od lewej strony (zachodni uchwyt)
-          if (isResizing.includes('w')) {
-            const deltaX = resizeStartRef.current.startWidth - newWidth;
-            const newX = localPos.x + deltaX;
-            updates.x = newX;
-            setLocalPos(prev => ({ ...prev, x: newX }));
-          }
-          
-          onUpdate(id, updates);
+          onUpdate(id, { x: newX, y: newY, width: newWidth });
         }
       }
     };
 
     const handleMouseUp = () => {
       if (isDragging || isResizing) {
-        // Możesz tutaj wysłać finalny update jeśli chcesz
         setIsDragging(false);
         setIsResizing(false);
       }
@@ -116,7 +151,7 @@ const DraggableResizableWrapper = ({
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, isResizing, id, onUpdate, localPos.x, localPos.y, minWidth]);
+  }, [isDragging, isResizing, id, onUpdate, localPos.x, localPos.y, minWidth, aspectRatioLocked]);
 
   const handles = ['nw', 'ne', 'sw', 'se'];
 
@@ -130,6 +165,7 @@ const DraggableResizableWrapper = ({
         left: localPos.x,
         top: localPos.y,
         width: `${localWidth}px`,
+        // Wysokość jest automatyczna na podstawie szerokości i zawartości (GIFa)
         cursor: isDragging ? 'grabbing' : 'grab',
         border: isSelected ? '2px solid #3498db' : '2px solid transparent',
         zIndex: isSelected ? 100 : 10,
@@ -140,7 +176,6 @@ const DraggableResizableWrapper = ({
     >
       {children}
 
-      {/* Uchwyty do zmiany rozmiaru */}
       {isSelected && handles.map(handle => (
         <div
           key={handle}
@@ -161,7 +196,6 @@ const DraggableResizableWrapper = ({
   );
 };
 
-// Helper do pozycjonowania uchwytów
 const getHandleStyle = (handle) => {
   const style = {};
   if (handle.includes('n')) style.top = '-6px';
