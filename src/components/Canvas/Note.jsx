@@ -12,7 +12,8 @@ const Note = ({
   onRemove,
   selectedNoteId,
   setSelectedNoteId,
-  socket
+  socket,
+  tool
 }) => {
   const [text, setText] = useState(initialText);
   const [pos, setPos] = useState({ x, y });
@@ -21,6 +22,8 @@ const Note = ({
   const isDragging = useRef(false);
   const dragOffset = useRef({ x: 0, y: 0 });
   const lastPosition = useRef({ x, y }); // 🔹 DODANE: Śledzenie poprzedniej pozycji
+
+  const isDrawingTool = ['pencil', 'brush', 'eraser'].includes(tool);
 
   // Synchronizuj zmiany z serwera
   // Note.jsx - ZASTĄP obecny useEffect obsługujący socket tym:
@@ -56,6 +59,7 @@ const Note = ({
   }, [x, y]);
 
   const handleMouseDown = (e) => {
+    if (isDrawingTool) return;
     setSelectedNoteId(id);
     lastPosition.current = { ...pos }; // 🔹 ZAPISZ pozycję przed rozpoczęciem przesuwania
 
@@ -143,6 +147,7 @@ const Note = ({
         top: pos.y,
         width: size.width,
         height: size.height,
+        pointerEvents: isDrawingTool ? 'none' : 'auto'
       }}
       onMouseDown={handleMouseDown}
       onClick={(e) => e.stopPropagation()}
@@ -161,6 +166,7 @@ const Note = ({
         onBlur={handleTextBlur}
         placeholder="Twoja notatka..."
         onMouseDown={(e) => e.stopPropagation()}
+        disabled={isDrawingTool}
       />
       <div
         className="note-resizer"

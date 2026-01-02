@@ -18,9 +18,44 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
   const [selectedShape, setSelectedShape] = useState(null);
   const [collapsed, setCollapsed] = useState(false);
 
-  const [selectedColor, setSelectedColor] = useState(color || '#000000');
-  const [recentColors, setRecentColors] = useState([]);
-  const [tempColor, setTempColor] = useState(selectedColor);
+  // 🔹 ZMIANA 1: Funkcja pomocnicza do pobierania zapisanego aktywnego koloru
+  const getSavedActiveColor = () => {
+    try {
+      return localStorage.getItem('whiteboard-active-color') || color || '#000000';
+    } catch (e) {
+      return color || '#000000';
+    }
+  };
+
+  // Inicjalizacja stanów koloru z localStorage
+  const [selectedColor, setSelectedColor] = useState(getSavedActiveColor);
+  const [tempColor, setTempColor] = useState(getSavedActiveColor);
+
+  // 🔹 ZMIANA 1 (Ciąg dalszy): Przy montowaniu komponentu ustawiamy kolor w aplikacji (parent)
+  // na ten pobrany z localStorage, żeby narzędzia rysowania o nim wiedziały.
+  useEffect(() => {
+    const savedColor = getSavedActiveColor();
+    if (savedColor && savedColor !== color) {
+      setColor(savedColor);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Uruchamiamy tylko raz przy starcie
+
+  // Inicjalizacja recentColors z localStorage (z poprzedniego kroku)
+  const [recentColors, setRecentColors] = useState(() => {
+    try {
+      const saved = localStorage.getItem('whiteboard-recent-colors');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      console.error("Błąd odczytu kolorów z localStorage:", e);
+      return [];
+    }
+  });
+
+  // Zapisywanie recentColors do localStorage przy każdej zmianie
+  useEffect(() => {
+    localStorage.setItem('whiteboard-recent-colors', JSON.stringify(recentColors));
+  }, [recentColors]);
 
   const [showMultimedia, setShowMultimedia] = useState(false);
   const [gifQuery, setGifQuery] = useState('');
@@ -55,51 +90,35 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
 
   // 🔹 Uproszczone handlery - tylko przełączanie widoczności
   const handleShapeClick = (e) => {
-    setSelectedShape(null); // Czyścimy wybór (z poprzedniej naprawy)
-
-    // Zamykamy pozostałe okna
+    setSelectedShape(null); // Czyścimy wybór
     setShowEmojis(prev => ({ ...prev, visible: false }));
     setShowGifs(prev => ({ ...prev, visible: false }));
-
-    // Przełączamy to okno
     setShowShapes(prev => ({ ...prev, visible: !prev.visible }));
   };
   const handleEmojiClick = (e) => {
-    // Zamykamy pozostałe okna
     setShowShapes(prev => ({ ...prev, visible: false }));
     setShowGifs(prev => ({ ...prev, visible: false }));
-
-    // Przełączamy to okno
     setShowEmojis(prev => ({ ...prev, visible: !prev.visible }));
   };
   const handleGifClick = (e) => {
-    // Zamykamy pozostałe okna
     setShowShapes(prev => ({ ...prev, visible: false }));
     setShowEmojis(prev => ({ ...prev, visible: false }));
-
-    // Przełączamy to okno
     setShowGifs(prev => ({ ...prev, visible: !prev.visible }));
   };
 
   // 🔹 ZAKTUALIZOWANY EFEKT POZYCJONOWANIA
   useLayoutEffect(() => {
-    // Funkcja aktualizująca pozycję aktywnego popupu
     const updatePosition = () => {
-      // 1. Obsługa Kształtów
       if (showShapes.visible && shapesBtnRef.current && shapesPopupRef.current) {
         const btnRect = shapesBtnRef.current.getBoundingClientRect();
         shapesPopupRef.current.style.left = `${btnRect.right + 10}px`;
         shapesPopupRef.current.style.top = `${btnRect.top - 20}px`;
       }
-
-      // 2. Obsługa Emoji
       if (showEmojis.visible && emojisBtnRef.current && emojisPopupRef.current) {
         const btnRect = emojisBtnRef.current.getBoundingClientRect();
         emojisPopupRef.current.style.left = `${btnRect.right + 10}px`;
         emojisPopupRef.current.style.top = `${btnRect.top - 20}px`;
       }
-
-      // 3. Obsługa GIFów
       if (showGifs.visible && gifsBtnRef.current && gifsPopupRef.current) {
         const btnRect = gifsBtnRef.current.getBoundingClientRect();
         gifsPopupRef.current.style.left = `${btnRect.right + 10}px`;
@@ -107,12 +126,10 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
       }
     };
 
-    // Wywołaj natychmiast, jeśli cokolwiek jest widoczne
     if (showShapes.visible || showEmojis.visible || showGifs.visible) {
       updatePosition();
     }
 
-    // Nasłuchuj scrollowania i resize
     const toolbar = toolbarRef.current;
     if (toolbar) {
       toolbar.addEventListener('scroll', updatePosition);
@@ -123,7 +140,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
       if (toolbar) toolbar.removeEventListener('scroll', updatePosition);
       window.removeEventListener('resize', updatePosition);
     };
-  }, [showShapes.visible, showEmojis.visible, showGifs.visible]); // Zależności dla wszystkich popupów
+  }, [showShapes.visible, showEmojis.visible, showGifs.visible]);
 
   const handleMultimediaClick = () => {
     setShowMultimedia(true);
@@ -313,7 +330,6 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
           {tools.map((toolItem, index) => (
             <div key={index} className="tool-item">
               <button
-                /* 🔹 Przypisanie odpowiedniego Ref do odpowiedniego przycisku */
                 ref={
                   toolItem.type === 'shape' ? shapesBtnRef :
                     toolItem.type === 'emoji' ? emojisBtnRef :
@@ -380,19 +396,26 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
                 const newColor = e.target.value;
                 setTempColor(newColor);
                 setColor(newColor);
+                // Opcjonalnie: można tu zapisywać localStorage, ale 'onMouseUp' jest bezpieczniejsze dla wydajności
               }}
               onMouseUp={() => {
+                // Po puszczeniu suwaka:
+                // 1. Aktualizujemy committed color
+                setSelectedColor(tempColor);
+                // 2. Dodajemy do ostatnich kolorów
                 if (tempColor !== selectedColor) {
-                  setSelectedColor(tempColor);
                   setRecentColors(prev => {
                     const newList = [tempColor, ...prev.filter(c => c !== tempColor)];
                     return newList.slice(0, 3);
                   });
                 }
+                // 3. 🔹 ZMIANA 2: Zapisujemy AKTUALNY kolor rysowania do pamięci
+                localStorage.setItem('whiteboard-active-color', tempColor);
               }}
               style={{ cursor: 'default' }}
             />
-            <span className="selected-color">{selectedColor}</span>
+            {/* 🔹 ZMIANA 3: Wyświetlamy tempColor zamiast selectedColor, żeby synchronizowało się przy przesuwaniu */}
+            <span className="selected-color">{tempColor}</span>
           </div>
 
           <div className="last-colors-section">
@@ -409,6 +432,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
                     setSelectedColor(clr);
                     setColor(clr);
                     setTempColor(clr);
+                    localStorage.setItem('whiteboard-active-color', clr); // Zapisujemy przy kliknięciu w historię
                     setRecentColors(prev => {
                       const newList = [clr, ...prev.filter(c => c !== clr)];
                       return newList.slice(0, 3);
@@ -441,7 +465,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
           </div>
         )}
 
-        {/* 🔹 Popup Emoji - dodano Ref i usunięto ręczne x/y */}
+        {/* 🔹 Popup Emoji */}
         {showEmojis.visible && (
           <div
             ref={emojisPopupRef}
@@ -462,7 +486,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
           </div>
         )}
 
-        {/* 🔹 Popup GIFów - dodano Ref i usunięto ręczne x/y */}
+        {/* 🔹 Popup GIFów */}
         {showGifs.visible && (
           <div
             ref={gifsPopupRef}

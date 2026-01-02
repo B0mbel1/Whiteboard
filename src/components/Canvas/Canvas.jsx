@@ -52,6 +52,8 @@ const Canvas = ({
   const [remoteCursors, setRemoteCursors] = useState(new Map());
   const [isChatVisible, setIsChatVisible] = useState(false);
 
+  const backgroundModeRef = useRef(backgroundMode);
+
   // Dwa canvasy: tło i rysunek
   const backgroundCanvasRef = useRef(null);
   const drawingCanvasRef = useRef(null);
@@ -100,6 +102,8 @@ const Canvas = ({
 
   const [clipboard, setClipboard] = useState(null);
 
+  const isWorkingTool = ['select', 'pencil', 'brush', 'eraser'].includes(tool);
+
   const ACTION_TYPES = {
     DRAWING: 'drawing',
     NOTE_CREATE: 'note_create',
@@ -131,6 +135,14 @@ const Canvas = ({
     setHistory(newHistory);
     setHistoryStep(newHistory.length - 1);
   };
+
+  useEffect(() => {
+    backgroundModeRef.current = backgroundMode;
+    // Wywołaj przerysowanie tła, gdy zmieni się prop backgroundMode
+    drawBackground();
+  }, [backgroundMode]);
+
+  
 
   const undo = () => {
     if (historyRef.current.step < 0) return;
@@ -483,7 +495,7 @@ const Canvas = ({
     // Wyczyść tło
     context.clearRect(0, 0, width, height);
 
-    switch (backgroundMode) {
+    switch (backgroundModeRef.current) {
       case 'white':
         context.fillStyle = 'white';
         context.fillRect(0, 0, width, height);
@@ -637,9 +649,9 @@ const Canvas = ({
   }, []);
 
   // Aktualizuj tło gdy zmieni się tryb
-  useEffect(() => {
-    drawBackground();
-  }, [backgroundMode]);
+  // useEffect(() => {
+  //   drawBackground();
+  // }, [backgroundMode]);
 
   // 🔹 DODANE: Aktualizuj kontekst rysowania gdy zmieniają się narzędzia/kolor/rozmiar
   useEffect(() => {
@@ -1501,6 +1513,7 @@ const Canvas = ({
             selectedNoteId={selectedNoteId}
             setSelectedNoteId={setSelectedNoteId}
             socket={socket}
+            tool={tool}
           />
         ))}
         {textBoxes.map(textBox => (
@@ -1512,6 +1525,7 @@ const Canvas = ({
             width={textBox.width}
             height={textBox.height}
             text={textBox.text}
+            tool={tool}
             onUpdate={handleTextUpdate}
             onRemove={removeTextBox}
             selected={selectedTextBoxId === textBox.id}
@@ -1523,6 +1537,7 @@ const Canvas = ({
           <Emoji
             key={emojiData.id}
             {...emojiData}
+            tool={tool}
             selected={selectedEmojiId === emojiData.id}
             onSelect={setSelectedEmojiId}
             onRemove={removeEmoji}
@@ -1536,6 +1551,7 @@ const Canvas = ({
             selected={selectedGifId === gif.id}
             onSelect={setSelectedGifId}
             onUpdate={handleGifUpdate}
+            tool={tool}
           />
         ))}
         {images.map(image => (
@@ -1555,6 +1571,7 @@ const Canvas = ({
             onSelect={setSelectedShapeId}
             onRemove={removeShape}
             onUpdate={handleShapeUpdate}
+            tool={tool}
           />
         ))}
 
@@ -1623,6 +1640,7 @@ const Canvas = ({
           className="background-toggle"
           onClick={toggleBackground}
           title={`Tło: ${backgroundModes.find(mode => mode.id === backgroundMode)?.name}`}
+          style={{ pointerEvents: isWorkingTool ? 'none' : 'auto' }}
         >
           {getCurrentBackgroundIcon()}
         </button>
@@ -1631,6 +1649,7 @@ const Canvas = ({
           className={`chat-toggle ${isChatVisible ? 'active-chat' : ''}`}
           onClick={() => setIsChatVisible(!isChatVisible)}
           title={isChatVisible ? "Ukryj chat" : "Pokaż chat"}
+          style={{ pointerEvents: isWorkingTool ? 'none' : 'auto' }}
         >
           {isChatVisible ? "✖" : "💬"}
         </button>

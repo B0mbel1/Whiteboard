@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate }) => {
+const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, tool }) => {
     // Domyślne wymiary
     const [dims, setDims] = useState({
         w: width || 100,
@@ -15,6 +15,9 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate }) 
     const initialPosRef = useRef({ x: 0, y: 0 });
     const initialDimsRef = useRef({ w: 0, h: 0 });
 
+    // Sprawdzamy czy rysujemy
+    const isDrawingTool = ['pencil', 'brush', 'eraser'].includes(tool);
+
     // Synchronizacja z propsami z serwera
     useEffect(() => {
         if (!isDragging && !isResizing) {
@@ -24,6 +27,9 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate }) 
     }, [x, y, width, height, isDragging, isResizing, type]);
 
     const handleMouseDown = (e) => {
+        // Blokada interakcji jeśli rysujemy
+        if (isDrawingTool) return;
+
         e.stopPropagation();
         onSelect(id);
 
@@ -35,6 +41,7 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate }) 
     };
 
     const handleResizeStart = (e) => {
+        if (isDrawingTool) return;
         e.stopPropagation();
         setIsResizing(true);
         dragStartRef.current = { x: e.clientX, y: e.clientY };
@@ -58,12 +65,10 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate }) 
                 const dy = e.clientY - dragStartRef.current.y;
 
                 if (type === 'arrow') {
-                    // Dla strzałki pozwalamy na ujemne wartości (obrót)
                     const newW = initialDimsRef.current.w + dx;
                     const newH = initialDimsRef.current.h + dy;
                     setDims({ w: newW, h: newH });
                 } else {
-                    // Dla pudełek blokujemy ujemne wartości
                     const newW = Math.max(20, initialDimsRef.current.w + dx);
                     const newH = Math.max(20, initialDimsRef.current.h + dy);
                     setDims({ w: newW, h: newH });
@@ -103,13 +108,14 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate }) 
         position: 'absolute',
         left: pos.x,
         top: pos.y,
+        // Arrow ma width/height 0, żeby kontener nie blokował myszki na ukos
         width: type === 'arrow' ? 0 : dims.w,
         height: type === 'arrow' ? 0 : dims.h,
-        cursor: isDragging ? 'grabbing' : 'grab',
+        cursor: isDragging ? 'grabbing' : (isDrawingTool ? 'default' : 'grab'),
         border: selected && type !== 'arrow' ? '2px dashed #3498db' : 'none',
         zIndex: selected ? 100 : 10,
         boxSizing: 'border-box',
-        pointerEvents: 'none',
+        pointerEvents: 'none', // Kontener zawsze przepuszcza, interakcję łapią dzieci
     };
 
     const renderShapeContent = () => {
@@ -121,8 +127,9 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate }) 
             style: { display: 'block', pointerEvents: 'none' }
         };
 
-        const interactableStyle = { pointerEvents: 'auto' };
-        const strokeStyle = { pointerEvents: 'visibleStroke' };
+        // Style sterujące interakcją w zależności od wybranego narzędzia
+        const interactableStyle = { pointerEvents: isDrawingTool ? 'none' : 'auto' };
+        const strokeStyle = { pointerEvents: isDrawingTool ? 'none' : 'visibleStroke' };
 
         switch (type) {
             case 'square': return <div style={{ width: '100%', height: '100%', background: 'black', ...interactableStyle }} />;
@@ -130,7 +137,17 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate }) 
             case 'rectangle_outline':
                 return (
                     <svg {...commonSvgContainerProps}>
-                        <rect x="1" y="1" width="22" height="22" fill="none" stroke="transparent" strokeWidth="15" style={{ pointerEvents: 'visibleStroke', cursor: 'pointer' }} vectorEffect="non-scaling-stroke" />
+                        {/* Niewidoczna, gruba ramka do łapania myszką */}
+                        <rect 
+                            x="1" y="1" width="22" height="22" 
+                            fill="none" stroke="transparent" strokeWidth="15" 
+                            style={{ 
+                                pointerEvents: isDrawingTool ? 'none' : 'auto', // Tutaj naprawiamy interakcję
+                                cursor: 'pointer' 
+                            }} 
+                            vectorEffect="non-scaling-stroke" 
+                        />
+                        {/* Widoczna ramka */}
                         <rect x="1" y="1" width="22" height="22" fill="none" stroke="black" strokeWidth="2" style={{ pointerEvents: 'none' }} vectorEffect="non-scaling-stroke" />
                     </svg>
                 );
@@ -138,18 +155,19 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate }) 
             case 'circle': return <div style={{ width: '100%', height: '100%', background: 'black', borderRadius: '50%', ...interactableStyle }} />;
 
             case 'arrow':
-                // 🛑 USUNIĘTO AUTOMATYCZNE SKALOWANIE (baseScale)
-                // Teraz wartości są stałe, niezależnie od długości strzałki.
-                const strokeWidth = 3;  // Stała grubość linii
-                const markerSize = 10;  // Stała wielkość grota
+                const strokeWidth = 3;
+                const markerSize = 10;
 
                 return (
                     <svg
+                        // 🟢 PRZYWRACAMY width="1" height="1" + overflow="visible"
+                        // Ponieważ kontener ma wymiary 0x0, ustawienie tu 100% powodowało zniknięcie strzałki.
                         width="1"
                         height="1"
                         style={{
                             overflow: 'visible',
                             pointerEvents: 'none',
+                            display: 'block',
                             position: 'absolute',
                             top: 0,
                             left: 0
@@ -164,7 +182,6 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate }) 
                                 refY={markerSize / 2} 
                                 orient="auto"
                             >
-                                {/* Ścieżka trójkąta dopasowana do markerSize */}
                                 <path 
                                     d={`M 0 0 L ${markerSize} ${markerSize / 2} L 0 ${markerSize} Z`} 
                                     fill="black" 
@@ -172,13 +189,17 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate }) 
                             </marker>
                         </defs>
 
-                        {/* Gruby duch do chwytania */}
+                        {/* Gruby duch do chwytania - znika dla myszy przy rysowaniu */}
                         <line
                             x1={0} y1={0} x2={dims.w} y2={dims.h}
                             stroke="transparent" strokeWidth="20"
-                            style={{ pointerEvents: 'visibleStroke', cursor: 'grab' }}
+                            // 🟢 TUTAJ NAPRAWIAMY RYSOWANIE "PRZEZ" STRZAŁKĘ
+                            // Jeśli isDrawingTool -> pointerEvents: none
+                            style={{ 
+                                pointerEvents: isDrawingTool ? 'none' : 'auto', 
+                                cursor: 'grab' 
+                            }}
                         />
-                        {/* Widoczna linia */}
                         <line
                             x1={0} y1={0} x2={dims.w} y2={dims.h}
                             stroke="black" strokeWidth={strokeWidth}
@@ -215,11 +236,10 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate }) 
                             height: 12,
                             background: 'white', 
                             border: '1px solid #3498db', 
-                            // Dla strzałki robimy kółeczko, dla reszty kwadrat (opcjonalnie)
                             borderRadius: type === 'arrow' ? '50%' : '0', 
                             zIndex: 101, 
-                            pointerEvents: 'auto',
-                            // Logika pozycji:
+                            // Uchwyt zmiany rozmiaru też znika dla myszy przy rysowaniu
+                            pointerEvents: isDrawingTool ? 'none' : 'auto',
                             ...(type === 'arrow' 
                                 ? { 
                                     left: dims.w, 
