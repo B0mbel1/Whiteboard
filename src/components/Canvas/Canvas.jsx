@@ -52,6 +52,8 @@ const Canvas = ({
   const [remoteCursors, setRemoteCursors] = useState(new Map());
   const [isChatVisible, setIsChatVisible] = useState(false);
 
+  const backgroundModeRef = useRef(backgroundMode);
+
   // Dwa canvasy: tło i rysunek
   const backgroundCanvasRef = useRef(null);
   const drawingCanvasRef = useRef(null);
@@ -133,6 +135,14 @@ const Canvas = ({
     setHistory(newHistory);
     setHistoryStep(newHistory.length - 1);
   };
+
+  useEffect(() => {
+    backgroundModeRef.current = backgroundMode;
+    // Wywołaj przerysowanie tła, gdy zmieni się prop backgroundMode
+    drawBackground();
+  }, [backgroundMode]);
+
+  
 
   const undo = () => {
     if (historyRef.current.step < 0) return;
@@ -485,7 +495,7 @@ const Canvas = ({
     // Wyczyść tło
     context.clearRect(0, 0, width, height);
 
-    switch (backgroundMode) {
+    switch (backgroundModeRef.current) {
       case 'white':
         context.fillStyle = 'white';
         context.fillRect(0, 0, width, height);
@@ -639,9 +649,9 @@ const Canvas = ({
   }, []);
 
   // Aktualizuj tło gdy zmieni się tryb
-  useEffect(() => {
-    drawBackground();
-  }, [backgroundMode]);
+  // useEffect(() => {
+  //   drawBackground();
+  // }, [backgroundMode]);
 
   // 🔹 DODANE: Aktualizuj kontekst rysowania gdy zmieniają się narzędzia/kolor/rozmiar
   useEffect(() => {
