@@ -109,11 +109,13 @@ io.on("connection", (socket) => {
 
     // 3. TWORZENIE POPRAWNEGO UŻYTKOWNIKA
     const safeUser = { ...user };
-    if (safeUser.id) delete safeUser.id;
+    // if (safeUser.id) delete safeUser.id;
 
     const userData = {
       ...safeUser,
-      id: socket.id,
+      id: safeUser.id || socket.id,
+      // id: socket.id,
+      socketId: socket.id,
       position: { x: 0, y: 0 }
     };
 

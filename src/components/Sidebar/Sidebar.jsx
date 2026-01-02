@@ -6,7 +6,6 @@ const Sidebar = ({ socket, currentUser }) => {
   const [remoteStreams, setRemoteStreams] = useState({});
   const [connectionStates, setConnectionStates] = useState({});
 
-  // 🔹 Stan zwinięcia panelu
   const [collapsed, setCollapsed] = useState(false);
 
   const videoRef = useRef(null);
@@ -25,7 +24,6 @@ const Sidebar = ({ socket, currentUser }) => {
     ]
   };
 
-  // 1. Inicjalizacja kamery
   useEffect(() => {
     let mounted = true;
 
@@ -39,7 +37,6 @@ const Sidebar = ({ socket, currentUser }) => {
           return;
         }
 
-        // Domyślnie wyłączamy oba ślady (startujemy "po cichu" i bez wizji)
         mediaStream.getAudioTracks().forEach(track => track.enabled = false);
         mediaStream.getVideoTracks().forEach(track => track.enabled = false);
 
@@ -47,7 +44,7 @@ const Sidebar = ({ socket, currentUser }) => {
 
         if (videoRef.current) {
           videoRef.current.srcObject = mediaStream;
-          videoRef.current.muted = true; // Lokalne wideo zawsze wyciszone, żeby nie słyszeć siebie
+          videoRef.current.muted = true;
         }
 
         Object.keys(peerConnections.current).forEach(socketId => {
@@ -67,8 +64,8 @@ const Sidebar = ({ socket, currentUser }) => {
 
         const audioTracks = mediaStream.getAudioTracks();
         audioTracks.forEach(track => {
-          track.stop(); // Fizyczne zatrzymanie
-          mediaStream.removeTrack(track); // Usuwamy z obiektu streamu
+          track.stop();
+          mediaStream.removeTrack(track);
         });
         setMicOn(false);
 
@@ -103,19 +100,18 @@ const Sidebar = ({ socket, currentUser }) => {
       }
     }
   };
+
   const toggleMic = async () => {
     if (micOn) {
-      // 🔴 WYŁĄCZANIE (Fizyczne odcięcie)
       if (streamRef.current) {
         const audioTracks = streamRef.current.getAudioTracks();
         audioTracks.forEach(track => {
-          track.stop(); // To sprawia, że dioda nagrywania gaśnie
-          streamRef.current.removeTrack(track); // Usuwamy ślad
+          track.stop();
+          streamRef.current.removeTrack(track);
         });
       }
       setMicOn(false);
     } else {
-      // 🟢 WŁĄCZANIE (Nowe żądanie dostępu)
       try {
         const newStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const newAudioTrack = newStream.getAudioTracks()[0];
@@ -124,16 +120,8 @@ const Sidebar = ({ socket, currentUser }) => {
           streamRef.current.addTrack(newAudioTrack);
         }
 
-        // Aktualizujemy ścieżkę we wszystkich połączeniach
         Object.values(peerConnections.current).forEach((pc) => {
-          const senders = pc.getSenders();
-          // Szukamy sendera odpowiedzialnego za audio
-          const audioSender = senders.find(s => s.track && s.track.kind === 'audio')
-            || senders.find(s => !s.track && s.transport); // Czasem sender ma track null po stop()
-
-          // Alternatywnie szukamy po transcieverze, co jest pewniejsze
           const transceiver = pc.getTransceivers().find(t => t.receiver.track.kind === 'audio');
-
           if (transceiver && transceiver.sender) {
             transceiver.sender.replaceTrack(newAudioTrack).catch(err => console.error("Replace Track Err:", err));
           }
@@ -146,9 +134,10 @@ const Sidebar = ({ socket, currentUser }) => {
       }
     }
   };
+
   // 2. Logika WebRTC
   useEffect(() => {
-    if (!socket) return;
+    if (!socket || !currentUser) return;
 
     const processIceQueue = async (socketId, pc) => {
       const queue = iceCandidatesQueue.current[socketId];
@@ -164,12 +153,11 @@ const Sidebar = ({ socket, currentUser }) => {
       }
     };
 
-
-
+    // Tworzymy połączenie używając SOCKET ID, bo to jest adres sieciowy
     const createPeerConnection = (socketId) => {
       if (peerConnections.current[socketId]) return peerConnections.current[socketId];
 
-      console.log(`🛠️ Tworzenie PeerConnection dla ${socketId}`);
+      console.log(`🛠️ Tworzenie PeerConnection dla SOCKET: ${socketId}`);
       const pc = new RTCPeerConnection(rtcConfig);
 
       pc.oniceconnectionstatechange = () => {
@@ -180,7 +168,7 @@ const Sidebar = ({ socket, currentUser }) => {
         if (event.candidate) {
           socket.emit("ice-candidate", {
             candidate: event.candidate,
-            to: socketId
+            to: socketId // Wysyłamy do Socket ID
           });
         }
       };
@@ -192,13 +180,13 @@ const Sidebar = ({ socket, currentUser }) => {
 
         setRemoteStreams(prev => ({
           ...prev,
-          [socketId]: remoteStream
+          [socketId]: remoteStream // Mapujemy strumień do Socket ID
         }));
       };
 
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => pc.addTrack(track, streamRef.current));
-      } 
+      }
       if (!streamRef.current || streamRef.current.getAudioTracks().length === 0) {
         pc.addTransceiver('audio', { direction: 'sendrecv' });
       }
@@ -210,51 +198,68 @@ const Sidebar = ({ socket, currentUser }) => {
       return pc;
     };
 
-    const initiateCall = async (targetUserId) => {
-      console.log(`📞 Dzwonię do: ${targetUserId}`);
-      const pc = createPeerConnection(targetUserId);
+    // 🟢 ZMIANA: initiateCall przyjmuje teraz targetSocketId
+    const initiateCall = async (targetSocketId) => {
+      console.log(`📞 Dzwonię do SOCKET: ${targetSocketId}`);
+      const pc = createPeerConnection(targetSocketId);
       try {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
-        socket.emit("call-user", { offer: pc.localDescription, to: targetUserId });
+        socket.emit("call-user", { offer: pc.localDescription, to: targetSocketId });
       } catch (err) { console.error("Offer Error:", err); }
     };
 
     const handleWhiteboardData = (data) => {
-      const others = data.users.filter(u => u.id !== socket.id);
+      const others = data.users.filter(u => u.id !== currentUser.id);
       setUsers(others);
-      others.forEach(user => initiateCall(user.id));
+
+      // 🟢 ZMIANA KLUCZOWA: Dzwonimy używając user.socketId, a nie user.id
+      others.forEach(user => {
+        if (user.socketId) {
+          initiateCall(user.socketId);
+        }
+      });
     };
 
     const handleUserJoined = async (data) => {
-      if (data.user.id === socket.id) return;
+      if (data.user.id === currentUser.id) return;
       setUsers(prev => {
         const exists = prev.find(u => u.id === data.user.id);
         if (exists) return prev;
         return [...prev, data.user];
       });
+      // Uwaga: Zazwyczaj joiner dzwoni do reszty (handleWhiteboardData), więc tu nie musimy inicjować
     };
 
     const handleUserLeft = (data) => {
-      const leftUserId = data.userId;
-      setUsers(data.users.filter(u => u.id !== socket.id));
+      // data.userId w zdarzeniu user-left z serwera to Socket ID (według server.js)
+      // Ale my filtrujemy listę wyświetlania po persistent ID.
+      
+      // 1. Znajdź użytkownika, który wychodzi, żeby upewnić się co do jego socketId
+      // (W przypadku server.js, logicznie userId przy disconnect to socket.id, ale sprawdźmy to)
+      const leftSocketId = data.userId; // Z serwera przychodzi socket.id jako userId przy disconnect
 
-      if (peerConnections.current[leftUserId]) {
-        peerConnections.current[leftUserId].close();
-        delete peerConnections.current[leftUserId];
+      // 2. Wyczyść połączenia WebRTC używając Socket ID
+      if (peerConnections.current[leftSocketId]) {
+        peerConnections.current[leftSocketId].close();
+        delete peerConnections.current[leftSocketId];
       }
-      delete iceCandidatesQueue.current[leftUserId];
+      delete iceCandidatesQueue.current[leftSocketId];
 
       setRemoteStreams(prev => {
         const newStreams = { ...prev };
-        delete newStreams[leftUserId];
+        delete newStreams[leftSocketId];
         return newStreams;
       });
       setConnectionStates(prev => {
         const newStates = { ...prev };
-        delete newStates[leftUserId];
+        delete newStates[leftSocketId];
         return newStates;
       });
+
+      // 3. Aktualizuj listę UI (tu musimy filtrować po czymś co mamy)
+      // Ponieważ serwer wysyła nową listę 'users' w tym zdarzeniu, po prostu jej użyjmy:
+      setUsers(data.users.filter(u => u.id !== currentUser.id));
     };
 
     const handleCallMade = async (data) => {
@@ -305,7 +310,7 @@ const Sidebar = ({ socket, currentUser }) => {
       socket.off('answer-made', handleAnswerMade);
       socket.off('ice-candidate', handleIceCandidate);
     };
-  }, [socket]);
+  }, [socket, currentUser]);
 
   useEffect(() => {
     return () => {
@@ -315,7 +320,6 @@ const Sidebar = ({ socket, currentUser }) => {
 
   return (
     <>
-      {/* 🔹 PRZYCISK ZWIJANIA (ZAKŁADKA) */}
       <div
         className={`sidebar-toggle ${collapsed ? 'collapsed' : ''}`}
         onClick={() => setCollapsed(!collapsed)}
@@ -373,14 +377,15 @@ const Sidebar = ({ socket, currentUser }) => {
           <div className="remote-videos-grid">
             {users.map((user) => (
               <div key={user.id} className="remote-video-wrapper">
-                {remoteStreams[user.id] ? (
-                  <RemoteVideo stream={remoteStreams[user.id]} />
+                {/* 🟢 ZMIANA KLUCZOWA: Szukamy strumienia po user.socketId, a nie user.id */}
+                {remoteStreams[user.socketId] ? (
+                  <RemoteVideo stream={remoteStreams[user.socketId]} />
                 ) : (
                   <div className="video-placeholder">
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                       <span>Łączenie...</span>
                       <span style={{ fontSize: '10px', marginTop: '5px', color: '#95a5a6' }}>
-                        Stan: {connectionStates[user.id] || 'init'}
+                        Stan: {connectionStates[user.socketId] || 'init'}
                       </span>
                     </div>
                   </div>
