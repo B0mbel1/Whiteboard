@@ -82,8 +82,23 @@ const PointerTrail = ({ active, socket, whiteboardId }) => {
     const mainCanvas = document.querySelector('.canvas-area');
     if (!mainCanvas) return;
 
+    // Funkcja pomocnicza sprawdzająca, czy najeżdżamy na element UI
+    const isHoveringUI = (target) => {
+      return (
+        target.closest('.background-toggle') || // Przycisk tła
+        target.closest('.chat-toggle') ||       // Przycisk czatu
+        target.closest('.chat-container') ||    // Okno czatu
+        target.closest('.toolbar') ||           // Toolbar (dla pewności)
+        target.closest('.multimedia-modal')     // Modale
+      );
+    };
+
     const handleMouseMove = (e) => {
       if (!active) return;
+      
+      // ⛔ BLOKADA: Jeśli najeżdżamy na UI, nie rób nic
+      if (isHoveringUI(e.target)) return;
+
       const rect = mainCanvas.getBoundingClientRect();
       // Sprawdź czy kursor jest nad obszarem roboczym
       if (
@@ -104,6 +119,10 @@ const PointerTrail = ({ active, socket, whiteboardId }) => {
 
     const handleMouseDown = (e) => {
       if (!active) return;
+
+      // ⛔ BLOKADA: Jeśli klikamy w UI, nie twórz czerwonego okręgu
+      if (isHoveringUI(e.target)) return;
+
       const rect = mainCanvas.getBoundingClientRect();
       if (
         e.clientX >= rect.left &&
