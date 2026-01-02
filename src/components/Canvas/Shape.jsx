@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, tool }) => {
+const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, tool, color }) => {
     // Domyślne wymiary
     const [dims, setDims] = useState({
         w: width || 100,
@@ -126,34 +126,34 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, to
             preserveAspectRatio: "none",
             style: { display: 'block', pointerEvents: 'none' }
         };
-
+        const shapeColor = color || 'black';
         // Style sterujące interakcją w zależności od wybranego narzędzia
         const interactableStyle = { pointerEvents: isDrawingTool ? 'none' : 'auto' };
         const strokeStyle = { pointerEvents: isDrawingTool ? 'none' : 'visibleStroke' };
 
         switch (type) {
-            case 'square': return <div style={{ width: '100%', height: '100%', background: 'black', ...interactableStyle }} />;
-
+            case 'square':
+                return <div style={{ width: '100%', height: '100%', background: shapeColor, ...interactableStyle }} />;
             case 'rectangle_outline':
                 return (
                     <svg {...commonSvgContainerProps}>
                         {/* Niewidoczna, gruba ramka do łapania myszką */}
-                        <rect 
-                            x="1" y="1" width="22" height="22" 
-                            fill="none" stroke="transparent" strokeWidth="15" 
-                            style={{ 
+                        <rect
+                            x="1" y="1" width="22" height="22"
+                            fill="none" stroke={shapeColor} strokeWidth="5"
+                            style={{
                                 pointerEvents: isDrawingTool ? 'none' : 'auto', // Tutaj naprawiamy interakcję
-                                cursor: 'pointer' 
-                            }} 
-                            vectorEffect="non-scaling-stroke" 
+                                cursor: 'pointer'
+                            }}
+                            vectorEffect="non-scaling-stroke"
                         />
                         {/* Widoczna ramka */}
                         <rect x="1" y="1" width="22" height="22" fill="none" stroke="black" strokeWidth="2" style={{ pointerEvents: 'none' }} vectorEffect="non-scaling-stroke" />
                     </svg>
                 );
 
-            case 'circle': return <div style={{ width: '100%', height: '100%', background: 'black', borderRadius: '50%', ...interactableStyle }} />;
-
+            case 'circle':
+                return <div style={{ width: '100%', height: '100%', background: shapeColor, borderRadius: '50%', ...interactableStyle }} />;
             case 'arrow':
                 const strokeWidth = 3;
                 const markerSize = 10;
@@ -174,17 +174,17 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, to
                         }}
                     >
                         <defs>
-                            <marker 
-                                id={`arrowhead-${id}`} 
-                                markerWidth={markerSize} 
-                                markerHeight={markerSize} 
-                                refX={9} 
-                                refY={markerSize / 2} 
+                            <marker
+                                id={`arrowhead-${id}`}
+                                markerWidth={markerSize}
+                                markerHeight={markerSize}
+                                refX={9}
+                                refY={markerSize / 2}
                                 orient="auto"
                             >
-                                <path 
-                                    d={`M 0 0 L ${markerSize} ${markerSize / 2} L 0 ${markerSize} Z`} 
-                                    fill="black" 
+                                <path
+                                    d={`M 0 0 L ${markerSize} ${markerSize / 2} L 0 ${markerSize} Z`}
+                                    fill={shapeColor}
                                 />
                             </marker>
                         </defs>
@@ -192,17 +192,17 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, to
                         {/* Gruby duch do chwytania - znika dla myszy przy rysowaniu */}
                         <line
                             x1={0} y1={0} x2={dims.w} y2={dims.h}
-                            stroke="transparent" strokeWidth="20"
+                            stroke={shapeColor} strokeWidth={strokeWidth}
                             // 🟢 TUTAJ NAPRAWIAMY RYSOWANIE "PRZEZ" STRZAŁKĘ
                             // Jeśli isDrawingTool -> pointerEvents: none
-                            style={{ 
-                                pointerEvents: isDrawingTool ? 'none' : 'auto', 
-                                cursor: 'grab' 
+                            style={{
+                                pointerEvents: isDrawingTool ? 'none' : 'auto',
+                                cursor: 'grab'
                             }}
                         />
                         <line
                             x1={0} y1={0} x2={dims.w} y2={dims.h}
-                            stroke="black" strokeWidth={strokeWidth}
+                            stroke={shapeColor} strokeWidth={strokeWidth}
                             pointerEvents="none"
                             markerEnd={`url(#arrowhead-${id})`}
                         />
@@ -232,26 +232,26 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, to
                         onMouseDown={handleResizeStart}
                         style={{
                             position: 'absolute',
-                            width: 12, 
+                            width: 12,
                             height: 12,
-                            background: 'white', 
-                            border: '1px solid #3498db', 
-                            borderRadius: type === 'arrow' ? '50%' : '0', 
-                            zIndex: 101, 
+                            background: 'white',
+                            border: '1px solid #3498db',
+                            borderRadius: type === 'arrow' ? '50%' : '0',
+                            zIndex: 101,
                             // Uchwyt zmiany rozmiaru też znika dla myszy przy rysowaniu
                             pointerEvents: isDrawingTool ? 'none' : 'auto',
-                            ...(type === 'arrow' 
-                                ? { 
-                                    left: dims.w, 
-                                    top: dims.h, 
-                                    transform: 'translate(-50%, -50%)', 
-                                    cursor: 'crosshair' 
-                                  }
-                                : { 
-                                    bottom: -6, 
-                                    right: -6, 
-                                    cursor: 'nwse-resize' 
-                                  }
+                            ...(type === 'arrow'
+                                ? {
+                                    left: dims.w,
+                                    top: dims.h,
+                                    transform: 'translate(-50%, -50%)',
+                                    cursor: 'crosshair'
+                                }
+                                : {
+                                    bottom: -6,
+                                    right: -6,
+                                    cursor: 'nwse-resize'
+                                }
                             )
                         }}
                     />

@@ -43,23 +43,23 @@ const WhiteboardRouter = () => {
 
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem("whiteboard-user");
-    
+
     if (saved) {
       return JSON.parse(saved);
     }
-    
+
     const userId = 'user_' + Math.random().toString(36).substring(2, 15);
     const userName = 'User' + Math.floor(Math.random() * 1000);
     const userColor = `hsl(${Math.random() * 360}, 80%, 60%)`;
-    
+
     console.log("👤 Generated user:", { id: userId, name: userName, color: userColor });
-    
+
     const user = {
       id: userId,
       name: userName,
       color: userColor
     };
-    
+
     localStorage.setItem("whiteboard-user", JSON.stringify(user));
     return user;
   });
@@ -89,11 +89,15 @@ const WhiteboardRouter = () => {
     setCurrentUser(updatedUser);
     localStorage.setItem("whiteboard-user", JSON.stringify(updatedUser));
     updateUserOnServer({ color: newColor });
+
+    setUsers(prevUsers => prevUsers.map(u =>
+      u.id === currentUser.id ? { ...u, color: newColor } : u
+    ));
   };
 
   const handleUserNameChange = (newName) => {
     if (newName.trim() === '') return;
-    
+
     const updatedUser = { ...currentUser, name: newName };
     setCurrentUser(updatedUser);
     localStorage.setItem("whiteboard-user", JSON.stringify(updatedUser));
@@ -102,25 +106,25 @@ const WhiteboardRouter = () => {
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (showUserColorPicker && 
-          userColorPickerRef.current && 
-          !userColorPickerRef.current.contains(event.target) &&
-          userColorDotRef.current && 
-          !userColorDotRef.current.contains(event.target)) {
+      if (showUserColorPicker &&
+        userColorPickerRef.current &&
+        !userColorPickerRef.current.contains(event.target) &&
+        userColorDotRef.current &&
+        !userColorDotRef.current.contains(event.target)) {
         setShowUserColorPicker(false);
       }
-      
-      if (showUsersList && 
-          usersListRef.current && 
-          !usersListRef.current.contains(event.target) &&
-          usersCounterRef.current && 
-          !usersCounterRef.current.contains(event.target)) {
+
+      if (showUsersList &&
+        usersListRef.current &&
+        !usersListRef.current.contains(event.target) &&
+        usersCounterRef.current &&
+        !usersCounterRef.current.contains(event.target)) {
         setShowUsersList(false);
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
-    
+
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
@@ -194,11 +198,11 @@ const WhiteboardRouter = () => {
       if (data.emojis) {
         setEmojis(data.emojis);
       }
-      
+
       if (data.users) {
         setUsers(data.users);
       }
-      
+
       if (data.backgroundMode) {
         setBackgroundMode(data.backgroundMode);
       }
@@ -225,10 +229,10 @@ const WhiteboardRouter = () => {
 
     newSocket.on('user-updated', (data) => {
       console.log("👤 User updated:", data.userId, data.updates);
-      
-      setUsers(prevUsers => 
-        prevUsers.map(user => 
-          user.id === data.userId 
+
+      setUsers(prevUsers =>
+        prevUsers.map(user =>
+          user.id === data.userId
             ? { ...user, ...data.updates }
             : user
         )
@@ -423,15 +427,15 @@ const WhiteboardRouter = () => {
         alert('Nie znaleziono obszaru canvas!');
         return;
       }
-      
+
       const elementsToHide = [
         '.background-toggle',
         '.remote-cursor',
         '.selection-overlay'
       ];
-      
+
       const originalStyles = [];
-      
+
       elementsToHide.forEach(selector => {
         const elements = document.querySelectorAll(selector);
         elements.forEach(el => {
@@ -442,11 +446,11 @@ const WhiteboardRouter = () => {
           el.style.display = 'none';
         });
       });
-      
+
       const saveBtn = document.querySelector('.save-btn');
       const originalText = saveBtn.textContent;
       saveBtn.textContent = '⏳ Saving...';
-      
+
       try {
         const canvas = await html2canvas(canvasArea, {
           backgroundColor: null,
@@ -462,23 +466,23 @@ const WhiteboardRouter = () => {
             );
           }
         });
-        
+
         const dataUrl = canvas.toDataURL('image/png');
         const link = document.createElement('a');
-        
+
         const now = new Date();
-        const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-        const timeStr = `${String(now.getHours()).padStart(2,'0')}-${String(now.getMinutes()).padStart(2,'0')}-${String(now.getSeconds()).padStart(2,'0')}`;
-        
+        const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const timeStr = `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+
         link.download = `whiteboard-${whiteboardId || 'drawing'}_${dateStr}_${timeStr}.png`;
         link.href = dataUrl;
-        
+
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        
+
         console.log('✅ Whiteboard saved!');
-        
+
       } finally {
         originalStyles.forEach(({ element, display }) => {
           if (display) {
@@ -487,10 +491,10 @@ const WhiteboardRouter = () => {
             element.style.removeProperty('display');
           }
         });
-        
+
         saveBtn.textContent = originalText;
       }
-      
+
     } catch (error) {
       console.error('Error saving whiteboard:', error);
       alert('Error saving whiteboard: ' + error.message);
@@ -526,20 +530,20 @@ const WhiteboardRouter = () => {
               className="user-name-input"
             />
           </span>
-          
+
           {/* Kropka koloru użytkownika z inputem color */}
           <div className="user-color-wrapper">
-            <label 
+            <label
               htmlFor="user-color-input"
               ref={userColorDotRef}
               className="user-color-dot"
-              style={{ 
+              style={{
                 backgroundColor: currentUser.color,
                 cursor: 'pointer'
               }}
               title="Change your color"
             />
-            
+
             {/* Ukryty input type="color" */}
             <input
               id="user-color-input"
@@ -555,7 +559,7 @@ const WhiteboardRouter = () => {
               }}
             />
           </div>
-          
+
           <div className="users-container">
             <span
               ref={usersCounterRef}
@@ -565,7 +569,7 @@ const WhiteboardRouter = () => {
             >
               👥 Active Users: <strong>{users.length}</strong>
             </span>
-            
+
             {showUsersList && users.length > 0 && (
               <div
                 ref={usersListRef}
@@ -576,18 +580,18 @@ const WhiteboardRouter = () => {
                 <div className="users-list-title">
                   Online Users ({users.length})
                 </div>
-                
+
                 <div className="users-list-scroll">
                   {users.map(user => (
-                    <div 
-                      key={user.id} 
+                    <div
+                      key={user.id}
                       className="user-list-item"
                     >
-                      <div 
+                      <div
                         className="user-color-indicator"
                         style={{ backgroundColor: user.color }}
                       />
-                      <span 
+                      <span
                         className="user-name"
                         title={user.name}
                       >
@@ -630,8 +634,8 @@ const WhiteboardRouter = () => {
           onImageCreate={handleImageCreate} // DODANE
         />
 
-        <PointerTrail 
-          active={tool === 'pointer'} 
+        <PointerTrail
+          active={tool === 'pointer'}
           socket={socketRef.current}
           whiteboardId={whiteboardId}
         />
@@ -645,6 +649,7 @@ const WhiteboardRouter = () => {
           whiteboardId={whiteboardId}
           socket={socketRef.current}
           currentUser={currentUser}
+          users={users}
           onDrawing={handleDrawing}
           onCursorMove={handleCursorMove}
           textBoxes={textBoxes}

@@ -19,6 +19,7 @@ const Canvas = ({
   socket,
   setTool,
   currentUser,
+  users,
   onDrawing,
   onCursorMove,
   textBoxes: initialTextBoxes,
@@ -142,7 +143,7 @@ const Canvas = ({
     drawBackground();
   }, [backgroundMode]);
 
-  
+
 
   const undo = () => {
     if (historyRef.current.step < 0) return;
@@ -785,7 +786,7 @@ const Canvas = ({
       // Resetujemy stan przeciągania
       setIsDraggingSelection(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool]);
 
   useEffect(() => {
@@ -1000,7 +1001,7 @@ const Canvas = ({
       const y = e.clientY - rect.top;
       let defaultWidth = 100, defaultHeight = 100, startX = x - 50, startY = y - 50;
       if (activeShape === 'arrow') { startX = x; startY = y; defaultWidth = 150; defaultHeight = 0; }
-      const newShape = { id: `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: startX, y: startY, width: defaultWidth, height: defaultHeight, type: activeShape };
+      const newShape = { id: `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: startX, y: startY, width: defaultWidth, height: defaultHeight, type: activeShape, userId: currentUser.id, color: currentUser.color };
       setShapes(prev => [...prev, newShape]);
       saveToHistory(ACTION_TYPES.SHAPE_CREATE, { shape: newShape });
       if (onShapeCreate) onShapeCreate(newShape);
@@ -1439,9 +1440,12 @@ const Canvas = ({
   }, [whiteboardId]);
 
   const remoteCursorsArray = Array.from(remoteCursors.values());
+  //const dynamicColor = creator ? creator.color : '#000000';
 
   return (
+
     <div className="canvas-container" ref={containerRef}>
+
       <div
         className={`canvas-area background-${backgroundMode} ${tool === 'select' ? 'is-selecting' : ''}`}
         onClick={handleCanvasClick}>
@@ -1563,17 +1567,30 @@ const Canvas = ({
             onUpdate={handleImageUpdate}
           />
         ))}
-        {shapes.map(shape => (
-          <Shape
-            key={shape.id}
-            {...shape}
-            selected={selectedShapeId === shape.id}
-            onSelect={setSelectedShapeId}
-            onRemove={removeShape}
-            onUpdate={handleShapeUpdate}
-            tool={tool}
-          />
-        ))}
+
+        {shapes.map(shape => {
+          // 1. Najpierw szukamy "żywego" użytkownika na liście online
+          const creator = users ? users.find(u => u.id === shape.userId) : null;
+
+          // 2. LOGIKA PRIORYTETÓW (To jest kluczowa zmiana):
+          // - Jeśli user jest online (creator istnieje) -> weź jego AKTUALNY kolor (dynamiczny)
+          // - Jeśli usera nie ma (offline) -> weź kolor zapisany w kształcie (shape.color)
+          // - Jeśli nic nie ma -> czarny
+          const dynamicColor = creator ? creator.color : (shape.color || '#000000');
+
+          return (
+            <Shape
+              key={shape.id}
+              {...shape}
+              color={dynamicColor} // Przekazujemy ten dynamicznie wyliczony kolor
+              selected={selectedShapeId === shape.id}
+              onSelect={setSelectedShapeId}
+              onRemove={removeShape}
+              onUpdate={handleShapeUpdate}
+              tool={tool}
+            />
+          );
+        })}
 
         {remoteCursorsArray.map((cursor, index) => {
           // Pobierz dane usera z obiektu kursora
