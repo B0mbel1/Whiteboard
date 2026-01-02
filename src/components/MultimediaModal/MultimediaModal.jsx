@@ -62,6 +62,10 @@ const MultimediaModal = (props) => {
     };
 
     reader.readAsDataURL(file);
+    
+    // Clear the input so the same file can be selected again if needed
+    // and to prevent any lingering state.
+    e.target.value = '';
   };
 
   return (

@@ -547,7 +547,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
         <span className={`arrow ${collapsed ? 'arrow-right' : 'arrow-left'}`}>➤</span>
       </div>
 
-      {showMultimedia && <MultimediaModal onClose={() => setShowMultimedia(false)} onImageCreate={onImageCreate} />}
+      {showMultimedia && <MultimediaModal onClose={() => { setShowMultimedia(false); setTool('cursor'); }} onImageCreate={onImageCreate} />}
 
       <ToolRangeCircle tool={tool} size={size} />
     </>
