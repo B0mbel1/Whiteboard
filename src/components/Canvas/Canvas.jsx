@@ -230,13 +230,36 @@ const Canvas = ({
         setHistoryStep(currentStep - 1);
         break;
       case ACTION_TYPES.MASS_DELETE:
+        // 1. Przywracanie obiektów (bez zmian)
         if (action.data.notes) setNotes(prev => [...prev, ...action.data.notes]);
         if (action.data.textBoxes) setTextBoxes(prev => [...prev, ...action.data.textBoxes]);
         if (action.data.emojis) setEmojis(prev => [...prev, ...action.data.emojis]);
         if (action.data.gifs) setGifs(prev => [...prev, ...action.data.gifs]);
-        if (action.data.images) setImages(prev => [...prev, ...action.data.images]); // DODANE
+        if (action.data.images) setImages(prev => [...prev, ...action.data.images]);
         if (action.data.shapes) setShapes(prev => [...prev, ...action.data.shapes]);
+
+        // 2. Przerysowanie tła (linii wektorowych)
         redrawCanvas();
+
+        // 3. NAPRAWA: Przywracanie wyciętego obrazka "na płótno" (bez blokowania ramką)
+        if (action.data.snapshotData) {
+          const { img, x, y, width, height } = action.data.snapshotData;
+
+          const image = new Image();
+          image.onload = () => {
+            const ctx = drawingContextRef.current;
+            if (ctx) {
+              // Rysujemy obrazek trwale na canvasie
+              ctx.drawImage(image, x, y, width, height);
+            }
+          };
+          image.src = img;
+
+          // 🔹 WAŻNE: Czyścimy stan zaznaczenia, aby ramka nie blokowała edycji
+          setSelectionSnapshot(null);
+          setSelectionBox(null);
+        }
+
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
         break;
@@ -349,9 +372,20 @@ const Canvas = ({
         if (idsToRemove.gifs.length) setGifs(prev => prev.filter(x => !idsToRemove.gifs.includes(x.id)));
         if (idsToRemove.images.length) setImages(prev => prev.filter(x => !idsToRemove.images.includes(x.id))); // DODANE
         if (idsToRemove.shapes.length) setShapes(prev => prev.filter(x => !idsToRemove.shapes.includes(x.id)));
+        if (action.data.snapshotData) {
+          // Upewniamy się, że UI jest czyste
+          setSelectionSnapshot(null);
+          setSelectionBox(null);
 
-        // Dla rysunków nie musimy nic robić, bo stan selectionSnapshot został wyczyszczony przy pierwotnej akcji
-        redrawCanvas();
+          // Przerysowujemy tło (linie wektorowe), a potem wycinamy dziurę
+          redrawCanvas();
+
+          const { x, y, width, height } = action.data.snapshotData;
+          const ctx = drawingContextRef.current;
+          if (ctx) ctx.clearRect(x, y, width, height);
+        } else {
+          redrawCanvas();
+        }
 
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
@@ -1220,6 +1254,14 @@ const Canvas = ({
             );
           };
 
+          const snapshotDataToSave = selectionSnapshot ? {
+            img: selectionSnapshot,
+            x: selectionBox.x,
+            y: selectionBox.y,
+            width: selectionBox.width,
+            height: selectionBox.height
+          } : null;
+
           const notesToDelete = notes.filter(n => isInsideSelection(n.x, n.y, n.width, n.height));
           const textsToDelete = textBoxes.filter(t => isInsideSelection(t.x, t.y, t.width, t.height));
           const emojisToDelete = emojis.filter(e => isInsideSelection(e.x, e.y, e.size || 48, e.size || 48));
@@ -1235,7 +1277,8 @@ const Canvas = ({
               gifs: gifsToDelete,
               images: imagesToDelete, // DODANE
               shapes: shapesToDelete,
-              wasSnapshotDeleted: !!selectionSnapshot
+              wasSnapshotDeleted: !!selectionSnapshot,
+              snapshotData: snapshotDataToSave
             });
           }
 
