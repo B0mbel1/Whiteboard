@@ -84,6 +84,8 @@ const WhiteboardRouter = () => {
     }
   };
 
+
+
   const handleUserColorChange = (newColor) => {
     const updatedUser = { ...currentUser, color: newColor };
     setCurrentUser(updatedUser);
@@ -392,12 +394,19 @@ const WhiteboardRouter = () => {
     }
   };
 
+  const lastCursorTimeRef = useRef(0);
+
   const handleCursorMove = (position) => {
-    if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('cursor-move', {
-        whiteboardId,
-        position
-      });
+    const now = Date.now();
+    // Wysyłamy dane max co 50ms
+    if (now - lastCursorTimeRef.current > 50) {
+      if (socketRef.current && whiteboardId) {
+        socketRef.current.emit('cursor-move', {
+          whiteboardId,
+          position
+        });
+        lastCursorTimeRef.current = now;
+      }
     }
   };
 

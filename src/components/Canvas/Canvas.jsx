@@ -685,7 +685,7 @@ const Canvas = ({
           data.drawingData.forEach(drawing => { drawRemote(drawing); });
         }, 100);
 
-        const otherUsers = data.users.filter(user => user.id !== socket.id);
+        const otherUsers = data.users.filter(user => user.id !== currentUser.id);
         const cursorsMap = new Map();
         otherUsers.forEach(user => {
           cursorsMap.set(user.id, {
@@ -723,7 +723,7 @@ const Canvas = ({
         socket.off('user-left', handleUsersUpdated);
       };
     }
-  }, [socket]);
+  }, [socket, currentUser]);
 
   const clearDrawingCanvas = () => {
     const context = drawingContextRef.current;
