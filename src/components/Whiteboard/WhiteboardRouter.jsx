@@ -84,7 +84,17 @@ const WhiteboardRouter = () => {
     }
   };
 
-
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch((err) => {
+        console.error(`Błąd podczas próby włączenia pełnego ekranu: ${err.message}`);
+      });
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+    }
+  };
 
   const handleUserColorChange = (newColor) => {
     const updatedUser = { ...currentUser, color: newColor };
@@ -621,7 +631,12 @@ const WhiteboardRouter = () => {
           >
             📋 Copy Invite Link
           </button>
-          <button className="fullscreen-btn">⛶ Fullscreen</button>
+          <button
+            className="fullscreen-btn"
+            onClick={toggleFullscreen}
+          >
+            ⛶ Fullscreen
+          </button>
           <button className="save-btn" onClick={handleSave}>💾 Save</button>
         </div>
       </div>
