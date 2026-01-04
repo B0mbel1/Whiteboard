@@ -1138,6 +1138,8 @@ const Canvas = ({
       if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
         if (!clipboard) return;
 
+        e.preventDefault(); // ZAPOBIEGAJ podwójnemu wklejaniu (blokuje event 'paste')
+
         const offset = 20; // Przesunięcie wklejonego elementu
         const newId = `${clipboard.type}_${Date.now()}_copy_${Math.random().toString(36).substr(2, 5)}`;
 
