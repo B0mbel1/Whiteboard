@@ -368,30 +368,44 @@ const WhiteboardRouter = () => {
   };
 
   const handleNoteCreate = (note) => {
+    setNotes(prev => [...prev, note]); // 🔹 Aktualizujemy stan lokalnie
     if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('note-create', {
-        whiteboardId,
-        note
-      });
+      socketRef.current.emit('note-create', { whiteboardId, note });
     }
   };
 
   const handleNoteUpdate = (id, updates) => {
+    setNotes(prev => prev.map(n => n.id === id ? { ...n, ...updates } : n)); // 🔹 Aktualizujemy stan lokalnie
     if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('note-update', {
-        whiteboardId,
-        id,
-        ...updates
-      });
+      socketRef.current.emit('note-update', { whiteboardId, id, ...updates });
+    }
+  };
+
+  const handleTextCreate = (textBox) => {
+    setTextBoxes(prev => [...prev, textBox]); // 🔹 Aktualizujemy stan lokalnie
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('text-create', { whiteboardId, textBox });
+    }
+  };
+
+  const handleTextUpdate = (id, updates) => {
+    setTextBoxes(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t)); // 🔹 Aktualizujemy stan lokalnie
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('text-update', { whiteboardId, id, ...updates });
+    }
+  };
+
+  const handleTextDelete = (id) => {
+    setTextBoxes(prev => prev.filter(t => t.id !== id)); // 🔹 Aktualizujemy stan lokalnie
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('text-delete', { whiteboardId, id });
     }
   };
 
   const handleNoteDelete = (id) => {
+    setNotes(prev => prev.filter(n => n.id !== id)); // 🔹 Aktualizujemy stan lokalnie
     if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('note-delete', {
-        whiteboardId,
-        id
-      });
+      socketRef.current.emit('note-delete', { whiteboardId, id });
     }
   };
 
@@ -678,6 +692,9 @@ const WhiteboardRouter = () => {
           onCursorMove={handleCursorMove}
           textBoxes={textBoxes}
           notes={notes}
+          onTextCreate={handleTextCreate}
+          onTextUpdate={handleTextUpdate}
+          onTextDelete={handleTextDelete}
           onNoteCreate={handleNoteCreate}
           onNoteUpdate={handleNoteUpdate}
           onNoteDelete={handleNoteDelete}

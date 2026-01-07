@@ -26,6 +26,9 @@ const Canvas = ({
   onDrawing,
   onCursorMove,
   textBoxes: initialTextBoxes,
+  onTextCreate,
+  onTextUpdate,
+  onTextDelete,
   notes: initialNotes,
   onNoteCreate,
   onNoteUpdate,
@@ -137,7 +140,8 @@ const Canvas = ({
     SHAPE_CREATE: 'shape_create',
     SHAPE_DELETE: 'shape_delete',
     CLEAR_AREA: 'clear_area',
-    MASS_DELETE: 'mass_delete'
+    MASS_DELETE: 'mass_delete',
+    ERASE_AREA: 'erase_area' // ➕ DODANO NOWY TYP
   };
 
   useEffect(() => { setShapes(initialShapes || []); }, [initialShapes]);
@@ -330,6 +334,11 @@ const Canvas = ({
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
         break;
+      case ACTION_TYPES.ERASE_AREA:
+        historyRef.current.step = currentStep - 1;
+        setHistoryStep(currentStep - 1);
+        redrawCanvas();
+        break;
       case ACTION_TYPES.MASS_DELETE:
         if (action.data.notes) setNotes(prev => [...prev, ...action.data.notes]);
         if (action.data.textBoxes) setTextBoxes(prev => [...prev, ...action.data.textBoxes]);
@@ -341,6 +350,7 @@ const Canvas = ({
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
         break;
+
       default:
         historyRef.current.step = currentStep - 1;
         setHistoryStep(currentStep - 1);
@@ -430,6 +440,11 @@ const Canvas = ({
         historyRef.current.step = nextStep;
         setHistoryStep(nextStep);
         break;
+      case ACTION_TYPES.ERASE_AREA:
+        historyRef.current.step = nextStep;
+        setHistoryStep(nextStep);
+        redrawCanvas();
+        break;
       case ACTION_TYPES.MASS_DELETE:
         // Ponownie usuwamy elementy
         const idsToRemove = {
@@ -485,15 +500,22 @@ const Canvas = ({
     const context = drawingContextRef.current;
     if (!context) return;
 
-    // Najpierw wyczyść drawing canvas (clearDrawingCanvas resets transform too)
+    // Najpierw wyczyść drawing canvas
     clearDrawingCanvas();
 
     // Narysuj historię
     for (let i = 0; i <= historyRef.current.step; i++) {
       const action = historyRef.current.history[i];
+
       if (action.type === ACTION_TYPES.DRAWING && action.data && action.data.points && action.data.points.length > 1) {
-        // drawCompletePath musi rysować z uwzględnieniem obecnego setupDrawingContext (który ma translate)
         drawCompletePath(context, action.data.tool, action.data.color, action.data.size, action.data.points);
+      }
+      // ➕ DODANO: Jeśli w historii jest akcja wymazania obszaru, wykonaj ją ponownie na canvasie
+      else if (action.type === ACTION_TYPES.ERASE_AREA) {
+        const { x, y, width, height } = action.data;
+        // Ponieważ setupDrawingContext ustawia transformację (translate), 
+        // możemy używać współrzędnych świata (x, y) bezpośrednio.
+        context.clearRect(x, y, width, height);
       }
     }
   };
@@ -1104,6 +1126,7 @@ const Canvas = ({
       if (setTool) setTool('cursor');
     } else if (tool === 'text') {
       const newTextBox = { id: `text_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x, y, text: '', width: 200, height: 100 };
+      if (onTextCreate) onTextCreate(newTextBox);
       saveToHistory(ACTION_TYPES.TEXT_CREATE, { textBox: newTextBox });
       setTextBoxes(prev => [...prev, newTextBox]);
       if (socket) socket.emit('text-create', { whiteboardId, textBox: newTextBox });
@@ -1154,27 +1177,33 @@ const Canvas = ({
 
   const handleNoteUpdate = (id, updates) => {
     if (onNoteUpdate) {
-      const dataToSend = { ...updates };
-      if (updates.position) { dataToSend.x = updates.position.x; dataToSend.y = updates.position.y; }
-      onNoteUpdate(id, dataToSend);
+      onNoteUpdate(id, updates);
     }
   };
 
   const handleNoteDelete = (id) => { removeNote(id); };
 
-  const removeTextBox = (id) => {
-    const textBoxToDelete = textBoxes.find(textBox => textBox.id === id);
-    if (textBoxToDelete) {
-      saveToHistory(ACTION_TYPES.TEXT_DELETE, { textBoxId: id, textBox: textBoxToDelete });
-      setTextBoxes(prev => prev.filter(tb => tb.id !== id));
-      if (selectedTextBoxId === id) setSelectedTextBoxId(null);
-      if (socket) socket.emit('text-delete', { whiteboardId, id });
+  // const removeTextBox = (id) => {
+  //   const textBoxToDelete = textBoxes.find(textBox => textBox.id === id);
+  //   if (textBoxToDelete) {
+  //     saveToHistory(ACTION_TYPES.TEXT_DELETE, { textBoxId: id, textBox: textBoxToDelete });
+  //     setTextBoxes(prev => prev.filter(tb => tb.id !== id));
+  //     if (selectedTextBoxId === id) setSelectedTextBoxId(null);
+  //     if (socket) socket.emit('text-delete', { whiteboardId, id });
+  //   }
+  // };
+
+  const handleTextUpdate = (id, updates) => {
+    if (onTextUpdate) {
+      onTextUpdate(id, updates);
     }
   };
 
-  const handleTextUpdate = (id, newProps) => {
-    setTextBoxes(prev => prev.map(textBox => textBox.id === id ? { ...textBox, ...newProps } : textBox));
-    if (socket) socket.emit('text-update', { whiteboardId, id, ...newProps });
+  const removeTextBox = (id) => {
+    if (onTextDelete) {
+      onTextDelete(id);
+      setSelectedTextBoxId(null);
+    }
   };
 
   // Obsługa wklejania zdjęć (Ctrl+V ze schowka systemowego)
@@ -1353,6 +1382,7 @@ const Canvas = ({
           const imagesToDelete = images.filter(img => isInsideSelection(img.x, img.y, img.width || 200, 100));
           const shapesToDelete = shapes.filter(s => isInsideSelection(s.x, s.y, s.width || 100, Math.max(s.height || 100, 10)));
 
+          // Zapisz masowe usuwanie obiektów (jeśli cokolwiek usuwamy)
           if (notesToDelete.length > 0 || textsToDelete.length > 0 || emojisToDelete.length > 0 || gifsToDelete.length > 0 || imagesToDelete.length > 0 || shapesToDelete.length > 0 || selectionSnapshot) {
             saveToHistory(ACTION_TYPES.MASS_DELETE, {
               notes: notesToDelete,
@@ -1365,10 +1395,30 @@ const Canvas = ({
             });
           }
 
-          if (selectionSnapshot && originalCaptureRect && socket) {
-            socket.emit('erase-area', { whiteboardId, x: originalCaptureRect.x, y: originalCaptureRect.y, width: originalCaptureRect.width, height: originalCaptureRect.height });
+          // 🔹 NOWOŚĆ: Obsługa wymazywania obszaru (obrazka/rysunków) 🔹
+          if (selectionSnapshot && originalCaptureRect) {
+
+            // 1. Wyślij informację do innych użytkowników
+            if (socket) {
+              socket.emit('erase-area', {
+                whiteboardId,
+                x: originalCaptureRect.x,
+                y: originalCaptureRect.y,
+                width: originalCaptureRect.width,
+                height: originalCaptureRect.height
+              });
+            }
+
+            // 2. Zapisz akcję wymazania do lokalnej historii (dla redrawCanvas)
+            saveToHistory(ACTION_TYPES.ERASE_AREA, {
+              x: originalCaptureRect.x,
+              y: originalCaptureRect.y,
+              width: originalCaptureRect.width,
+              height: originalCaptureRect.height
+            });
           }
 
+          // Usuwanie elementów ze stanu
           if (notesToDelete.length) { setNotes(prev => prev.filter(n => !notesToDelete.some(del => del.id === n.id))); notesToDelete.forEach(n => socket && socket.emit('note-delete', { whiteboardId, id: n.id })); }
           if (textsToDelete.length) { setTextBoxes(prev => prev.filter(t => !textsToDelete.some(del => del.id === t.id))); textsToDelete.forEach(t => socket && socket.emit('text-delete', { whiteboardId, id: t.id })); }
           if (emojisToDelete.length) { setEmojis(prev => prev.filter(e => !emojisToDelete.some(del => del.id === e.id))); emojisToDelete.forEach(e => socket && socket.emit('emoji-delete', { whiteboardId, id: e.id })); }
@@ -1379,6 +1429,9 @@ const Canvas = ({
           setSelectionSnapshot(null);
           setSelectionBox(null);
           setOriginalCaptureRect(null);
+
+          // 🔹 NOWOŚĆ: Przerysuj canvas, aby uwzględnić "dziurę" po ERASE_AREA
+          redrawCanvas();
           return;
         }
 
@@ -1653,24 +1706,28 @@ const Canvas = ({
           <div key={note.id} style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none', width: '100%', height: '100%' }}>
             <Note
               key={note.id}
-              id={note.id}
-              x={note.x + panOffset.x} // Dodajemy offset do wyświetlania
+              {...note}
+              // Wyświetlanie: dodajemy offset (World -> Screen)
+              x={note.x + panOffset.x}
               y={note.y + panOffset.y}
-              width={note.width}
-              height={note.height}
-              initialText={note.text}
               panOffset={panOffset}
               limit={WORLD_LIMIT}
-              onUpdate={(id, updates) => {
-                // Przy zapisie odejmujemy offset
-                if (updates.position) {
-                  handleNoteUpdate(id, { ...updates, position: { x: updates.position.x - panOffset.x, y: updates.position.y - panOffset.y } });
+              onUpdate={(id, data) => {
+                // Zapis: odejmujemy offset (Screen -> World) i spłaszczamy strukturę
+                const cleanData = { ...data };
+
+                // Jeśli komponent wysłał obiekt 'position', użyj go do wyliczenia x/y
+                if (cleanData.position) {
+                  cleanData.x = cleanData.position.x - panOffset.x;
+                  cleanData.y = cleanData.position.y - panOffset.y;
+                  delete cleanData.position; // Usuwamy, żeby nie dublować danych w bazie
                 } else {
-                  const cleanUpdates = { ...updates };
-                  if (cleanUpdates.x !== undefined) cleanUpdates.x -= panOffset.x;
-                  if (cleanUpdates.y !== undefined) cleanUpdates.y -= panOffset.y;
-                  handleNoteUpdate(id, cleanUpdates);
+                  // Fallback, jeśli wysłał płaskie x/y (ale są to coordy ekranowe z Note.jsx)
+                  if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
+                  if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
                 }
+
+                handleNoteUpdate(id, cleanData);
               }}
               onRemove={handleNoteDelete}
               selectedNoteId={selectedNoteId}
@@ -1684,6 +1741,7 @@ const Canvas = ({
           <Text
             key={textBox.id}
             id={textBox.id}
+            // Wyświetlanie: World -> Screen
             x={textBox.x + panOffset.x}
             y={textBox.y + panOffset.y}
             panOffset={panOffset}
@@ -1693,9 +1751,19 @@ const Canvas = ({
             text={textBox.text}
             tool={tool}
             onUpdate={(id, data) => {
+              // Zapis: Screen -> World
               const cleanData = { ...data };
-              if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
-              if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
+
+              // Text.jsx wysyła głównie 'position'
+              if (cleanData.position) {
+                cleanData.x = cleanData.position.x - panOffset.x;
+                cleanData.y = cleanData.position.y - panOffset.y;
+                delete cleanData.position;
+              } else {
+                if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
+                if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
+              }
+
               handleTextUpdate(id, cleanData);
             }}
             onRemove={removeTextBox}
