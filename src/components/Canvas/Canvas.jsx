@@ -56,9 +56,10 @@ const Canvas = ({
 }) => {
   const [remoteCursors, setRemoteCursors] = useState(new Map());
   const [isChatVisible, setIsChatVisible] = useState(false);
+  const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
 
   const backgroundModeRef = useRef(backgroundMode);
-
+  const currentMousePosRef = useRef({ x: 0, y: 0 }); // 🔹 DODAJ TO (śledzenie kursora)
   // Dwa canvasy: tło i rysunek
   const backgroundCanvasRef = useRef(null);
   const drawingCanvasRef = useRef(null);
@@ -150,46 +151,86 @@ const Canvas = ({
   // --- START NA ŚRODKU EKRANU ---
   useEffect(() => {
     if (containerRef.current) {
-        const { clientWidth, clientHeight } = containerRef.current;
-        const startOffset = {
-            x: clientWidth / 2,
-            y: clientHeight / 2
-        };
-        setPanOffset(startOffset);
-        panOffsetRef.current = startOffset;
+      const { clientWidth, clientHeight } = containerRef.current;
+      const startOffset = {
+        x: clientWidth / 2,
+        y: clientHeight / 2
+      };
+      setPanOffset(startOffset);
+      panOffsetRef.current = startOffset;
     }
   }, []);
 
   // --- OBSŁUGA KLAWISZA SPACJI ---
   useEffect(() => {
     const handleKeyDown = (e) => {
-        // Obsługa skrótów Undo/Redo
-        if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
-        if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
+      // Obsługa skrótów Undo/Redo
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
 
-        // Obsługa Spacji (Panning)
-        if (e.code === 'Space' && !e.repeat) {
-            const activeElement = document.activeElement;
-            if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) return;
-            setIsSpacePressed(true);
-        }
+      // Obsługa Spacji (Panning)
+      if (e.code === 'Space' && !e.repeat) {
+        const activeElement = document.activeElement;
+        if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) return;
+        setIsSpacePressed(true);
+      }
     };
 
     const handleKeyUp = (e) => {
-        if (e.code === 'Space') {
-            setIsSpacePressed(false);
-            setIsPanning(false);
-        }
+      if (e.code === 'Space') {
+        setIsSpacePressed(false);
+        setIsPanning(false);
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     return () => {
-        window.removeEventListener('keydown', handleKeyDown);
-        window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
     };
   }, []); // Dependencies will be handled via refs in undo/redo
 
+  const handleDragOver = (e) => {
+    e.preventDefault(); // Niezbędne, aby pozwolić na upuszczenie
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Pobieramy pliki
+    const files = e.dataTransfer.files;
+
+    // Pobieramy współrzędne myszy w momencie upuszczenia
+    const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
+
+    if (files && files.length > 0) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+
+        // Sprawdzamy czy to obrazek
+        if (file.type.startsWith('image/')) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const url = event.target.result;
+
+            const newImage = {
+              id: `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              x: x - 150, // Centrujemy obrazek względem kursora (połowa domyślnej szerokości 300)
+              y: y - 100, // Centrujemy (połowa przybliżonej wysokości)
+              url: url,
+              width: 300
+            };
+
+            if (onImageCreate) onImageCreate(newImage);
+          };
+          reader.readAsDataURL(file);
+        }
+      }
+    }
+  };
   // Funkcje historii
   const saveToHistory = (actionType, data) => {
     const newHistory = historyRef.current.history.slice(0, historyRef.current.step + 1);
@@ -430,7 +471,7 @@ const Canvas = ({
       ctx.drawImage(img, selectionBox.x, selectionBox.y, selectionBox.width, selectionBox.height);
 
       saveToHistory(ACTION_TYPES.DRAWING, {
-        tool: 'paste', 
+        tool: 'paste',
       });
     };
     img.src = selectionSnapshot;
@@ -620,7 +661,22 @@ const Canvas = ({
     }
     context.restore();
   };
+  useEffect(() => {
+    if (!socket) return;
 
+    const handleNewMessageNotification = (data) => {
+      // Jeśli otrzymamy wiadomość, a czat jest ukryty -> ustaw flagę nieprzeczytanych
+      if (data && data.whiteboardId === whiteboardId && !isChatVisible) {
+        setHasUnreadMessages(true);
+      }
+    };
+
+    socket.on('chat-message', handleNewMessageNotification);
+
+    return () => {
+      socket.off('chat-message', handleNewMessageNotification);
+    };
+  }, [socket, whiteboardId, isChatVisible]);
   // Przerysowanie przy zmianie pozycji
   useEffect(() => {
     drawBackground();
@@ -637,9 +693,9 @@ const Canvas = ({
     ctx.strokeStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : color;
     ctx.lineWidth = getToolSize();
     ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
-    
+
     // Kluczowe: używamy REF do transformacji
-    ctx.setTransform(1, 0, 0, 1, 0, 0); 
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.translate(panOffsetRef.current.x, panOffsetRef.current.y);
   };
 
@@ -797,11 +853,11 @@ const Canvas = ({
     const context = drawingContextRef.current;
     const canvas = drawingCanvasRef.current;
     if (!context || !canvas) return;
-    
+
     // Reset transform before clearing
     context.setTransform(1, 0, 0, 1, 0, 0);
     context.clearRect(0, 0, canvas.width, canvas.height);
-    
+
     // Restore transform (via setup)
     setupDrawingContext();
   };
@@ -824,9 +880,9 @@ const Canvas = ({
   const getCanvasCoordinates = (clientX, clientY) => {
     const canvas = drawingCanvasRef.current;
     const rect = canvas.getBoundingClientRect();
-    return { 
-      x: clientX - rect.left - panOffsetRef.current.x, 
-      y: clientY - rect.top - panOffsetRef.current.y 
+    return {
+      x: clientX - rect.left - panOffsetRef.current.x,
+      y: clientY - rect.top - panOffsetRef.current.y
     };
   };
 
@@ -879,14 +935,14 @@ const Canvas = ({
   const startDrawing = ({ nativeEvent }) => {
     // --- OBSŁUGA PANNINGU (SPACJA + MYSZ) ---
     if (isSpacePressed && nativeEvent.button === 0) {
-        setIsPanning(true);
-        lastMousePosRef.current = { x: nativeEvent.clientX, y: nativeEvent.clientY };
-        return;
+      setIsPanning(true);
+      lastMousePosRef.current = { x: nativeEvent.clientX, y: nativeEvent.clientY };
+      return;
     }
 
     if (nativeEvent.button !== 0) return;
     const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
-    
+
     // Sprawdzenie granic świata
     if (!isWithinBounds(x, y)) return;
 
@@ -919,7 +975,7 @@ const Canvas = ({
     // -----------------------------
 
     if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
-    
+
     if (setShowColorPicker) setShowColorPicker(false);
     const ctx = drawingContextRef.current;
     setupDrawingContext();
@@ -933,8 +989,8 @@ const Canvas = ({
 
   const stopDrawing = () => {
     if (isPanning) {
-        setIsPanning(false);
-        return;
+      setIsPanning(false);
+      return;
     }
 
     // --- OBSŁUGA NARZĘDZIA SELECT (ZAZNACZANIE) ---
@@ -1010,7 +1066,7 @@ const Canvas = ({
     if (!isDrawing || !drawingContextRef.current) return;
     if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
     const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
-    
+
     if (!isWithinBounds(x, y)) return;
 
     if (currentDrawingRef.current) {
@@ -1136,21 +1192,26 @@ const Canvas = ({
           const reader = new FileReader();
           reader.onload = (event) => {
             const url = event.target.result;
-            
-            const container = document.querySelector('.canvas-container');
-            let centerX = 300;
-            let centerY = 300;
 
-            if (container) {
-                // Uwzględniamy panOffset przy wklejaniu na środek
-              centerX = (container.clientWidth / 2) - panOffset.x - 150;
-              centerY = (container.clientHeight / 2) - panOffset.y - 100;
-            }
+            // 🔹 NOWA LOGIKA:
+            // Używamy helpera getCanvasCoordinates, który już masz w kodzie.
+            // Przelicza on pozycję ekranową (clientX/Y) na pozycję na płótnie (uwzględniając Panowanie)
+
+            // Pobieramy współrzędne z naszego refa (ostatnia pozycja myszy)
+            const mouseX = currentMousePosRef.current.x || (window.innerWidth / 2);
+            const mouseY = currentMousePosRef.current.y || (window.innerHeight / 2);
+
+            // Obliczamy pozycję w świecie gry
+            const { x, y } = getCanvasCoordinates(mouseX, mouseY);
+
+            // Centrujemy obrazek względem kursora (zakładając szerokość 300px)
+            // Jeśli kursor jest poza oknem (np. 0,0), fallback do środka ekranu można pominąć,
+            // bo user zazwyczaj ma myszkę na ekranie jak klika Ctrl+V.
 
             const newImage = {
               id: `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-              x: centerX,
-              y: centerY,
+              x: x - 150, // Odejmujemy połowę szerokości, żeby kursor był na środku obrazka
+              y: y - 100, // Odejmujemy połowę przybliżonej wysokości
               url: url,
               width: 300
             };
@@ -1158,14 +1219,14 @@ const Canvas = ({
             if (onImageCreate) onImageCreate(newImage);
           };
           reader.readAsDataURL(blob);
-          return; 
+          return;
         }
       }
     };
 
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
-  }, [onImageCreate, panOffset]); // Dodano panOffset do dependencies
+  }, [onImageCreate /*panOffset*/]); // Dodano panOffset do dependencies
 
   // Obsługa klawiszy (Delete, Backspace, Ctrl+C etc.)
   useEffect(() => {
@@ -1190,7 +1251,7 @@ const Canvas = ({
         } else if (selectedGifId) {
           itemToCopy = gifs.find(g => g.id === selectedGifId);
           type = 'gif';
-        } else if (selectedImageId) { 
+        } else if (selectedImageId) {
           itemToCopy = images.find(img => img.id === selectedImageId);
           type = 'image';
         } else if (selectedShapeId) {
@@ -1209,9 +1270,9 @@ const Canvas = ({
       if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
         if (!clipboard) return;
 
-        e.preventDefault(); 
+        e.preventDefault();
 
-        const offset = 20; 
+        const offset = 20;
         const newId = `${clipboard.type}_${Date.now()}_copy_${Math.random().toString(36).substr(2, 5)}`;
 
         const newItem = {
@@ -1250,7 +1311,7 @@ const Canvas = ({
             setSelectedGifId(newId);
             break;
 
-          case 'image': 
+          case 'image':
             setImages(prev => [...prev, newItem]);
             if (onImageCreate) onImageCreate(newItem);
             saveToHistory(ACTION_TYPES.IMAGE_CREATE, { image: newItem });
@@ -1275,7 +1336,7 @@ const Canvas = ({
 
         if (selectionBox) {
           e.preventDefault();
-          
+
           // A. ZNAJDŹ WSZYSTKIE ELEMENTY DO USUNIĘCIA (współrzędne świata)
           const isInsideSelection = (objX, objY, objW, objH) => {
             return (
@@ -1299,7 +1360,7 @@ const Canvas = ({
               textBoxes: textsToDelete,
               emojis: emojisToDelete,
               gifs: gifsToDelete,
-              images: imagesToDelete, 
+              images: imagesToDelete,
               shapes: shapesToDelete,
               wasSnapshotDeleted: !!selectionSnapshot
             });
@@ -1313,7 +1374,7 @@ const Canvas = ({
           if (textsToDelete.length) { setTextBoxes(prev => prev.filter(t => !textsToDelete.some(del => del.id === t.id))); textsToDelete.forEach(t => socket && socket.emit('text-delete', { whiteboardId, id: t.id })); }
           if (emojisToDelete.length) { setEmojis(prev => prev.filter(e => !emojisToDelete.some(del => del.id === e.id))); emojisToDelete.forEach(e => socket && socket.emit('emoji-delete', { whiteboardId, id: e.id })); }
           if (gifsToDelete.length) { setGifs(prev => prev.filter(g => !gifsToDelete.some(del => del.id === g.id))); gifsToDelete.forEach(g => socket && socket.emit('gif-delete', { whiteboardId, id: g.id })); }
-          if (imagesToDelete.length) { setImages(prev => prev.filter(img => !imagesToDelete.some(del => del.id === img.id))); imagesToDelete.forEach(img => socket && socket.emit('image-delete', { whiteboardId, id: img.id })); } 
+          if (imagesToDelete.length) { setImages(prev => prev.filter(img => !imagesToDelete.some(del => del.id === img.id))); imagesToDelete.forEach(img => socket && socket.emit('image-delete', { whiteboardId, id: img.id })); }
           if (shapesToDelete.length) { setShapes(prev => prev.filter(s => !shapesToDelete.some(del => del.id === s.id))); shapesToDelete.forEach(s => socket && socket.emit('shape-delete', { whiteboardId, id: s.id })); }
 
           setSelectionSnapshot(null);
@@ -1327,7 +1388,7 @@ const Canvas = ({
         if (selectedTextBoxId) removeTextBox(selectedTextBoxId);
         if (selectedEmojiId) removeEmoji(selectedEmojiId);
         if (selectedGifId) removeGif(selectedGifId);
-        if (selectedImageId) removeImage(selectedImageId); 
+        if (selectedImageId) removeImage(selectedImageId);
         if (selectedShapeId) removeShape(selectedShapeId);
       }
     };
@@ -1359,15 +1420,15 @@ const Canvas = ({
       const handleNoteDelete = (data) => setNotes(prev => prev.filter(note => note.id !== data.id));
       const handleEmojiUpdate = (data) => setEmojis(prev => prev.map(e => e.id === data.id ? { ...e, ...data } : e));
       const handleGifUpdate = (data) => setGifs(prev => prev.map(g => g.id === data.id ? { ...g, ...data } : g));
-      const handleImageUpdateSocket = (data) => setImages(prev => prev.map(img => img.id === data.id ? { ...img, ...data } : img)); 
+      const handleImageUpdateSocket = (data) => setImages(prev => prev.map(img => img.id === data.id ? { ...img, ...data } : img));
       const handleShapeUpdate = (data) => setShapes(prev => prev.map(s => s.id === data.id ? { ...s, ...data } : s));
 
       const handleEmojiCreateSocket = (data) => setEmojis(prev => prev.some(e => e.id === data.emoji.id) ? prev : [...prev, data.emoji]);
       const handleEmojiDeleteSocket = (data) => setEmojis(prev => prev.filter(e => e.id !== data.id));
       const handleGifCreateSocket = (data) => setGifs(prev => prev.some(g => g.id === data.gif.id) ? prev : [...prev, data.gif]);
       const handleGifDeleteSocket = (data) => setGifs(prev => prev.filter(g => g.id !== data.id));
-      const handleImageCreateSocket = (data) => setImages(prev => prev.some(img => img.id === data.image.id) ? prev : [...prev, data.image]); 
-      const handleImageDeleteSocket = (data) => setImages(prev => prev.filter(img => img.id !== data.id)); 
+      const handleImageCreateSocket = (data) => setImages(prev => prev.some(img => img.id === data.image.id) ? prev : [...prev, data.image]);
+      const handleImageDeleteSocket = (data) => setImages(prev => prev.filter(img => img.id !== data.id));
       const handleShapeCreateSocket = (data) => setShapes(prev => prev.some(s => s.id === data.shape.id) ? prev : [...prev, data.shape]);
       const handleShapeDeleteSocket = (data) => setShapes(prev => prev.filter(s => s.id !== data.id));
 
@@ -1376,14 +1437,14 @@ const Canvas = ({
       socket.on('note-delete', handleNoteDelete);
       socket.on('emoji-update', handleEmojiUpdate);
       socket.on('gif-update', handleGifUpdate);
-      socket.on('image-update', handleImageUpdateSocket); 
+      socket.on('image-update', handleImageUpdateSocket);
       socket.on('shape-update', handleShapeUpdate);
       socket.on('emoji-create', handleEmojiCreateSocket);
       socket.on('emoji-delete', handleEmojiDeleteSocket);
       socket.on('gif-create', handleGifCreateSocket);
       socket.on('gif-delete', handleGifDeleteSocket);
-      socket.on('image-create', handleImageCreateSocket); 
-      socket.on('image-delete', handleImageDeleteSocket); 
+      socket.on('image-create', handleImageCreateSocket);
+      socket.on('image-delete', handleImageDeleteSocket);
       socket.on('shape-create', handleShapeCreateSocket);
       socket.on('shape-delete', handleShapeDeleteSocket);
 
@@ -1393,14 +1454,14 @@ const Canvas = ({
         socket.off('note-delete', handleNoteDelete);
         socket.off('emoji-update', handleEmojiUpdate);
         socket.off('gif-update', handleGifUpdate);
-        socket.off('image-update', handleImageUpdateSocket); 
+        socket.off('image-update', handleImageUpdateSocket);
         socket.off('shape-update', handleShapeUpdate);
         socket.off('emoji-create', handleEmojiCreateSocket);
         socket.off('emoji-delete', handleEmojiDeleteSocket);
         socket.off('gif-create', handleGifCreateSocket);
         socket.off('gif-delete', handleGifDeleteSocket);
-        socket.off('image-create', handleImageCreateSocket); 
-        socket.off('image-delete', handleImageDeleteSocket); 
+        socket.off('image-create', handleImageCreateSocket);
+        socket.off('image-delete', handleImageDeleteSocket);
         socket.off('shape-create', handleShapeCreateSocket);
         socket.off('shape-delete', handleShapeDeleteSocket);
       };
@@ -1409,27 +1470,28 @@ const Canvas = ({
 
   const handleMouseMove = (e) => {
     // --- HANDLE PANNING ---
+    currentMousePosRef.current = { x: e.clientX, y: e.clientY };
     if (isPanning) {
-        const dx = e.clientX - lastMousePosRef.current.x;
-        const dy = e.clientY - lastMousePosRef.current.y;
-        
-        setPanOffset(prev => {
-            const container = containerRef.current;
-            if (!container) return { x: prev.x + dx, y: prev.y + dy };
+      const dx = e.clientX - lastMousePosRef.current.x;
+      const dy = e.clientY - lastMousePosRef.current.y;
 
-            const halfW = container.clientWidth / 2;
-            const halfH = container.clientHeight / 2;
-            const OFFSET_LIMIT = WORLD_LIMIT + 500; // margines
-            const newX = prev.x + dx;
-            const newY = prev.y + dy;
-            const clampedX = Math.min(halfW + OFFSET_LIMIT, Math.max(halfW - OFFSET_LIMIT, newX));
-            const clampedY = Math.min(halfH + OFFSET_LIMIT, Math.max(halfH - OFFSET_LIMIT, newY));
+      setPanOffset(prev => {
+        const container = containerRef.current;
+        if (!container) return { x: prev.x + dx, y: prev.y + dy };
 
-            return { x: clampedX, y: clampedY };
-        });
+        const halfW = container.clientWidth / 2;
+        const halfH = container.clientHeight / 2;
+        const OFFSET_LIMIT = WORLD_LIMIT + 500; // margines
+        const newX = prev.x + dx;
+        const newY = prev.y + dy;
+        const clampedX = Math.min(halfW + OFFSET_LIMIT, Math.max(halfW - OFFSET_LIMIT, newX));
+        const clampedY = Math.min(halfH + OFFSET_LIMIT, Math.max(halfH - OFFSET_LIMIT, newY));
 
-        lastMousePosRef.current = { x: e.clientX, y: e.clientY };
-        return;
+        return { x: clampedX, y: clampedY };
+      });
+
+      lastMousePosRef.current = { x: e.clientX, y: e.clientY };
+      return;
     }
     // ---------------------
 
@@ -1528,11 +1590,13 @@ const Canvas = ({
       <div
         className={`canvas-area background-${backgroundMode} ${tool === 'select' ? 'is-selecting' : ''} ${isSpacePressed ? (isPanning ? 'is-grabbing' : 'is-grab') : ''}`}
         onClick={handleCanvasClick}
-        style={{ 
-            // Przesuwamy tło (grid/lines) zgodnie z panOffset
-            backgroundPosition: `${panOffset.x}px ${panOffset.y}px` 
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        style={{
+          // Przesuwamy tło (grid/lines) zgodnie z panOffset
+          backgroundPosition: `${panOffset.x}px ${panOffset.y}px`
         }}
-        >
+      >
         <canvas
           ref={backgroundCanvasRef}
           className="background-canvas"
@@ -1580,7 +1644,7 @@ const Canvas = ({
                 src={selectionSnapshot}
                 alt="Selected area"
                 className="selection-image"
-                draggable={false} 
+                draggable={false}
               />
             )}
           </div>
@@ -1588,31 +1652,33 @@ const Canvas = ({
 
         {notes.map(note => (
           <div key={note.id} style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none', width: '100%', height: '100%' }}>
-          <Note
-            key={note.id}
-            id={note.id}
-            x={note.x + panOffset.x} // Dodajemy offset do wyświetlania
-            y={note.y + panOffset.y}
-            width={note.width}
-            height={note.height}
-            initialText={note.text}
-            onUpdate={(id, updates) => {
+            <Note
+              key={note.id}
+              id={note.id}
+              x={note.x + panOffset.x} // Dodajemy offset do wyświetlania
+              y={note.y + panOffset.y}
+              width={note.width}
+              height={note.height}
+              initialText={note.text}
+              panOffset={panOffset}
+              limit={WORLD_LIMIT}
+              onUpdate={(id, updates) => {
                 // Przy zapisie odejmujemy offset
                 if (updates.position) {
-                    handleNoteUpdate(id, { ...updates, position: { x: updates.position.x - panOffset.x, y: updates.position.y - panOffset.y } });
+                  handleNoteUpdate(id, { ...updates, position: { x: updates.position.x - panOffset.x, y: updates.position.y - panOffset.y } });
                 } else {
-                    const cleanUpdates = { ...updates };
-                    if(cleanUpdates.x !== undefined) cleanUpdates.x -= panOffset.x;
-                    if(cleanUpdates.y !== undefined) cleanUpdates.y -= panOffset.y;
-                    handleNoteUpdate(id, cleanUpdates);
+                  const cleanUpdates = { ...updates };
+                  if (cleanUpdates.x !== undefined) cleanUpdates.x -= panOffset.x;
+                  if (cleanUpdates.y !== undefined) cleanUpdates.y -= panOffset.y;
+                  handleNoteUpdate(id, cleanUpdates);
                 }
-            }}
-            onRemove={handleNoteDelete}
-            selectedNoteId={selectedNoteId}
-            setSelectedNoteId={setSelectedNoteId}
-            socket={socket}
-            tool={tool}
-          />
+              }}
+              onRemove={handleNoteDelete}
+              selectedNoteId={selectedNoteId}
+              setSelectedNoteId={setSelectedNoteId}
+              socket={socket}
+              tool={tool}
+            />
           </div>
         ))}
         {textBoxes.map(textBox => (
@@ -1621,15 +1687,17 @@ const Canvas = ({
             id={textBox.id}
             x={textBox.x + panOffset.x}
             y={textBox.y + panOffset.y}
+            panOffset={panOffset}
+            limit={WORLD_LIMIT}
             width={textBox.width}
             height={textBox.height}
             text={textBox.text}
             tool={tool}
             onUpdate={(id, data) => {
-                const cleanData = { ...data };
-                if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
-                if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
-                handleTextUpdate(id, cleanData);
+              const cleanData = { ...data };
+              if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
+              if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
+              handleTextUpdate(id, cleanData);
             }}
             onRemove={removeTextBox}
             selected={selectedTextBoxId === textBox.id}
@@ -1643,15 +1711,17 @@ const Canvas = ({
             {...emojiData}
             x={emojiData.x + panOffset.x}
             y={emojiData.y + panOffset.y}
+            panOffset={panOffset}
+            limit={WORLD_LIMIT}
             tool={tool}
             selected={selectedEmojiId === emojiData.id}
             onSelect={setSelectedEmojiId}
             onRemove={removeEmoji}
             onUpdate={(id, data) => {
-                const cleanData = { ...data };
-                if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
-                if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
-                handleEmojiUpdate(id, cleanData);
+              const cleanData = { ...data };
+              if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
+              if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
+              handleEmojiUpdate(id, cleanData);
             }}
           />
         ))}
@@ -1661,13 +1731,15 @@ const Canvas = ({
             {...gif}
             x={gif.x + panOffset.x}
             y={gif.y + panOffset.y}
+            panOffset={panOffset}
+            limit={WORLD_LIMIT}
             selected={selectedGifId === gif.id}
             onSelect={setSelectedGifId}
             onUpdate={(id, data) => {
-                const cleanData = { ...data };
-                if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
-                if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
-                handleGifUpdate(id, cleanData);
+              const cleanData = { ...data };
+              if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
+              if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
+              handleGifUpdate(id, cleanData);
             }}
             tool={tool}
           />
@@ -1678,13 +1750,15 @@ const Canvas = ({
             {...image}
             x={image.x + panOffset.x}
             y={image.y + panOffset.y}
+            panOffset={panOffset}
+            limit={WORLD_LIMIT}
             selected={selectedImageId === image.id}
             onSelect={setSelectedImageId}
             onUpdate={(id, data) => {
-                const cleanData = { ...data };
-                if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
-                if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
-                handleImageUpdate(id, cleanData);
+              const cleanData = { ...data };
+              if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
+              if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
+              handleImageUpdate(id, cleanData);
             }}
           />
         ))}
@@ -1702,15 +1776,17 @@ const Canvas = ({
               {...shape}
               x={shape.x + panOffset.x}
               y={shape.y + panOffset.y}
-              color={dynamicColor} 
+              panOffset={panOffset}
+              limit={WORLD_LIMIT}
+              color={dynamicColor}
               selected={selectedShapeId === shape.id}
               onSelect={setSelectedShapeId}
               onRemove={removeShape}
               onUpdate={(id, data) => {
-                  const cleanData = { ...data };
-                  if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
-                  if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
-                  handleShapeUpdate(id, cleanData);
+                const cleanData = { ...data };
+                if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
+                if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
+                handleShapeUpdate(id, cleanData);
               }}
               tool={tool}
             />
@@ -1759,7 +1835,7 @@ const Canvas = ({
                 {/* Etykieta z nazwą */}
                 <div style={{
                   position: 'absolute',
-                  left: '16px', 
+                  left: '16px',
                   top: '12px',
                   backgroundColor: userColor,
                   color: 'white',
@@ -1789,8 +1865,15 @@ const Canvas = ({
         </button>
 
         <button
-          className={`chat-toggle ${isChatVisible ? 'active-chat' : ''}`}
-          onClick={() => setIsChatVisible(!isChatVisible)}
+          // 🔹 ZMODYFIKOWANA KLASA: Dodajemy 'has-unread' jeśli są nowe wiadomości
+          className={`chat-toggle ${isChatVisible ? 'active-chat' : ''} ${hasUnreadMessages ? 'has-unread' : ''}`}
+          onClick={() => {
+            setIsChatVisible(!isChatVisible);
+            // 🔹 DODANE: Jeśli otwieramy czat, resetujemy powiadomienie
+            if (!isChatVisible) {
+              setHasUnreadMessages(false);
+            }
+          }}
           title={isChatVisible ? "Ukryj chat" : "Pokaż chat"}
           style={{ pointerEvents: isWorkingTool ? 'none' : 'auto' }}
         >

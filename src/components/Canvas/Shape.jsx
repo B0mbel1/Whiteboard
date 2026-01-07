@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, tool, color }) => {
+const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, tool, color, panOffset, limit = 1500 }) => {
     // Domyślne wymiary
     const [dims, setDims] = useState({
         w: width || 100,
@@ -54,9 +54,27 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, to
                 const dx = e.clientX - dragStartRef.current.x;
                 const dy = e.clientY - dragStartRef.current.y;
 
+                // Oblicz nową pozycję ekranową
+                let newScreenX = initialPosRef.current.x + dx;
+                let newScreenY = initialPosRef.current.y + dy;
+                if (panOffset) {
+                    // 1. Konwersja na koordynaty świata
+                    const worldX = newScreenX - panOffset.x;
+                    const worldY = newScreenY - panOffset.y;
+
+                    // 2. Ograniczenie (Clamp)
+                    // Element nie może wyjść poza -limit z lewej/góry
+                    // Element nie może wyjść poza limit - szerokość z prawej/dołu
+                    const clampedWorldX = Math.max(-limit, Math.min(worldX, limit - dims.w));
+                    const clampedWorldY = Math.max(-limit, Math.min(worldY, limit - dims.h));
+
+                    // 3. Konwersja z powrotem na ekranowe
+                    newScreenX = clampedWorldX + panOffset.x;
+                    newScreenY = clampedWorldY + panOffset.y;
+                }
                 setPos({
-                    x: initialPosRef.current.x + dx,
-                    y: initialPosRef.current.y + dy
+                    x: newScreenX,
+                    y: newScreenY
                 });
             }
 
@@ -101,7 +119,7 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, to
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
         };
-    }, [isDragging, isResizing, id, onUpdate, pos, dims, type]);
+    }, [isDragging, isResizing, id, onUpdate, pos, dims, type, panOffset, limit]);
 
     // Styl kontenera
     const containerStyle = {
@@ -113,7 +131,7 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, to
         height: type === 'arrow' ? 0 : dims.h,
         cursor: isDragging ? 'grabbing' : (isDrawingTool ? 'default' : 'grab'),
         border: selected && type !== 'arrow' ? '2px dashed #3498db' : 'none',
-        zIndex: selected ? 100 : 10,
+        zIndex: selected ? 20 : 10,
         boxSizing: 'border-box',
         pointerEvents: 'none', // Kontener zawsze przepuszcza, interakcję łapią dzieci
     };
@@ -237,7 +255,7 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, to
                             background: 'white',
                             border: '1px solid #3498db',
                             borderRadius: type === 'arrow' ? '50%' : '0',
-                            zIndex: 101,
+                            zIndex: 21,
                             // Uchwyt zmiany rozmiaru też znika dla myszy przy rysowaniu
                             pointerEvents: isDrawingTool ? 'none' : 'auto',
                             ...(type === 'arrow'

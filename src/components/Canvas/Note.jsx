@@ -13,7 +13,9 @@ const Note = ({
   selectedNoteId,
   setSelectedNoteId,
   socket,
-  tool
+  tool,
+  panOffset,
+  limit = 1500
 }) => {
   const [text, setText] = useState(initialText);
   const [pos, setPos] = useState({ x, y });
@@ -72,11 +74,26 @@ const Note = ({
 
   const handleMouseMove = (e) => {
     if (!isDragging.current) return;
-    const newPos = {
-      x: e.clientX - dragOffset.current.x,
-      y: e.clientY - dragOffset.current.y
-    };
-    setPos(newPos);
+
+    // Oblicz nową pozycję ekranową
+    let newScreenX = e.clientX - dragOffset.current.x;
+    let newScreenY = e.clientY - dragOffset.current.y;
+
+    // --- LOGIKA BLOKOWANIA ---
+    if (panOffset) {
+      const worldX = newScreenX - panOffset.x;
+      const worldY = newScreenY - panOffset.y;
+
+      // Notatka ma min szerokość 100/80 w resize, ale tu używamy size.width
+      const clampedWorldX = Math.max(-limit, Math.min(worldX, limit - size.width));
+      const clampedWorldY = Math.max(-limit, Math.min(worldY, limit - size.height));
+
+      newScreenX = clampedWorldX + panOffset.x;
+      newScreenY = clampedWorldY + panOffset.y;
+    }
+    // -------------------------
+
+    setPos({ x: newScreenX, y: newScreenY });
   };
 
   const handleMouseUp = () => {

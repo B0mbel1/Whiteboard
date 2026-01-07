@@ -10,7 +10,9 @@ const Emoji = ({
   onSelect,
   onRemove,
   onUpdate,
-  tool
+  tool,
+  panOffset,      // 🔹 NOWY PROP: Przesunięcie widoku
+  limit = 1500    // 🔹 NOWY PROP: Granica świata (domyślnie 1500)
 }) => {
   // --- Stan dla skalowania ---
   const [isResizing, setIsResizing] = useState(false);
@@ -56,10 +58,8 @@ const Emoji = ({
   // 2. Logika PRZESUWANIA
   const handleDragStart = (e) => {
     e.stopPropagation();
-    console.log("🎯 Emoji: Próba zaznaczenia ID:", id); // <--- DODAJ TO
+    // console.log("🎯 Emoji: Próba zaznaczenia ID:", id);
     if (e.target.tagName === 'BUTTON' || isResizing) return;
-
-    // Zatrzymujemy mousedown, żeby nie rysować po canvasie
 
     onSelect(id);
     setIsDragging(true);
@@ -74,9 +74,35 @@ const Emoji = ({
     if (!isDragging) return;
 
     const handleDragMove = (e) => {
-      const newX = e.clientX - dragOffsetRef.current.x;
-      const newY = e.clientY - dragOffsetRef.current.y;
-      onUpdate(id, { x: newX, y: newY });
+      // 1. Oblicz surową nową pozycję ekranową
+      let newScreenX = e.clientX - dragOffsetRef.current.x;
+      let newScreenY = e.clientY - dragOffsetRef.current.y;
+
+      // 🔹 2. LOGIKA BLOKOWANIA (CLAMP) 🔹
+      if (panOffset) {
+        // Konwersja na koordynaty świata
+        const worldX = newScreenX - panOffset.x;
+        const worldY = newScreenY - panOffset.y;
+
+        // Emoji jest wyśrodkowane (translate -50%), więc x,y to środek elementu.
+        // Aby element nie wystawał poza granice, musimy uwzględnić połowę jego rozmiaru.
+        const halfSize = size / 2;
+        
+        // Obliczamy bezpieczny zakres dla środka emoji
+        const minBound = -limit + halfSize;
+        const maxBound = limit - halfSize;
+
+        // Blokujemy (Clamp) wartości wewnątrz bezpiecznego zakresu
+        const clampedWorldX = Math.max(minBound, Math.min(worldX, maxBound));
+        const clampedWorldY = Math.max(minBound, Math.min(worldY, maxBound));
+
+        // Konwersja z powrotem na koordynaty ekranowe (dla onUpdate/Canvas)
+        newScreenX = clampedWorldX + panOffset.x;
+        newScreenY = clampedWorldY + panOffset.y;
+      }
+
+      // Wysyłamy zaktualizowaną, bezpieczną pozycję
+      onUpdate(id, { x: newScreenX, y: newScreenY });
     };
 
     const handleDragEnd = () => {
@@ -90,9 +116,10 @@ const Emoji = ({
       window.removeEventListener('mousemove', handleDragMove);
       window.removeEventListener('mouseup', handleDragEnd);
     };
-  }, [isDragging, id, onUpdate]);
+  }, [isDragging, id, onUpdate, panOffset, limit, size]);
 
   const isDrawingTool = ['pencil', 'brush', 'eraser'].includes(tool);
+  
   return (
     <div
       className="emoji-item"
@@ -111,22 +138,21 @@ const Emoji = ({
         padding: '0px',
         lineHeight: 1,
         borderRadius: '4px',
-        transform: 'translate(-50%, -50%)',
+        transform: 'translate(-50%, -50%)', // Centrowanie emoji względem punktu x,y
         userSelect: 'none',
-        zIndex: isDragging || isResizing ? 100 : (selected ? 11 : 10),
+        zIndex: isDragging || isResizing ? 20 : (selected ? 11 : 10),
         touchAction: 'none',
         pointerEvents: isDrawingTool ? 'none' : 'auto'
       }}
     >
       {emoji}
 
-
       {/* Przycisk usuwania */}
       {selected && !isDragging && !isResizing && (
         <button
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => {
-            e.stopPropagation(); // Tu też ważne!
+            e.stopPropagation();
             onRemove(id);
           }}
           style={{
@@ -156,7 +182,6 @@ const Emoji = ({
       {(selected || isResizing) && (
         <div
           onMouseDown={handleResizeStart}
-          // Dodajemy stopPropagation też tutaj, żeby kliknięcie w uchwyt nie robiło zamieszania
           onClick={(e) => e.stopPropagation()}
           style={{
             position: 'absolute',

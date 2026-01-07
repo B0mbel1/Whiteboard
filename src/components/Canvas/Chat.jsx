@@ -169,7 +169,7 @@ const Chat = ({ socket, whiteboardId, currentUser, onClose, initialMessages = []
           <div className="chat-header-info">
             <h3>💬 Chat</h3>
             <div className="chat-message-count">
-              {sortedMessages.length} message{sortedMessages.length !== 1 ? 's' : ''}
+              {sortedMessages.length} Wiadomoś{sortedMessages.length !== 1 ? 'ci' : 'ć'}
             </div>
           </div>
           <button className="chat-close-btn" onClick={handleCloseChat}>
@@ -181,7 +181,7 @@ const Chat = ({ socket, whiteboardId, currentUser, onClose, initialMessages = []
           <div className="chat-messages">
             {sortedMessages.length === 0 ? (
               <div className="chat-empty">
-                <p>💭 No messages yet. Start the conversation!</p>
+                <p>💭 Brak wiadomości. Rozpocznij wiadomości!</p>
               </div>
             ) : (
               sortedMessages.map((msg, index) => {
@@ -219,7 +219,7 @@ const Chat = ({ socket, whiteboardId, currentUser, onClose, initialMessages = []
                           {formatTime(msg.timestamp)}
                         </span>
                         <span className="chat-message-sender" style={{ color: msgUser.color }}>
-                          You
+                          Ty
                         </span>
                       </div>
                     )}
@@ -239,7 +239,7 @@ const Chat = ({ socket, whiteboardId, currentUser, onClose, initialMessages = []
           <div className="chat-input-wrapper">
             <textarea
               className="chat-textarea"
-              placeholder="Type a message..."
+              placeholder="Napisz wiadomość..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyPress}
@@ -250,13 +250,13 @@ const Chat = ({ socket, whiteboardId, currentUser, onClose, initialMessages = []
               className="chat-send-btn"
               onClick={sendMessage}
               disabled={!input.trim()}
-              title="Send message"
+              title="Wyślij wiadomość"
             >
               ➤
             </button>
           </div>
           <div className="chat-input-hint">
-            Press Enter to send, Shift+Enter for new line
+            Naciśnij Enter aby wysłać, Shift+Enter aby pisać w nowej linii
           </div>
         </div>
       </div>
