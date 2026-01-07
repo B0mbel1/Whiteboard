@@ -10,7 +10,7 @@ const DraggableResizableWrapper = ({
   onUpdate,
   children,
   minWidth = 50,
-  aspectRatioLocked = true, // Zakładamy, że dla GIFów to jest true
+  aspectRatioLocked = true,
   style
 }) => {
   const [localPos, setLocalPos] = useState({ x, y });
@@ -19,7 +19,6 @@ const DraggableResizableWrapper = ({
   const [isResizing, setIsResizing] = useState(false);
   
   const dragStartRef = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
-  // 1. Dodajemy startTop, startHeight i aspectRatio do refa
   const resizeStartRef = useRef({ x: 0, y: 0, startWidth: 0, startLeft: 0, startTop: 0, startHeight: 0, aspectRatio: 1 });
   const wrapperRef = useRef(null);
 
@@ -48,18 +47,17 @@ const DraggableResizableWrapper = ({
 
   const handleResizeMouseDown = (e, handleType) => {
     e.stopPropagation();
+    e.preventDefault(); // 🔹 Zapobiega zaznaczaniu tekstu na starcie
     setIsResizing(handleType);
     
-    // 2. Pobieramy aktualne wymiary z DOM
     const currentHeight = wrapperRef.current ? wrapperRef.current.offsetHeight : 0;
-    const ratio = localWidth / (currentHeight || 1); // Zabezpieczenie przed dzieleniem przez 0
+    const ratio = localWidth / (currentHeight || 1);
 
     resizeStartRef.current = {
       x: e.clientX,
       y: e.clientY,
       startWidth: localWidth,
       startLeft: localPos.x,
-      // Zapisujemy dane potrzebne do pionowego skalowania
       startTop: localPos.y,
       startHeight: currentHeight,
       aspectRatio: ratio
@@ -70,6 +68,9 @@ const DraggableResizableWrapper = ({
     if (!isDragging && !isResizing) return;
 
     const handleMouseMove = (e) => {
+      // 🔹 KLUCZOWA ZMIANA: Blokuje domyślne zaznaczanie tekstu w przeglądarce podczas ruchu
+      e.preventDefault(); 
+
       if (isDragging) {
         const dx = e.clientX - dragStartRef.current.x;
         const dy = e.clientY - dragStartRef.current.y;
@@ -87,7 +88,7 @@ const DraggableResizableWrapper = ({
       if (isResizing) {
         const dx = e.clientX - resizeStartRef.current.x;
         // eslint-disable-next-line no-unused-vars
-        const dy = e.clientY - resizeStartRef.current.y; // dy przydałoby się, gdyby aspectRatioLocked było false
+        const dy = e.clientY - resizeStartRef.current.y;
         
         const { startWidth, startLeft, startTop, startHeight, aspectRatio } = resizeStartRef.current;
         
@@ -95,7 +96,6 @@ const DraggableResizableWrapper = ({
         let newX = startLeft;
         let newY = startTop;
 
-        // --- Logika pozioma (bez zmian) ---
         if (isResizing.includes('w')) {
           newWidth = startWidth - dx;
           newX = startLeft + dx;
@@ -103,7 +103,6 @@ const DraggableResizableWrapper = ({
           newWidth = startWidth + dx;
         }
         
-        // Zabezpieczenie minimalnej szerokości
         if (newWidth < minWidth) {
           if (isResizing.includes('w')) {
              newX = (startLeft + startWidth) - minWidth;
@@ -111,24 +110,14 @@ const DraggableResizableWrapper = ({
           newWidth = minWidth;
         }
 
-        // --- Nowa logika pionowa dla górnych uchwytów ---
-        // Jeśli proporcje są zablokowane (GIFy), zmiana szerokości wymusza zmianę wysokości.
         if (aspectRatioLocked) {
-            // Obliczamy jaka będzie nowa wysokość na podstawie nowej szerokości i proporcji
             const newHeight = newWidth / aspectRatio;
-
-            // Jeśli ciągniemy za górny uchwyt ('n' - north), musimy przesunąć Y.
-            // Jeśli element rośnie, newHeight > startHeight, różnica jest ujemna -> Y maleje (idzie w górę).
-            // Jeśli element maleje, newHeight < startHeight, różnica jest dodatnia -> Y rośnie (idzie w dół).
             if (isResizing.includes('n')) {
                 newY = startTop + (startHeight - newHeight);
             }
-            // Dla dolnych uchwytów ('s') Y pozostaje bez zmian (startTop), co jest poprawne,
-            // bo element rośnie "w dół".
         }
         
         setLocalWidth(newWidth);
-        // Aktualizujemy X i Y jednocześnie
         setLocalPos({ x: newX, y: newY });
         
         if (onUpdate) {
@@ -165,11 +154,10 @@ const DraggableResizableWrapper = ({
         left: localPos.x,
         top: localPos.y,
         width: `${localWidth}px`,
-        // Wysokość jest automatyczna na podstawie szerokości i zawartości (GIFa)
         cursor: isDragging ? 'grabbing' : 'grab',
         border: isSelected ? '2px solid #3498db' : '2px solid transparent',
         zIndex: isSelected ? 100 : 10,
-        userSelect: 'none',
+        userSelect: 'none', // 🔹 To już tu było, ale jest ważne
         touchAction: 'none',
         ...style
       }}

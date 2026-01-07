@@ -3,7 +3,8 @@
   border: 1px solid transparent;
   padding: 5px;
   cursor: move;
-  z-index: 30 !important; 
+  z-index: 30 !important;
+  user-select: none; /* 🔹 DODANE: Blokuje przypadkowe zaznaczanie kontenera */
 }
 
 .text-box.selected {
@@ -18,12 +19,15 @@
   background-color: transparent;
   resize: none;
   outline: none;
+  user-select: text; /* 🔹 DODANE: Pozwala na edycję */
+  cursor: text;
 }
 
 .text-display {
   min-height: 20px;
   white-space: pre-wrap;
   word-wrap: break-word;
+  user-select: none; /* 🔹 DODANE: Blokuje zaznaczanie tekstu przy przeciąganiu innych elementów */
 }
 
 .resize-handle {

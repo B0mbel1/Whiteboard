@@ -9,6 +9,7 @@
   display: flex;
   flex-direction: column;
   z-index: 50;
+  user-select: none; /* 🔹 DODANE: Blokuje zaznaczanie całej notatki */
 }
 
 .note-header {
@@ -32,6 +33,8 @@
   font-size: 14px;
   resize: none;
   outline: none;
+  user-select: text; /* 🔹 DODANE: Pozwala pisać i zaznaczać TYLKO tutaj */
+  cursor: text;
 }
 
 .note-close {
@@ -53,5 +56,5 @@
 }
 
 .selected-note {
-  outline: 2px solid red; /* czerwony obrys dla zaznaczonej notatki */
+  outline: 2px solid red;
 }
