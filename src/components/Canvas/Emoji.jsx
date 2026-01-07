@@ -113,7 +113,7 @@ const Emoji = ({
         borderRadius: '4px',
         transform: 'translate(-50%, -50%)',
         userSelect: 'none',
-        zIndex: isDragging || isResizing ? 100 : (selected ? 11 : 10),
+        zIndex: isDragging || isResizing ? 20 : (selected ? 11 : 10),
         touchAction: 'none',
         pointerEvents: isDrawingTool ? 'none' : 'auto'
       }}

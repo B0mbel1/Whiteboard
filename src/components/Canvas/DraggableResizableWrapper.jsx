@@ -17,7 +17,7 @@ const DraggableResizableWrapper = ({
   const [localWidth, setLocalWidth] = useState(width);
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
-  
+
   const dragStartRef = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
   const resizeStartRef = useRef({ x: 0, y: 0, startWidth: 0, startLeft: 0, startTop: 0, startHeight: 0, aspectRatio: 1 });
   const wrapperRef = useRef(null);
@@ -33,7 +33,7 @@ const DraggableResizableWrapper = ({
     if (e.target.classList.contains('resize-handle')) return;
     e.stopPropagation();
     onSelect(id);
-    
+
     if (e.button === 0) {
       setIsDragging(true);
       dragStartRef.current = {
@@ -49,7 +49,7 @@ const DraggableResizableWrapper = ({
     e.stopPropagation();
     e.preventDefault(); // 🔹 Zapobiega zaznaczaniu tekstu na starcie
     setIsResizing(handleType);
-    
+
     const currentHeight = wrapperRef.current ? wrapperRef.current.offsetHeight : 0;
     const ratio = localWidth / (currentHeight || 1);
 
@@ -69,29 +69,29 @@ const DraggableResizableWrapper = ({
 
     const handleMouseMove = (e) => {
       // 🔹 KLUCZOWA ZMIANA: Blokuje domyślne zaznaczanie tekstu w przeglądarce podczas ruchu
-      e.preventDefault(); 
+      e.preventDefault();
 
       if (isDragging) {
         const dx = e.clientX - dragStartRef.current.x;
         const dy = e.clientY - dragStartRef.current.y;
-        
+
         const newX = dragStartRef.current.startX + dx;
         const newY = dragStartRef.current.startY + dy;
-        
+
         setLocalPos({ x: newX, y: newY });
-        
+
         if (onUpdate) {
           onUpdate(id, { x: newX, y: newY });
         }
       }
-      
+
       if (isResizing) {
         const dx = e.clientX - resizeStartRef.current.x;
         // eslint-disable-next-line no-unused-vars
         const dy = e.clientY - resizeStartRef.current.y;
-        
+
         const { startWidth, startLeft, startTop, startHeight, aspectRatio } = resizeStartRef.current;
-        
+
         let newWidth = startWidth;
         let newX = startLeft;
         let newY = startTop;
@@ -102,24 +102,24 @@ const DraggableResizableWrapper = ({
         } else {
           newWidth = startWidth + dx;
         }
-        
+
         if (newWidth < minWidth) {
           if (isResizing.includes('w')) {
-             newX = (startLeft + startWidth) - minWidth;
+            newX = (startLeft + startWidth) - minWidth;
           }
           newWidth = minWidth;
         }
 
         if (aspectRatioLocked) {
-            const newHeight = newWidth / aspectRatio;
-            if (isResizing.includes('n')) {
-                newY = startTop + (startHeight - newHeight);
-            }
+          const newHeight = newWidth / aspectRatio;
+          if (isResizing.includes('n')) {
+            newY = startTop + (startHeight - newHeight);
+          }
         }
-        
+
         setLocalWidth(newWidth);
         setLocalPos({ x: newX, y: newY });
-        
+
         if (onUpdate) {
           onUpdate(id, { x: newX, y: newY, width: newWidth });
         }
@@ -156,7 +156,7 @@ const DraggableResizableWrapper = ({
         width: `${localWidth}px`,
         cursor: isDragging ? 'grabbing' : 'grab',
         border: isSelected ? '2px solid #3498db' : '2px solid transparent',
-        zIndex: isSelected ? 100 : 10,
+        zIndex: isSelected ? 20 : 10, 
         userSelect: 'none', // 🔹 To już tu było, ale jest ważne
         touchAction: 'none',
         ...style
@@ -175,7 +175,7 @@ const DraggableResizableWrapper = ({
             height: '10px',
             background: 'white',
             border: '1px solid #3498db',
-            zIndex: 101,
+            zIndex: 21,
             ...getHandleStyle(handle)
           }}
         />
@@ -190,11 +190,11 @@ const getHandleStyle = (handle) => {
   if (handle.includes('s')) style.bottom = '-6px';
   if (handle.includes('w')) style.left = '-6px';
   if (handle.includes('e')) style.right = '-6px';
-  
+
   let cursor = 'nwse-resize';
   if (handle === 'ne' || handle === 'sw') cursor = 'nesw-resize';
   style.cursor = cursor;
-  
+
   return style;
 };
 

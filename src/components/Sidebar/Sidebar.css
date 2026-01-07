@@ -4,8 +4,8 @@
   top: 0;
   right: 0;
   height: 100%;
-  z-index: 20;
-  
+  z-index: 1000;
+
   width: 300px;
   background: #ecf0f1;
   display: flex;
@@ -13,14 +13,15 @@
   border-left: 1px solid #ccc;
   overflow-y: auto;
   overflow-x: hidden;
-  box-shadow: -2px 0 5px rgba(0,0,0,0.1);
-  
+  box-shadow: -2px 0 5px rgba(0, 0, 0, 0.1);
+
   /* Animacje */
   transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  transform: translateX(0); /* Domyślnie widoczny */
-  
+  transform: translateX(0);
+  /* Domyślnie widoczny */
+
   will-change: transform;
-  
+
   /* Overflow visible pozwala cieniom wychodzić poza obrys */
   overflow: visible;
 }
@@ -31,44 +32,43 @@
 }
 
 /* Fix dla zawartości */
-.sidebar > div {
+.sidebar>div {
   min-width: 300px;
 }
 
 /* 🔹 PRZYCISK ZWIJANIA - IDEALNA SYMETRIA Z TOOLBAREM */
 .sidebar-toggle {
   /* Używamy fixed, tak jak w Toolbarze, aby odnosił się do okna */
-  position: fixed; 
+  position: fixed;
   top: 50%;
   transform: translateY(-50%);
-  z-index: 21;
-
+  z-index: 1001;
   /* POZYCJONOWANIE (OTWARTY): 
      Sidebar ma 300px. Chcemy, żeby przycisk nachodził tak samo jak w toolbarze.
      300px - 8px = 292px.
   */
-  right: 292px; 
-  left: auto; 
+  right: 292px;
+  left: auto;
 
   /* WYGLĄD: Koło (jak w Toolbarze) */
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  
+
   background: #3498db;
   color: white;
-  
+
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  
+
   /* Cień */
   box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
-  
+
   /* Animacja pozycji */
   transition: right 0.35s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s;
-  
+
   font-size: 12px;
   font-weight: bold;
 }
@@ -90,12 +90,14 @@
 .sidebar-toggle .arrow {
   display: inline-block;
   transition: transform 0.35s ease;
-  transform: rotate(0deg); /* Strzałka w prawo (schowaj) */
+  transform: rotate(0deg);
+  /* Strzałka w prawo (schowaj) */
 }
 
 /* Obrót strzałki przy zwinięciu */
 .sidebar-toggle.collapsed .arrow {
-  transform: rotate(180deg); /* Strzałka w lewo (pokaż) */
+  transform: rotate(180deg);
+  /* Strzałka w lewo (pokaż) */
 }
 
 
@@ -155,7 +157,7 @@
   background: #000;
   border-radius: 6px;
   overflow: hidden;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .remote-video {
@@ -192,22 +194,26 @@
 
 .controls-row {
   display: flex;
-  gap: 8px; /* Odstęp między przyciskami */
+  gap: 8px;
+  /* Odstęp między przyciskami */
   width: 100%;
 }
 
 .control-btn {
-  flex: 1; /* Przyciski zajmują po równo miejsca (50%) */
+  flex: 1;
+  /* Przyciski zajmują po równo miejsca (50%) */
   padding: 8px 4px;
   background: #2c3e50;
-  color: #bdc3c7; /* Kolor gdy wyłączony */
+  color: #bdc3c7;
+  /* Kolor gdy wyłączony */
   border: none;
   border-radius: 4px;
   cursor: pointer;
   font-weight: bold;
-  font-size: 11px; /* Nieco mniejsza czcionka, żeby tekst się zmieścił */
+  font-size: 11px;
+  /* Nieco mniejsza czcionka, żeby tekst się zmieścił */
   transition: all 0.2s;
-  
+
   /* Centrowanie tekstu i ikony */
   display: flex;
   justify-content: center;
@@ -222,7 +228,8 @@
 
 /* Styl dla włączonego urządzenia (zielony lub niebieski akcent) */
 .control-btn.active {
-  background: #27ae60; /* Zielony dla włączonego */
+  background: #27ae60;
+  /* Zielony dla włączonego */
   color: white;
 }
 

@@ -113,7 +113,7 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, to
         height: type === 'arrow' ? 0 : dims.h,
         cursor: isDragging ? 'grabbing' : (isDrawingTool ? 'default' : 'grab'),
         border: selected && type !== 'arrow' ? '2px dashed #3498db' : 'none',
-        zIndex: selected ? 100 : 10,
+        zIndex: selected ? 20 : 10,
         boxSizing: 'border-box',
         pointerEvents: 'none', // Kontener zawsze przepuszcza, interakcję łapią dzieci
     };
@@ -237,7 +237,7 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, to
                             background: 'white',
                             border: '1px solid #3498db',
                             borderRadius: type === 'arrow' ? '50%' : '0',
-                            zIndex: 101,
+                            zIndex: 21,
                             // Uchwyt zmiany rozmiaru też znika dla myszy przy rysowaniu
                             pointerEvents: isDrawingTool ? 'none' : 'auto',
                             ...(type === 'arrow'

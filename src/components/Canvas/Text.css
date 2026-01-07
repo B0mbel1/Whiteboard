@@ -3,13 +3,13 @@
   border: 1px solid transparent;
   padding: 5px;
   cursor: move;
-  z-index: 30 !important;
-  user-select: none; /* 🔹 DODANE: Blokuje przypadkowe zaznaczanie kontenera */
+  z-index: 10 !important; /* 🔹 ZMIANA: Obniżono z 30 na 10 */
+  user-select: none;
 }
 
 .text-box.selected {
   border: 1px dashed #007bff;
-  z-index: 31 !important;
+  z-index: 20 !important; /* 🔹 ZMIANA: Obniżono z 31 na 20 */
 }
 
 .text-input {
@@ -19,7 +19,7 @@
   background-color: transparent;
   resize: none;
   outline: none;
-  user-select: text; /* 🔹 DODANE: Pozwala na edycję */
+  user-select: text;
   cursor: text;
 }
 
@@ -27,7 +27,7 @@
   min-height: 20px;
   white-space: pre-wrap;
   word-wrap: break-word;
-  user-select: none; /* 🔹 DODANE: Blokuje zaznaczanie tekstu przy przeciąganiu innych elementów */
+  user-select: none;
 }
 
 .resize-handle {

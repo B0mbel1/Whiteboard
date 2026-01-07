@@ -158,7 +158,7 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
         left: position.x,
         width: size.width,
         height: size.height,
-        zIndex: 30,
+        zIndex: selected ? 20 : 10,
         pointerEvents: isDrawingTool ? 'none' : 'auto'
       }}
       onMouseDown={handleMouseDown}
