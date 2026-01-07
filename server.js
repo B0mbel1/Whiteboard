@@ -46,6 +46,7 @@ app.get('/api/create-whiteboard', (req, res) => {
       images: [],
       shapes: [],
       emojis: [],
+      videos: [],
       backgroundMode: 'grid',
       chatMessages: []
     });
@@ -354,6 +355,44 @@ io.on("connection", (socket) => {
       broadcast(d.whiteboardId, "image-delete", d);
     }
   });
+
+// ================= OBSŁUGA VIDEO =================
+  socket.on("video-create", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (!wb) return;
+
+    const video = {
+      ...d.video,
+      playing: false,
+      currentTime: 0
+    };
+
+    wb.videos.push(video);
+
+    broadcast(d.whiteboardId, "video-create", {
+      whiteboardId: d.whiteboardId,
+      video
+    });
+  });
+
+  // ================= VIDEO SYNC =================
+  socket.on("video-sync", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (!wb) return;
+
+    const video = wb.videos.find(v => v.id === d.id);
+    if (!video) return;
+
+    if (typeof d.time === 'number') {
+      video.currentTime = d.time;
+    }
+
+    if (d.action === 'play') video.playing = true;
+    if (d.action === 'pause') video.playing = false;
+
+    socket.to(d.whiteboardId).emit("video-sync", d);
+  });
+
 
   // ========== OBSŁUGA KSZTAŁTÓW ==========
   socket.on("shape-create", (d) => {

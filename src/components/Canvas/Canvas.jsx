@@ -7,6 +7,7 @@ import Text from './Text';
 import Emoji from './Emoji';
 import Gif from './Gif';
 import ImageItem from './ImageItem';
+import Video from './Video';
 import Shape from './Shape';
 import Chat from './Chat';
 
