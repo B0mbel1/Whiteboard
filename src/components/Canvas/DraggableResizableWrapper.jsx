@@ -11,7 +11,9 @@ const DraggableResizableWrapper = ({
   children,
   minWidth = 50,
   aspectRatioLocked = true,
-  style
+  style,
+  panOffset,
+  limit = 1500
 }) => {
   const [localPos, setLocalPos] = useState({ x, y });
   const [localWidth, setLocalWidth] = useState(width);
@@ -75,9 +77,27 @@ const DraggableResizableWrapper = ({
         const dx = e.clientX - dragStartRef.current.x;
         const dy = e.clientY - dragStartRef.current.y;
 
-        const newX = dragStartRef.current.startX + dx;
-        const newY = dragStartRef.current.startY + dy;
+        // Obliczamy nową, potencjalną pozycję na ekranie
+        let newX = dragStartRef.current.startX + dx;
+        let newY = dragStartRef.current.startY + dy;
+        if (panOffset) {
+          // Pobieramy aktualną wysokość elementu (do sprawdzenia dolnej granicy)
+          const currentHeight = wrapperRef.current ? wrapperRef.current.offsetHeight : 0;
 
+          // 1. Konwersja na koordynaty świata
+          const worldX = newX - panOffset.x;
+          const worldY = newY - panOffset.y;
+
+          // 2. Blokowanie (Clamp)
+          // Element nie może wyjść poza -limit (lewo/góra)
+          // Element nie może wyjść poza limit - jego wymiar (prawo/dół)
+          const clampedWorldX = Math.max(-limit, Math.min(worldX, limit - localWidth));
+          const clampedWorldY = Math.max(-limit, Math.min(worldY, limit - currentHeight));
+
+          // 3. Konwersja z powrotem na ekran
+          newX = clampedWorldX + panOffset.x;
+          newY = clampedWorldY + panOffset.y;
+        }
         setLocalPos({ x: newX, y: newY });
 
         if (onUpdate) {
@@ -156,7 +176,7 @@ const DraggableResizableWrapper = ({
         width: `${localWidth}px`,
         cursor: isDragging ? 'grabbing' : 'grab',
         border: isSelected ? '2px solid #3498db' : '2px solid transparent',
-        zIndex: isSelected ? 20 : 10, 
+        zIndex: isSelected ? 20 : 10,
         userSelect: 'none', // 🔹 To już tu było, ale jest ważne
         touchAction: 'none',
         ...style

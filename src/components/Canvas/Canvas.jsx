@@ -1730,6 +1730,8 @@ const Canvas = ({
             {...gif}
             x={gif.x + panOffset.x}
             y={gif.y + panOffset.y}
+            panOffset={panOffset}
+            limit={WORLD_LIMIT}
             selected={selectedGifId === gif.id}
             onSelect={setSelectedGifId}
             onUpdate={(id, data) => {
@@ -1747,6 +1749,8 @@ const Canvas = ({
             {...image}
             x={image.x + panOffset.x}
             y={image.y + panOffset.y}
+            panOffset={panOffset}
+            limit={WORLD_LIMIT}
             selected={selectedImageId === image.id}
             onSelect={setSelectedImageId}
             onUpdate={(id, data) => {
