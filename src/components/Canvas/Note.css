@@ -8,7 +8,14 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  z-index: 50;
+  z-index: 10; /* 🔹 ZMIANA: Obniżono z 50 na 10 */
+  user-select: none;
+}
+
+/* 🔹 DODANE: Podnosi zaznaczoną notatkę, ale nie ponad toolbar */
+.selected-note {
+  outline: 2px solid red;
+  z-index: 20 !important; 
 }
 
 .note-header {
@@ -32,6 +39,8 @@
   font-size: 14px;
   resize: none;
   outline: none;
+  user-select: text;
+  cursor: text;
 }
 
 .note-close {
@@ -50,8 +59,4 @@
   background: #c5b200;
   cursor: se-resize;
   border-radius: 3px;
-}
-
-.selected-note {
-  outline: 2px solid red; /* czerwony obrys dla zaznaczonej notatki */
 }

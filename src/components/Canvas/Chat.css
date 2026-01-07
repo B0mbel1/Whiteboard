@@ -30,6 +30,17 @@
   animation: slideUp 0.3s ease-out;
 }
 
+/* --- Wklej to na końcu pliku Canvas.css --- */
+
+/* Animacja mrugania na niebiesko */
+
+
+/* Klasa aktywująca animację */
+.chat-toggle.has-unread {
+  animation: blink-blue 1.5s infinite ease-in-out;
+  border: 2px solid #3498db;
+}
+
 @keyframes slideUp {
   from {
     opacity: 0;
@@ -384,4 +395,34 @@
   display: block;
   margin-top: 2px;
   font-weight: normal;
+}
+
+/* W pliku Canvas.css */
+
+/* ZNAJDŹ TO (lub wklej na końcu, jeśli nie ma): */
+@keyframes blink-blue {
+  0% {
+    background-color: white;
+    color: #333;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  }
+  50% {
+    /* Tu zmieniasz kolor pulsowania */
+    background-color: #3498db; /* <--- Zmień na niebieski */
+    color: white;
+    box-shadow: 0 0 15px #3498db; /* <--- Zmień poświatę na niebieską */
+    transform: scale(1.1);
+  }
+  100% {
+    background-color: white;
+    color: #333;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    transform: scale(1);
+  }
+}
+
+.chat-toggle.has-unread {
+  /* Upewnij się, że nazwa animacji tutaj pasuje do tej wyżej */
+  animation: blink-blue 1.5s infinite ease-in-out;
+  border: 2px solid #3498db; /* Obramowanie też na niebiesko */
 }

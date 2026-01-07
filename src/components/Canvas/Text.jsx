@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './Text.css';
 
-const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, selected, setSelected, socket,tool }) => {
+const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, selected, setSelected, socket, tool, panOffset, limit = 1500 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [text, setText] = useState(initialText || '');
   const [position, setPosition] = useState({ x: x || 0, y: y || 0 });
@@ -13,27 +13,20 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
 
   const isDrawingTool = ['pencil', 'brush', 'eraser'].includes(tool);
 
-  // Synchronizuj zmiany z serwera
-  // Text.jsx - ZASTĄP obecny useEffect obsługujący socket tym:
   useEffect(() => {
     if (socket) {
       const handleTextUpdate = (data) => {
         if (data.id === id) {
           console.log("📝 Text update received:", data);
-
-          // ✅ POPRAWKA: Obsłuż zarówno position JAK i bezpośrednio x, y
           if (data.position) {
             setPosition(data.position);
           } else if (data.x !== undefined && data.y !== undefined) {
-            // Jeśli serwer wysyła bezpośrednio x, y
             setPosition({ x: data.x, y: data.y });
           }
-
           if (data.text !== undefined) setText(data.text);
           if (data.size) setSize(data.size);
         }
       };
-
       socket.on('text-update', handleTextUpdate);
       return () => {
         socket.off('text-update', handleTextUpdate);
@@ -41,37 +34,43 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
     }
   }, [socket, id]);
 
-  // ✅ DODAJ: Synchronizuj pozycję z props
   useEffect(() => {
     setPosition({ x, y });
   }, [x, y]);
 
   const handleMouseDown = (e) => {
-
     if (isDrawingTool) return;
     if (isEditing || e.target.classList.contains('resize-handle')) {
       return;
     }
-
     setSelected(id);
-
     if (!e.target.classList.contains('resize-handle')) {
       isDragging.current = true;
       dragOffset.current = {
         x: e.clientX - position.x,
         y: e.clientY - position.y
       };
-      // e.preventDefault();
     }
   };
 
   const handleMouseMove = (e) => {
     if (isDragging.current) {
-      const newPos = {
-        x: e.clientX - dragOffset.current.x,
-        y: e.clientY - dragOffset.current.y
-      };
-      setPosition(newPos);
+      e.preventDefault(); // 🔹 DODANE: Blokuje zaznaczanie podczas przesuwania
+      let newScreenX = e.clientX - dragOffset.current.x;
+      let newScreenY = e.clientY - dragOffset.current.y;
+
+      // --- LOGIKA BLOKOWANIA ---
+      if (panOffset) {
+        const worldX = newScreenX - panOffset.x;
+        const worldY = newScreenY - panOffset.y;
+
+        const clampedWorldX = Math.max(-limit, Math.min(worldX, limit - size.width));
+        const clampedWorldY = Math.max(-limit, Math.min(worldY, limit - size.height));
+
+        newScreenX = clampedWorldX + panOffset.x;
+        newScreenY = clampedWorldY + panOffset.y;
+      }
+      setPosition({ x: newScreenX, y: newScreenY });
     }
   };
 
@@ -91,8 +90,9 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
   };
 
   const handleResizeMouseDown = (e) => {
-    if (isDrawingTool) return; // Blokada resize przy rysowaniu
+    if (isDrawingTool) return;
     e.stopPropagation();
+    e.preventDefault(); // 🔹 DODANE
     isResizing.current = true;
     const startX = e.clientX;
     const startY = e.clientY;
@@ -100,6 +100,7 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
     const startHeight = size.height;
 
     const handleResizeMove = (moveEvent) => {
+      moveEvent.preventDefault(); // 🔹 DODANE: Blokuje zaznaczanie podczas skalowania
       const newWidth = startWidth + (moveEvent.clientX - startX);
       const newHeight = startHeight + (moveEvent.clientY - startY);
       setSize({
@@ -153,7 +154,6 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
   useEffect(() => {
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
@@ -168,7 +168,7 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
         left: position.x,
         width: size.width,
         height: size.height,
-        zIndex: 30,
+        zIndex: selected ? 20 : 10,
         pointerEvents: isDrawingTool ? 'none' : 'auto'
       }}
       onMouseDown={handleMouseDown}

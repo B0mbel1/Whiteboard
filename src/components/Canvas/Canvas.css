@@ -73,7 +73,7 @@
   z-index: 30;
   width: 50px;
   height: 50px;
-  border: 2px solid #ff6b6b;
+  border: 2px solid #3498db;
   background: white;
   border-radius: 8px;
   cursor: pointer;
@@ -102,7 +102,7 @@
 }
 
 .chat-toggle:hover {
-  background: #ff6b6b;
+  background: #3498db;
   color: white;
   transform: scale(1.1);
 }
@@ -136,7 +136,7 @@
   z-index: -1;
 }
 
-@keyframes chatPulse {
+/* @keyframes chatPulse {
   0% {
     box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.7);
   }
@@ -146,7 +146,7 @@
   100% {
     box-shadow: 0 0 0 0 rgba(255, 107, 107, 0);
   }
-}
+} */
 
 /* Placeholder canvas */
 .canvas-placeholder {
