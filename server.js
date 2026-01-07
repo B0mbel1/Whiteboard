@@ -147,6 +147,7 @@ io.on("connection", (socket) => {
       notes: whiteboard.notes || [],
       gifs: whiteboard.gifs || [],
       images: whiteboard.images || [],
+      videos: whiteboard.videos || [],
       shapes: whiteboard.shapes || [],
       emojis: whiteboard.emojis || [],
       backgroundMode: whiteboard.backgroundMode || 'grid'
@@ -374,6 +375,33 @@ io.on("connection", (socket) => {
       video
     });
   });
+
+  socket.on("video-update", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (!wb) return;
+
+    const video = wb.videos.find(v => v.id === d.id);
+    if (!video) return;
+
+    Object.assign(video, d.updates);
+
+    socket.to(d.whiteboardId).emit("video-update", {
+      id: d.id,
+      updates: d.updates
+    });
+  });
+
+  socket.on("video-delete", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (!wb) return;
+
+    wb.videos = wb.videos.filter(v => v.id !== d.id);
+
+    socket.to(d.whiteboardId).emit("video-delete", {
+      id: d.id
+    });
+  });
+
 
   // ================= VIDEO SYNC =================
   socket.on("video-sync", d => {

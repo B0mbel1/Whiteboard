@@ -46,6 +46,10 @@ const Canvas = ({
   onImageCreate,
   onImageUpdate,
   onImageDelete,
+  video: initialVideos,
+  onVideoCreate,
+  onVideoUpdate,
+  onVideoDelete,
   shapes: initialShapes,
   activeShape,
   onShapeCreate,
@@ -106,6 +110,10 @@ const Canvas = ({
   const [images, setImages] = useState(initialImages || []);
   const [selectedImageId, setSelectedImageId] = useState(null);
 
+  // Videos
+  const [videos, setVideos] = useState([]);
+  const [selectedVideoId, setSelectedVideoId] = useState(null);
+
   // Shapes
   const [shapes, setShapes] = useState(initialShapes || []);
   const [selectedShapeId, setSelectedShapeId] = useState(null);
@@ -135,6 +143,9 @@ const Canvas = ({
     GIF_DELETE: 'gif_delete',
     IMAGE_CREATE: 'image_create',
     IMAGE_DELETE: 'image_delete',
+    VIDEO_CREATE: 'video_create',
+    VIDEO_UPDATE: 'video_update',
+    VIDEO_DELETE: 'video_delete',
     SHAPE_CREATE: 'shape_create',
     SHAPE_DELETE: 'shape_delete',
     CLEAR_AREA: 'clear_area',
@@ -231,6 +242,27 @@ const Canvas = ({
       }
     }
   };
+  
+  //OBSŁUGA VIDEO
+  const updateVideo = (id, data) => {
+    setVideos(prev =>
+      prev.map(v => v.id === id ? { ...v, ...data } : v)
+    );
+
+    socket.emit("videos:update", { id, data });
+  };
+
+  const addVideo = (video) => {
+    setVideos(prev => [...prev, video]);
+    socket.emit("videos:add", video);
+  };
+
+  const removeVideo = (id) => {
+    setVideos(prev => prev.filter(v => v.id !== id));
+    socket.emit("videos:remove", id);
+  };
+
+
   // Funkcje historii
   const saveToHistory = (actionType, data) => {
     const newHistory = historyRef.current.history.slice(0, historyRef.current.step + 1);
@@ -895,6 +927,16 @@ const Canvas = ({
     setImages(prev => prev.map(img => img.id === id ? { ...img, ...updates } : img));
     if (onImageUpdate) onImageUpdate(id, updates);
   };
+
+  const handleVideoCreate = (video) => { const newVideo = {...video, id: `video_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`};
+  setVideos(prev => [...prev, newVideo]);
+  addVideo(newVideo);
+  };
+  
+  const handleVideoUpdate = (id, updates) => {
+  setVideos(prev => prev.map(video => video.id === id? { ...video, ...updates } : video));
+  };
+  const handleVideoDelete = (id) => { setVideos(prev => prev.filter(video => video.id !== id));};
 
   const getToolSize = () => {
     const base = (typeof size === "object" && size?.[tool]) ? size[tool] : (typeof size === "number" ? size : 3);
@@ -1760,6 +1802,29 @@ const Canvas = ({
               if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
               handleImageUpdate(id, cleanData);
             }}
+          />
+        ))}
+
+        {videos.map(video => (
+          <Video
+            key={video.id}
+            {...video}
+            x={video.x + panOffset.x}
+            y={video.y + panOffset.y}
+            panOffset={panOffset}
+            limit={WORLD_LIMIT}
+            selected={selectedVideoId === video.id}
+            onSelect={setSelectedVideoId}
+            onUpdate={(id, data) => {
+              const cleanData = { ...data };
+
+              // 🔹 cofamy panOffset przed zapisem / socketem
+              if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
+              if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
+
+              handleVideoUpdate(id, cleanData);
+            }}
+            onDelete={() => handleVideoDelete(video.id)}
           />
         ))}
 
