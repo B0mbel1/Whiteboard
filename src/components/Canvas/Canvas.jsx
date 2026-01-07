@@ -55,6 +55,7 @@ const Canvas = ({
 }) => {
   const [remoteCursors, setRemoteCursors] = useState(new Map());
   const [isChatVisible, setIsChatVisible] = useState(false);
+  const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
 
   const backgroundModeRef = useRef(backgroundMode);
   const currentMousePosRef = useRef({ x: 0, y: 0 }); // 🔹 DODAJ TO (śledzenie kursora)
@@ -659,7 +660,22 @@ const Canvas = ({
     }
     context.restore();
   };
+  useEffect(() => {
+    if (!socket) return;
 
+    const handleNewMessageNotification = (data) => {
+      // Jeśli otrzymamy wiadomość, a czat jest ukryty -> ustaw flagę nieprzeczytanych
+      if (data && data.whiteboardId === whiteboardId && !isChatVisible) {
+        setHasUnreadMessages(true);
+      }
+    };
+
+    socket.on('chat-message', handleNewMessageNotification);
+
+    return () => {
+      socket.off('chat-message', handleNewMessageNotification);
+    };
+  }, [socket, whiteboardId, isChatVisible]);
   // Przerysowanie przy zmianie pozycji
   useEffect(() => {
     drawBackground();
@@ -1836,8 +1852,15 @@ const Canvas = ({
         </button>
 
         <button
-          className={`chat-toggle ${isChatVisible ? 'active-chat' : ''}`}
-          onClick={() => setIsChatVisible(!isChatVisible)}
+          // 🔹 ZMODYFIKOWANA KLASA: Dodajemy 'has-unread' jeśli są nowe wiadomości
+          className={`chat-toggle ${isChatVisible ? 'active-chat' : ''} ${hasUnreadMessages ? 'has-unread' : ''}`}
+          onClick={() => {
+            setIsChatVisible(!isChatVisible);
+            // 🔹 DODANE: Jeśli otwieramy czat, resetujemy powiadomienie
+            if (!isChatVisible) {
+              setHasUnreadMessages(false);
+            }
+          }}
           title={isChatVisible ? "Ukryj chat" : "Pokaż chat"}
           style={{ pointerEvents: isWorkingTool ? 'none' : 'auto' }}
         >
