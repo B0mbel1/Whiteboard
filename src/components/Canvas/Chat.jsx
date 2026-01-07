@@ -118,7 +118,7 @@ const Chat = ({ socket, whiteboardId, currentUser, onClose, initialMessages = []
     const message = {
       id: messageId,
       user: {
-        id: socket.id,
+        id: currentUser.id,
         name: currentUser.name,
         color: currentUser.color
       },
@@ -200,7 +200,7 @@ const Chat = ({ socket, whiteboardId, currentUser, onClose, initialMessages = []
                 if (!msg || !msg.text) return null;
 
                 const msgUser = msg.user || { id: 'unknown', name: 'Unknown', color: '#666' };
-                const isCurrentUser = msgUser.id === socket?.id;
+                const isCurrentUser = msgUser.id === currentUser?.id;
                 const prevMsg = sortedMessages[index - 1];
                 const prevMsgUser = prevMsg?.user || { id: 'unknown' };
                 const isSameSender = prevMsg && prevMsgUser.id === msgUser.id;
