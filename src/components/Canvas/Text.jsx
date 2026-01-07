@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './Text.css';
 
-const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, selected, setSelected, socket,tool }) => {
+const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, selected, setSelected, socket, tool, panOffset, limit = 1500 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [text, setText] = useState(initialText || '');
   const [position, setPosition] = useState({ x: x || 0, y: y || 0 });
@@ -56,11 +56,21 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
   const handleMouseMove = (e) => {
     if (isDragging.current) {
       e.preventDefault(); // 🔹 DODANE: Blokuje zaznaczanie podczas przesuwania
-      const newPos = {
-        x: e.clientX - dragOffset.current.x,
-        y: e.clientY - dragOffset.current.y
-      };
-      setPosition(newPos);
+      let newScreenX = e.clientX - dragOffset.current.x;
+      let newScreenY = e.clientY - dragOffset.current.y;
+
+      // --- LOGIKA BLOKOWANIA ---
+      if (panOffset) {
+        const worldX = newScreenX - panOffset.x;
+        const worldY = newScreenY - panOffset.y;
+
+        const clampedWorldX = Math.max(-limit, Math.min(worldX, limit - size.width));
+        const clampedWorldY = Math.max(-limit, Math.min(worldY, limit - size.height));
+
+        newScreenX = clampedWorldX + panOffset.x;
+        newScreenY = clampedWorldY + panOffset.y;
+      }
+      setPosition({ x: newScreenX, y: newScreenY });
     }
   };
 

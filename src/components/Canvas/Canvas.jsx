@@ -1659,6 +1659,8 @@ const Canvas = ({
               width={note.width}
               height={note.height}
               initialText={note.text}
+              panOffset={panOffset}
+              limit={WORLD_LIMIT}
               onUpdate={(id, updates) => {
                 // Przy zapisie odejmujemy offset
                 if (updates.position) {
@@ -1684,6 +1686,8 @@ const Canvas = ({
             id={textBox.id}
             x={textBox.x + panOffset.x}
             y={textBox.y + panOffset.y}
+            panOffset={panOffset}
+            limit={WORLD_LIMIT}
             width={textBox.width}
             height={textBox.height}
             text={textBox.text}
@@ -1706,6 +1710,8 @@ const Canvas = ({
             {...emojiData}
             x={emojiData.x + panOffset.x}
             y={emojiData.y + panOffset.y}
+            panOffset={panOffset}
+            limit={WORLD_LIMIT}
             tool={tool}
             selected={selectedEmojiId === emojiData.id}
             onSelect={setSelectedEmojiId}
@@ -1765,6 +1771,8 @@ const Canvas = ({
               {...shape}
               x={shape.x + panOffset.x}
               y={shape.y + panOffset.y}
+              panOffset={panOffset}
+              limit={WORLD_LIMIT}
               color={dynamicColor}
               selected={selectedShapeId === shape.id}
               onSelect={setSelectedShapeId}
