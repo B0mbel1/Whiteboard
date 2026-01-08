@@ -506,37 +506,56 @@ const Canvas = ({
     const context = drawingContextRef.current;
     if (!context) return;
 
-    // Najpierw wyczyść drawing canvas
+    // 1. Najpierw wyczyść drawing canvas
     clearDrawingCanvas();
 
-    // Rysuj warstwę zdalną
+    // 2. Przygotuj wspólną listę wszystkich operacji (Local + Remote)
+    let allOperations = [];
+
+    // A. Dodaj dane zdalne (Remote)
     if (remoteDrawingsRef.current && remoteDrawingsRef.current.length > 0) {
-      remoteDrawingsRef.current.forEach(data => {
-        // 🛡️ ZABEZPIECZENIE: Rysuj tylko jeśli data istnieje
-        if (data) {
-          drawRemote(data);
+      // Przepisujemy je do wspólnej tablicy
+      allOperations = [...remoteDrawingsRef.current];
+    }
+
+    // B. Dodaj dane lokalne (Local History) - tylko te wpływające na canvas
+    if (historyRef.current && historyRef.current.history) {
+      // Bierzemy historię tylko do obecnego momentu (obsługa undo/redo)
+      const currentHistory = historyRef.current.history.slice(0, historyRef.current.step + 1);
+
+      currentHistory.forEach(action => {
+        // Interesują nas tylko rysunki i wymazywanie obszaru
+        if (action.type === ACTION_TYPES.DRAWING && action.data) {
+          allOperations.push({
+            ...action.data,
+            // Używamy timestampu z danych lub z momentu zapisu historii
+            timestamp: action.data.timestamp || action.timestamp || 0
+          });
+        } else if (action.type === ACTION_TYPES.ERASE_AREA && action.data) {
+          allOperations.push({
+            type: 'erase-area',
+            ...action.data,
+            timestamp: action.timestamp || 0
+          });
         }
       });
     }
 
-    // Narysuj historię lokalną
-    // 🛡️ ZABEZPIECZENIE: Sprawdź czy historia istnieje
-    if (historyRef.current && historyRef.current.history) {
-      for (let i = 0; i <= historyRef.current.step; i++) {
-        const action = historyRef.current.history[i];
+    // 3. Posortuj chronologicznie (od najstarszych do najnowszych)
+    // Dzięki temu, jeśli 'erase-area' było później niż 'drawing', zostanie wykonane na końcu
+    allOperations.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
 
-        // 🛡️ ZABEZPIECZENIE: Jeśli akcja jest pusta (dziura w tablicy), pomiń ją
-        if (!action) continue;
-
-        if (action.type === ACTION_TYPES.DRAWING && action.data && action.data.points && action.data.points.length > 1) {
-          drawCompletePath(context, action.data.tool, action.data.color, action.data.size, action.data.points);
-        }
-        else if (action.type === ACTION_TYPES.ERASE_AREA && action.data) {
-          const { x, y, width, height } = action.data;
-          context.clearRect(x, y, width, height);
+    // 4. Wykonaj rysowanie
+    allOperations.forEach(op => {
+      if (op.type === 'erase-area') {
+        context.clearRect(op.x, op.y, op.width, op.height);
+      } else {
+        // Standardowe rysowanie
+        if (op.points && op.points.length > 1) {
+          drawCompletePath(context, op.tool, op.color, op.size, op.points);
         }
       }
-    }
+    });
   };
 
   const removeShape = (id) => {
@@ -1100,7 +1119,15 @@ const handleWheel = (e) => {
     ctx.lineTo(x, y);
     ctx.stroke();
     setIsDrawing(true);
-    currentDrawingRef.current = { tool, color, size, points: [{ x, y }, { x, y }] };
+
+    // ZMIANA TUTAJ: Dodajemy 'timestamp: Date.now()'
+    currentDrawingRef.current = {
+      tool,
+      color,
+      size,
+      points: [{ x, y }, { x, y }],
+      timestamp: Date.now()
+    };
   };
 
   const stopDrawing = () => {
@@ -1531,7 +1558,8 @@ const handleWheel = (e) => {
                 x: originalCaptureRect.x,
                 y: originalCaptureRect.y,
                 width: originalCaptureRect.width,
-                height: originalCaptureRect.height
+                height: originalCaptureRect.height,
+                timestamp: Date.now() // <--- DODAJ TO POLĘ
               });
             }
 
