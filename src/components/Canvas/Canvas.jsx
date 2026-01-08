@@ -55,6 +55,8 @@ const Canvas = ({
   onShapeUpdate,
   backgroundMode,
   onBackgroundChange,
+  panOffset,
+  setPanOffset
 }) => {
   const [remoteCursors, setRemoteCursors] = useState(new Map());
   const [isChatVisible, setIsChatVisible] = useState(false);
@@ -81,9 +83,9 @@ const Canvas = ({
   const historyRef = useRef({ history: [], step: -1 });
 
   // --- STANY DO PANNINGU (PRZESUWANIA) ---
-  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
-  const panOffsetRef = useRef({ x: 0, y: 0 }); // Ref dla socketów i renderowania
-
+  // const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  // const panOffsetRef = useRef({ x: 0, y: 0 }); // Ref dla socketów i renderowania
+  const panOffsetRef = useRef(panOffset);
   const [isPanning, setIsPanning] = useState(false);
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const lastMousePosRef = useRef({ x: 0, y: 0 });
@@ -154,13 +156,10 @@ const Canvas = ({
   // --- START NA ŚRODKU EKRANU ---
   useEffect(() => {
     if (containerRef.current) {
-      const { clientWidth, clientHeight } = containerRef.current;
-      const startOffset = {
-        x: clientWidth / 2,
-        y: clientHeight / 2
-      };
-      setPanOffset(startOffset);
-      panOffsetRef.current = startOffset;
+      // const { clientWidth, clientHeight } = containerRef.current;
+      // const startOffset = { x: clientWidth / 2, y: clientHeight / 2 };
+      // setPanOffset(startOffset); // <-- USUŃ LUB ZAKOMENTUJ TO
+      // panOffsetRef.current = startOffset; // <-- TO TEŻ ZAKOMENTUJ, używamy propsa
     }
   }, []);
 

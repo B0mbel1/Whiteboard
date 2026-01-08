@@ -74,6 +74,12 @@ const WhiteboardRouter = () => {
   const usersListRef = useRef(null);
   const usersCounterRef = useRef(null);
 
+
+  const [panOffset, setPanOffset] = useState({
+    x: window.innerWidth / 2,
+    y: window.innerHeight / 2
+  });
+
   const updateUserOnServer = (updates) => {
     if (socketRef.current && whiteboardId) {
       socketRef.current.emit('user-update', {
@@ -269,6 +275,14 @@ const WhiteboardRouter = () => {
       setIsLoading(false);
     });
   };
+
+  useEffect(() => {
+    const handleResize = () => {
+      // Opcjonalnie można tu aktualizować, ale zazwyczaj wystarczy init
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const handleBackgroundChange = (newMode) => {
     setBackgroundMode(newMode);
@@ -670,6 +684,7 @@ const WhiteboardRouter = () => {
           setActiveGif={setActiveGif}
           setActiveShape={setActiveShape}
           onImageCreate={handleImageCreate} // DODANE
+          panOffset={panOffset}
         />
 
         <PointerTrail
@@ -720,6 +735,8 @@ const WhiteboardRouter = () => {
           onShapeUpdate={handleShapeUpdate}
           backgroundMode={backgroundMode}
           onBackgroundChange={handleBackgroundChange}
+          panOffset={panOffset}
+          setPanOffset={setPanOffset}
         />
 
         <Sidebar
