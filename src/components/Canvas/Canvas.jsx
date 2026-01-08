@@ -1105,7 +1105,13 @@ const Canvas = ({
     setShapes(prev => prev.map(shape => shape.id === id ? { ...shape, ...newProps } : shape));
     if (onShapeUpdate) onShapeUpdate(id, newProps);
   };
-
+  const clampCreationPos = (x, y, w, h) => {
+    // Upewnij się, że lewa krawędź nie jest za bardzo w lewo (-WORLD_LIMIT)
+    // I że prawa krawędź (x + w) nie wychodzi za prawo (WORLD_LIMIT)
+    const safeX = Math.max(-WORLD_LIMIT, Math.min(x, WORLD_LIMIT - w));
+    const safeY = Math.max(-WORLD_LIMIT, Math.min(y, WORLD_LIMIT - h));
+    return { x: safeX, y: safeY };
+  };
   const handleCanvasClick = (e) => {
     if (isSpacePressed || isPanning) return;
 
@@ -1119,13 +1125,18 @@ const Canvas = ({
     if (!isWithinBounds(x, y)) return;
 
     if (tool === 'notes') {
-      const newNote = { id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x, y, text: '', width: 180, height: 120 };
+      const w = 180, h = 120;
+      const { x: safeX, y: safeY } = clampCreationPos(x, y, w, h); // 🔹 UŻYCIE CLAMP
+      const newNote = { id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: safeX, y: safeY, text: '', width: w, height: h };
       setNotes(prev => prev.some(note => note.id === newNote.id) ? prev : [...prev, newNote]);
       saveToHistory(ACTION_TYPES.NOTE_CREATE, { note: newNote });
       if (onNoteCreate) onNoteCreate(newNote);
       if (setTool) setTool('cursor');
     } else if (tool === 'text') {
-      const newTextBox = { id: `text_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x, y, text: '', width: 200, height: 100 };
+      const w = 200, h = 100;
+      const { x: safeX, y: safeY } = clampCreationPos(x, y, w, h); // 🔹 UŻYCIE CLAMP
+
+      const newTextBox = { id: `text_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: safeX, y: safeY, text: '', width: w, height: h };
       if (onTextCreate) onTextCreate(newTextBox);
       saveToHistory(ACTION_TYPES.TEXT_CREATE, { textBox: newTextBox });
       setTextBoxes(prev => [...prev, newTextBox]);
@@ -1134,7 +1145,13 @@ const Canvas = ({
     }
 
     if (tool === 'emoji' && activeEmoji) {
-      const newEmoji = { id: `emoji_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x, y, emoji: activeEmoji, size: 48 };
+      const size = 48;
+      // Emoji są centrowane, więc clampujemy środek +/- połowa rozmiaru
+      const half = size / 2;
+      const safeX = Math.max(-WORLD_LIMIT + half, Math.min(x, WORLD_LIMIT - half));
+      const safeY = Math.max(-WORLD_LIMIT + half, Math.min(y, WORLD_LIMIT - half));
+
+      const newEmoji = { id: `emoji_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: safeX, y: safeY, emoji: activeEmoji, size: size };
       setEmojis(prev => [...prev, newEmoji]);
       saveToHistory(ACTION_TYPES.EMOJI_CREATE, { emoji: newEmoji });
       if (onEmojiCreate) onEmojiCreate(newEmoji);
@@ -1143,16 +1160,30 @@ const Canvas = ({
     }
 
     if (tool === 'gif' && activeGif) {
-      const newGif = { id: `gif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: x - 75, y: y - 75, url: activeGif, width: 150 };
+      const w = 150;
+      // Gif jest centrowany w kodzie creation (x - 75), więc musimy to uwzględnić
+      // Oryginalny kod robił: x - 75. My chcemy safeX.
+      const rawX = x - (w / 2);
+      const rawY = y - (w / 2);
+      const { x: safeX, y: safeY } = clampCreationPos(rawX, rawY, w, w);
+
+      const newGif = { id: `gif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: safeX, y: safeY, url: activeGif, width: w };
       setGifs(prev => [...prev, newGif]);
       saveToHistory(ACTION_TYPES.GIF_CREATE, { gif: newGif });
       if (onGifCreate) onGifCreate(newGif);
       if (setTool) setTool('cursor');
     }
     if (tool === 'shape' && activeShape) {
-      let defaultWidth = 100, defaultHeight = 100, startX = x - 50, startY = y - 50;
-      if (activeShape === 'arrow') { startX = x; startY = y; defaultWidth = 150; defaultHeight = 0; }
-      const newShape = { id: `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: startX, y: startY, width: defaultWidth, height: defaultHeight, type: activeShape, userId: currentUser.id, color: currentUser.color };
+      let defaultWidth = 100, defaultHeight = 100;
+      let startX = x - 50, startY = y - 50;
+
+      if (activeShape === 'arrow') {
+        startX = x; startY = y; defaultWidth = 150; defaultHeight = 50; // Arrow ma specyficzne wymiary
+      }
+
+      const { x: safeX, y: safeY } = clampCreationPos(startX, startY, defaultWidth, defaultHeight);
+
+      const newShape = { id: `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: safeX, y: safeY, width: defaultWidth, height: defaultHeight, type: activeShape, userId: currentUser.id, color: currentUser.color };
       setShapes(prev => [...prev, newShape]);
       saveToHistory(ACTION_TYPES.SHAPE_CREATE, { shape: newShape });
       if (onShapeCreate) onShapeCreate(newShape);

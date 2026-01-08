@@ -54,41 +54,58 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, to
                 const dx = e.clientX - dragStartRef.current.x;
                 const dy = e.clientY - dragStartRef.current.y;
 
-                // Oblicz nową pozycję ekranową
                 let newScreenX = initialPosRef.current.x + dx;
                 let newScreenY = initialPosRef.current.y + dy;
+
                 if (panOffset) {
-                    // 1. Konwersja na koordynaty świata
                     const worldX = newScreenX - panOffset.x;
                     const worldY = newScreenY - panOffset.y;
 
-                    // 2. Ograniczenie (Clamp)
-                    // Element nie może wyjść poza -limit z lewej/góry
-                    // Element nie może wyjść poza limit - szerokość z prawej/dołu
                     const clampedWorldX = Math.max(-limit, Math.min(worldX, limit - dims.w));
                     const clampedWorldY = Math.max(-limit, Math.min(worldY, limit - dims.h));
 
-                    // 3. Konwersja z powrotem na ekranowe
                     newScreenX = clampedWorldX + panOffset.x;
                     newScreenY = clampedWorldY + panOffset.y;
                 }
-                setPos({
-                    x: newScreenX,
-                    y: newScreenY
-                });
+                setPos({ x: newScreenX, y: newScreenY });
             }
 
+            // --- SKALOWANIE (RESIZING) - POPRAWIONE ---
             if (isResizing) {
                 const dx = e.clientX - dragStartRef.current.x;
                 const dy = e.clientY - dragStartRef.current.y;
 
+                // 1. Obliczamy pozycję X i Y w świecie gry (żeby wiedzieć ile mamy miejsca do ściany)
+                const currentWorldX = pos.x - (panOffset ? panOffset.x : 0);
+                const currentWorldY = pos.y - (panOffset ? panOffset.y : 0);
+
+                // 2. Obliczamy maksymalną dostępną szerokość/wysokość do granicy świata
+                const maxAvailableWidth = limit - currentWorldX;
+                const maxAvailableHeight = limit - currentWorldY;
+
                 if (type === 'arrow') {
-                    const newW = initialDimsRef.current.w + dx;
-                    const newH = initialDimsRef.current.h + dy;
+                    let newW = initialDimsRef.current.w + dx;
+                    let newH = initialDimsRef.current.h + dy;
+
+                    // Blokada arrow jest trudniejsza bo może iść w minusy, 
+                    // ale dla uproszczenia blokujemy wyjście poza prawą/dolną krawędź dodatnimi wartościami
+                    if (newW > maxAvailableWidth) newW = maxAvailableWidth;
+                    if (newH > maxAvailableHeight) newH = maxAvailableHeight;
+
                     setDims({ w: newW, h: newH });
                 } else {
-                    const newW = Math.max(20, initialDimsRef.current.w + dx);
-                    const newH = Math.max(20, initialDimsRef.current.h + dy);
+                    let newW = Math.max(20, initialDimsRef.current.w + dx);
+                    let newH = Math.max(20, initialDimsRef.current.h + dy);
+
+                    // 🔹 BLOKADA: Jeśli nowa szerokość wychodzi poza limit, ucinamy ją
+                    if (newW > maxAvailableWidth) {
+                        newW = maxAvailableWidth;
+                    }
+                    // 🔹 BLOKADA: To samo dla wysokości
+                    if (newH > maxAvailableHeight) {
+                        newH = maxAvailableHeight;
+                    }
+
                     setDims({ w: newW, h: newH });
                 }
             }
