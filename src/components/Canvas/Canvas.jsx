@@ -991,7 +991,7 @@ const Canvas = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
-    notes, textBoxes, emojis, gifs, shapes,
+    notes, textBoxes, emojis, gifs, shapes,images,
     selectedNoteId, selectedTextBoxId, selectedEmojiId, selectedGifId, selectedShapeId,
     selectionBox, selectionSnapshot,
     clipboard
