@@ -64,7 +64,7 @@ const Canvas = ({
 
   const backgroundModeRef = useRef(backgroundMode);
   const currentMousePosRef = useRef({ x: 0, y: 0 });
-  
+
   // Dwa canvasy: tło i rysunek
   const backgroundCanvasRef = useRef(null);
   const drawingCanvasRef = useRef(null);
@@ -160,10 +160,10 @@ const Canvas = ({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, []); 
+  }, []);
 
   const handleDragOver = (e) => {
-    e.preventDefault(); 
+    e.preventDefault();
     e.stopPropagation();
   };
 
@@ -210,7 +210,7 @@ const Canvas = ({
     img.onload = () => {
       setupDrawingContext();
       ctx.drawImage(img, selectionBox.x, selectionBox.y, selectionBox.width, selectionBox.height);
-      
+
       // Zapisujemy "wklejenie" jako lokalny rysunek, aby przetrwało odświeżenie
       // (W uproszczonej wersji bez undo nie mamy obiektu "paste", ale canvas jest bitmapą)
       // W idealnym świecie powinniśmy wysłać obrazek do innych, ale tutaj zakładamy tryb rysowania.
@@ -619,13 +619,14 @@ const Canvas = ({
   }, [tool]);
 
   const startDrawing = ({ nativeEvent }) => {
-    if (isSpacePressed && nativeEvent.button === 0) {
+    if (nativeEvent.button === 2) {
       setIsPanning(true);
       lastMousePosRef.current = { x: nativeEvent.clientX, y: nativeEvent.clientY };
       return;
     }
 
     if (nativeEvent.button !== 0) return;
+
     const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
     if (!isWithinBounds(x, y)) return;
 
@@ -640,7 +641,7 @@ const Canvas = ({
       }
       if (selectionSnapshot) { commitSelection(); }
       else if (selectionBox) { setSelectionBox(null); }
-      
+
       setSelectionStart({ x, y });
       setSelectionBox({ x, y, width: 0, height: 0 });
       setIsDrawing(true);
@@ -754,7 +755,7 @@ const Canvas = ({
   };
 
   const handleCanvasClick = (e) => {
-    if (isSpacePressed || isPanning) return;
+    if (isPanning) return;
     if (e.button !== 0) return;
     if (e.target.closest('.shape-item') || e.target.closest('.emoji-item')) return;
     setSelectedNoteId(null); setSelectedTextBoxId(null); setSelectedEmojiId(null); setSelectedGifId(null); setSelectedShapeId(null); setSelectedImageId(null);
@@ -955,12 +956,12 @@ const Canvas = ({
             }
             // Zapisz lokalnie wymazanie, aby przetrwało redrawCanvas
             localDrawingsRef.current.push({
-                type: 'erase-area',
-                x: originalCaptureRect.x,
-                y: originalCaptureRect.y,
-                width: originalCaptureRect.width,
-                height: originalCaptureRect.height,
-                timestamp: Date.now()
+              type: 'erase-area',
+              x: originalCaptureRect.x,
+              y: originalCaptureRect.y,
+              width: originalCaptureRect.width,
+              height: originalCaptureRect.height,
+              timestamp: Date.now()
             });
           }
 
@@ -991,7 +992,7 @@ const Canvas = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
-    notes, textBoxes, emojis, gifs, shapes,images,
+    notes, textBoxes, emojis, gifs, shapes, images,
     selectedNoteId, selectedTextBoxId, selectedEmojiId, selectedGifId, selectedShapeId,
     selectionBox, selectionSnapshot,
     clipboard
@@ -1164,10 +1165,10 @@ const Canvas = ({
   return (
     <div className="canvas-container" ref={containerRef}>
       <div
-        className={`canvas-area background-${backgroundMode} ${tool === 'select' ? 'is-selecting' : ''} ${isSpacePressed ? (isPanning ? 'is-grabbing' : 'is-grab') : ''}`}
-        onClick={handleCanvasClick}
+        className={`canvas-area background-${backgroundMode} ${tool === 'select' ? 'is-selecting' : ''} ${isPanning ? 'is-grabbing' : ''}`} onClick={handleCanvasClick}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
+        onContextMenu={(e) => e.preventDefault()}
         style={{ backgroundPosition: `${panOffset.x}px ${panOffset.y}px` }}
       >
         <canvas
