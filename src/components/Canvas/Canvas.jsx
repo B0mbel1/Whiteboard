@@ -127,6 +127,8 @@ const Canvas = ({
 
   const isWorkingTool = ['select', 'pencil', 'brush', 'eraser'].includes(tool);
 
+  const remoteDrawingsRef = useRef([]);
+
   const ACTION_TYPES = {
     DRAWING: 'drawing',
     NOTE_CREATE: 'note_create',
@@ -502,19 +504,32 @@ const Canvas = ({
     // Najpierw wyczyść drawing canvas
     clearDrawingCanvas();
 
-    // Narysuj historię
-    for (let i = 0; i <= historyRef.current.step; i++) {
-      const action = historyRef.current.history[i];
+    // Rysuj warstwę zdalną
+    if (remoteDrawingsRef.current && remoteDrawingsRef.current.length > 0) {
+      remoteDrawingsRef.current.forEach(data => {
+        // 🛡️ ZABEZPIECZENIE: Rysuj tylko jeśli data istnieje
+        if (data) {
+          drawRemote(data);
+        }
+      });
+    }
 
-      if (action.type === ACTION_TYPES.DRAWING && action.data && action.data.points && action.data.points.length > 1) {
-        drawCompletePath(context, action.data.tool, action.data.color, action.data.size, action.data.points);
-      }
-      // ➕ DODANO: Jeśli w historii jest akcja wymazania obszaru, wykonaj ją ponownie na canvasie
-      else if (action.type === ACTION_TYPES.ERASE_AREA) {
-        const { x, y, width, height } = action.data;
-        // Ponieważ setupDrawingContext ustawia transformację (translate), 
-        // możemy używać współrzędnych świata (x, y) bezpośrednio.
-        context.clearRect(x, y, width, height);
+    // Narysuj historię lokalną
+    // 🛡️ ZABEZPIECZENIE: Sprawdź czy historia istnieje
+    if (historyRef.current && historyRef.current.history) {
+      for (let i = 0; i <= historyRef.current.step; i++) {
+        const action = historyRef.current.history[i];
+
+        // 🛡️ ZABEZPIECZENIE: Jeśli akcja jest pusta (dziura w tablicy), pomiń ją
+        if (!action) continue;
+
+        if (action.type === ACTION_TYPES.DRAWING && action.data && action.data.points && action.data.points.length > 1) {
+          drawCompletePath(context, action.data.tool, action.data.color, action.data.size, action.data.points);
+        }
+        else if (action.type === ACTION_TYPES.ERASE_AREA && action.data) {
+          const { x, y, width, height } = action.data;
+          context.clearRect(x, y, width, height);
+        }
       }
     }
   };
@@ -806,7 +821,19 @@ const Canvas = ({
   useEffect(() => {
     if (socket) {
       console.log("📡 Setting up canvas listeners");
-      const handleRemoteDrawing = (data) => { drawRemote(data); };
+      const handleRemoteDrawing = (data) => {
+        remoteDrawingsRef.current.push(data); // Dodaj do pamięci
+        drawRemote(data);
+      };
+
+      const handleEraseArea = (data) => {
+        remoteDrawingsRef.current.push({ ...data, type: 'erase-area' }); // Dodaj wymazywanie do pamięci
+        const ctx = drawingContextRef.current;
+        if (ctx) {
+          setupDrawingContext();
+          ctx.clearRect(data.x, data.y, data.width, data.height);
+        }
+      };
       const handleRemoteCursorMove = (data) => {
         if (data.userId !== socket.id) {
           setRemoteCursors(prev => {
@@ -824,8 +851,13 @@ const Canvas = ({
       const handleWhiteboardState = (data) => {
         console.log("🎨 Redrawing", data.drawingData.length, "existing drawings");
 
+        // Zapisz dane z serwera do refa
+        remoteDrawingsRef.current = data.drawingData || [];
+
         clearDrawingCanvas();
         setTimeout(() => {
+          // Funkcja redrawCanvas sama teraz użyje remoteDrawingsRef, 
+          // ale dla pewności przy inicjalizacji rysujemy ręcznie:
           data.drawingData.forEach(drawing => { drawRemote(drawing); });
         }, 100);
 
@@ -858,6 +890,7 @@ const Canvas = ({
       socket.on('whiteboard-data', handleWhiteboardState);
       socket.on('user-joined', handleUsersUpdated);
       socket.on('user-left', handleUsersUpdated);
+      socket.on('erase-area', handleEraseArea); // Upewnij się, że nasłuchujesz erase-area tutaj
 
       return () => {
         socket.off('drawing', handleRemoteDrawing);
@@ -865,6 +898,7 @@ const Canvas = ({
         socket.off('whiteboard-data', handleWhiteboardState);
         socket.off('user-joined', handleUsersUpdated);
         socket.off('user-left', handleUsersUpdated);
+        socket.off('erase-area', handleEraseArea);
       };
     }
   }, [socket, currentUser]);
@@ -883,16 +917,20 @@ const Canvas = ({
   };
 
   const drawRemote = (data) => {
+    // 🛡️ ZABEZPIECZENIE: Jeśli dane są puste, przerwij
+    if (!data) return;
+
     const context = drawingContextRef.current;
     if (!context) return;
 
     if (data.type === 'erase-area') {
-      // Przy erase-area musimy uwzględnić transformację, ale setupDrawingContext jest już wywołany
       context.clearRect(data.x, data.y, data.width, data.height);
       return;
     }
 
+    // 🛡️ ZABEZPIECZENIE: Sprawdź czy są punkty zanim zaczniesz rysować
     if (!data.points || data.points.length < 2) return;
+
     drawCompletePath(context, data.tool, data.color, data.size, data.points);
   };
 
@@ -934,23 +972,23 @@ const Canvas = ({
     }
   }, [tool]);
 
-  useEffect(() => {
-    if (socket) {
-      const handleEraseArea = (data) => {
-        const ctx = drawingContextRef.current;
-        if (ctx) {
-          // Upewnij się że context jest setup
-          setupDrawingContext();
-          ctx.clearRect(data.x, data.y, data.width, data.height);
-        }
-      };
+  // useEffect(() => {
+  //   if (socket) {
+  //     const handleEraseArea = (data) => {
+  //       remoteDrawingsRef.current.push({ ...data, type: 'erase-area' }); // Dodaj wymazywanie do pamięci
+  //       const ctx = drawingContextRef.current;
+  //       if (ctx) {
+  //         setupDrawingContext();
+  //         ctx.clearRect(data.x, data.y, data.width, data.height);
+  //       }
+  //     };
 
-      socket.on('erase-area', handleEraseArea);
-      return () => {
-        socket.off('erase-area', handleEraseArea);
-      };
-    }
-  }, [socket]);
+  //     socket.on('erase-area', handleEraseArea);
+  //     return () => {
+  //       socket.off('erase-area', handleEraseArea);
+  //     };
+  //   }
+  // }, [socket]);
 
   const startDrawing = ({ nativeEvent }) => {
     // --- OBSŁUGA PANNINGU (SPACJA + MYSZ) ---
