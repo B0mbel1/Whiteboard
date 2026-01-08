@@ -158,6 +158,7 @@ const WhiteboardRouter = () => {
         console.log("🔌 Disconnecting socket");
         socketRef.current.disconnect();
       }
+      hasJoinedRef.current = false;
     };
   }, [whiteboardId]);
 
