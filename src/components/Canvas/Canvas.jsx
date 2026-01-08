@@ -58,6 +58,7 @@ const Canvas = ({
   panOffset,
   setPanOffset
 }) => {
+  const [scale, setScale] = useState(1);
   const [remoteCursors, setRemoteCursors] = useState(new Map());
   const [isChatVisible, setIsChatVisible] = useState(false);
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
@@ -235,6 +236,10 @@ const Canvas = ({
       }
     }
   };
+
+
+
+  
   // Funkcje historii
   const saveToHistory = (actionType, data) => {
     const newHistory = historyRef.current.history.slice(0, historyRef.current.step + 1);
@@ -606,6 +611,7 @@ const Canvas = ({
   ];
 
   // Funkcja do rysowania tła (ZAKTUALIZOWANA o Panning)
+// 🔹 RYSOWANIE TŁA
   const drawBackground = () => {
     const canvas = backgroundCanvasRef.current;
     const context = backgroundContextRef.current;
@@ -614,82 +620,72 @@ const Canvas = ({
     const width = canvas.width;
     const height = canvas.height;
 
-    // Reset transformacji dla tła
+    // Resetujemy transformację, by wyczyścić cały ekran
     context.setTransform(1, 0, 0, 1, 0, 0);
     context.clearRect(0, 0, width, height);
 
-    // Szare tło poza światem
+    // Szare tło (poza obszarem roboczym)
     context.fillStyle = '#e5e5e5';
     context.fillRect(0, 0, width, height);
 
     context.save();
-    // Przesuń układ współrzędnych
+    
+    // 🔹 Aplikujemy transformację kamery (Pan + Scale)
     context.translate(panOffsetRef.current.x, panOffsetRef.current.y);
+    context.scale(scale, scale);
 
     const areaStart = -WORLD_LIMIT;
     const areaSize = WORLD_LIMIT * 2;
 
+    // Dostosowanie cienia i grubości linii do skali
+    // Żeby siatka nie robiła się wielkim grubym murem przy zoomie
     context.shadowColor = 'rgba(0, 0, 0, 0.2)';
-    context.shadowBlur = 20;
+    context.shadowBlur = 20 / scale; 
+    const lineWidth = 1 / scale; 
 
     switch (backgroundModeRef.current) {
       case 'white':
         context.fillStyle = 'white';
         context.fillRect(areaStart, areaStart, areaSize, areaSize);
         break;
-
       case 'grid':
         context.fillStyle = '#f0f0f0';
-        context.fillRect(areaStart, areaStart, areaSize, areaSize);
+        context.fillRect(areaStart, areaStart, areaSize, areaSize); // Białe tło obszaru roboczego
         context.shadowColor = 'transparent';
-
-        // Rysuj kratkę
         context.strokeStyle = '#d0d0d0';
-        context.lineWidth = 1;
-
+        context.lineWidth = lineWidth;
+        
         context.beginPath();
         const gridSize = 20;
-
-        // Pionowe linie
-        for (let x = areaStart; x <= WORLD_LIMIT; x += gridSize) {
-          context.moveTo(x, areaStart);
-          context.lineTo(x, WORLD_LIMIT);
+        for (let x = areaStart; x <= WORLD_LIMIT; x += gridSize) { 
+            context.moveTo(x, areaStart); 
+            context.lineTo(x, WORLD_LIMIT); 
         }
-
-        // Poziome linie
-        for (let y = areaStart; y <= WORLD_LIMIT; y += gridSize) {
-          context.moveTo(areaStart, y);
-          context.lineTo(WORLD_LIMIT, y);
+        for (let y = areaStart; y <= WORLD_LIMIT; y += gridSize) { 
+            context.moveTo(areaStart, y); 
+            context.lineTo(WORLD_LIMIT, y); 
         }
-
         context.stroke();
         break;
-
       case 'lines':
         context.fillStyle = 'white';
         context.fillRect(areaStart, areaStart, areaSize, areaSize);
         context.shadowColor = 'transparent';
-
-        // Rysuj linie jak w zeszycie
         context.strokeStyle = '#e0e0e0';
-        context.lineWidth = 1;
-
+        context.lineWidth = lineWidth;
         const lineSpacing = 24;
+        
         context.beginPath();
-
-        for (let y = areaStart; y <= WORLD_LIMIT; y += lineSpacing) {
-          context.moveTo(areaStart, y);
-          context.lineTo(WORLD_LIMIT, y);
+        for (let y = areaStart; y <= WORLD_LIMIT; y += lineSpacing) { 
+            context.moveTo(areaStart, y); 
+            context.lineTo(WORLD_LIMIT, y); 
         }
-
         context.stroke();
         break;
-
       case 'black':
         context.fillStyle = 'black';
         context.fillRect(areaStart, areaStart, areaSize, areaSize);
         break;
-
       default:
         context.fillStyle = 'white';
         context.fillRect(areaStart, areaStart, areaSize, areaSize);
@@ -718,7 +714,33 @@ const Canvas = ({
     redrawCanvas();
   }, [panOffset]);
 
+// 🔹 HELPER DO AKTUALIZACJI DZIECI (Screen -> World)
+  // Komponenty (Note, Text) zwracają nam pozycję ekranową (Screen).
+  // Musimy to przeliczyć na World Coordinates przed wysłaniem do bazy/stanu.
+  const handleChildUpdate = (updateFn, id, data) => {
+    const cleanData = { ...data };
+
+    // 1. Przeliczamy pozycję: World = (Screen - Pan) / Scale
+    if (cleanData.position) {
+       cleanData.x = (cleanData.position.x - panOffset.x) / scale;
+       cleanData.y = (cleanData.position.y - panOffset.y) / scale;
+       delete cleanData.position;
+    } else {
+       if (cleanData.x !== undefined) cleanData.x = (cleanData.x - panOffset.x) / scale;
+       if (cleanData.y !== undefined) cleanData.y = (cleanData.y - panOffset.y) / scale;
+    }
+
+    // 2. Przeliczamy rozmiar: WorldSize = ScreenSize / Scale
+    // Dzięki temu, gdy oddalasz widok, elementy skalują się poprawnie w bazie
+    if (cleanData.width !== undefined) cleanData.width = cleanData.width / scale;
+    if (cleanData.height !== undefined) cleanData.height = cleanData.height / scale;
+    if (cleanData.size !== undefined) cleanData.size = cleanData.size / scale;
+
+    updateFn(id, cleanData);
+  };
+
   // Funkcja do konfiguracji kontekstu rysowania (ZAKTUALIZOWANA o Panning)
+// 🔹 KONFIGURACJA KONTEKSTU RYSOWANIA
   const setupDrawingContext = () => {
     const ctx = drawingContextRef.current;
     if (!ctx) return;
@@ -726,12 +748,16 @@ const Canvas = ({
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.strokeStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : color;
-    ctx.lineWidth = getToolSize();
+    
+    // Grubość linii - zostawiamy standardową, dzięki transformacji niżej 
+    // linia wizualnie będzie grubsza przy przybliżeniu (naturalny efekt)
+    ctx.lineWidth = getToolSize(); 
+    
     ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
 
-    // Kluczowe: używamy REF do transformacji
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.translate(panOffsetRef.current.x, panOffsetRef.current.y);
+    // 🔹 KLUCZOWA ZMIANA: Transformacja (Skala + Przesunięcie)
+    // Dzięki temu rysujesz w koordynatach świata, a canvas sam to skaluje
+    ctx.setTransform(scale, 0, 0, scale, panOffsetRef.current.x, panOffsetRef.current.y);
   };
 
   useEffect(() => {
@@ -935,13 +961,45 @@ const Canvas = ({
   };
 
   // ZAKTUALIZOWANE: Pobieranie koordynatów z uwzględnieniem Pan
-  const getCanvasCoordinates = (clientX, clientY) => {
+const getCanvasCoordinates = (clientX, clientY) => {
     const canvas = drawingCanvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
+
+    // Wzór: (PozycjaEkranu - Przesunięcie) / Skala
     return {
-      x: clientX - rect.left - panOffsetRef.current.x,
-      y: clientY - rect.top - panOffsetRef.current.y
+      x: (clientX - rect.left - panOffset.x) / scale,
+      y: (clientY - rect.top - panOffset.y) / scale
     };
+  };
+
+const handleWheel = (e) => {
+    // Ignoruj jeśli scrollujemy nad chatem
+    if (e.target.closest('.chat-window')) return;
+    if (e.ctrlKey) e.preventDefault(); // Zapobiega systemowemu zoomowi przeglądarki
+
+    const zoomSensitivity = 0.001;
+    const delta = -e.deltaY * zoomSensitivity;
+
+    // Ograniczenie zooma (min 0.1, max 5.0)
+    const newScale = Math.min(Math.max(scale + delta, 0.1), 5);
+
+    // Zoomowanie w stronę kursora myszy:
+    const container = containerRef.current;
+    const rect = container.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    // Gdzie myszka była w "świecie" przed zoomem?
+    const worldX = (mouseX - panOffset.x) / scale;
+    const worldY = (mouseY - panOffset.y) / scale;
+
+    // Nowy PanOffset, aby punkt świata pozostał pod myszką
+    const newPanX = mouseX - (worldX * newScale);
+    const newPanY = mouseY - (worldY * newScale);
+
+    setScale(newScale);
+    setPanOffset({ x: newPanX, y: newPanY });
   };
 
   const handleGifUpdate = (id, updates) => {
@@ -1704,69 +1762,47 @@ const Canvas = ({
   const remoteCursorsArray = Array.from(remoteCursors.values());
 
   return (
-
     <div className="canvas-container" ref={containerRef}>
-
       <div
         className={`canvas-area background-${backgroundMode} ${tool === 'select' ? 'is-selecting' : ''} ${isSpacePressed ? (isPanning ? 'is-grabbing' : 'is-grab') : ''}`}
         onClick={handleCanvasClick}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
+        onWheel={handleWheel} // 🔹 PODPIĘCIE ZOOM
         style={{
-          // Przesuwamy tło (grid/lines) zgodnie z panOffset
           backgroundPosition: `${panOffset.x}px ${panOffset.y}px`
         }}
       >
         <canvas
           ref={backgroundCanvasRef}
           className="background-canvas"
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            zIndex: 1,
-            pointerEvents: 'none'
-          }}
+          style={{ position: 'absolute', top: 0, left: 0, zIndex: 1, pointerEvents: 'none' }}
         />
-
-        {/* Główny canvas do rysowania */}
         <canvas
           ref={drawingCanvasRef}
           className="drawing-canvas"
           style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            zIndex: 2,
-            backgroundColor: 'transparent'
+            position: 'absolute', top: 0, left: 0, zIndex: 2, backgroundColor: 'transparent'
           }}
           onMouseDown={startDrawing}
           onMouseUp={stopDrawing}
           onMouseMove={handleMouseMove}
-          onMouseLeave={handleMouseLeave}
-          onMouseEnter={handleMouseEnter}
+          onMouseLeave={stopDrawing}
+          onMouseEnter={() => {}}
         />
 
-        {/* Renderowanie prostokąta zaznaczania (dodano Pan Offset) */}
         {selectionBox && (
           <div
             className="selection-overlay"
             style={{
-              left: selectionBox.x + panOffset.x,
-              top: selectionBox.y + panOffset.y,
-              width: selectionBox.width,
-              height: selectionBox.height,
+              left: (selectionBox.x * scale) + panOffset.x,
+              top: (selectionBox.y * scale) + panOffset.y,
+              width: selectionBox.width * scale,
+              height: selectionBox.height * scale,
               border: '1px dashed #3498db'
             }}
           >
-            {selectionSnapshot && (
-              <img
-                src={selectionSnapshot}
-                alt="Selected area"
-                className="selection-image"
-                draggable={false}
-              />
-            )}
+            {selectionSnapshot && <img src={selectionSnapshot} alt="Selected" className="selection-image" draggable={false} />}
           </div>
         )}
 
@@ -1775,28 +1811,14 @@ const Canvas = ({
             <Note
               key={note.id}
               {...note}
-              // Wyświetlanie: dodajemy offset (World -> Screen)
-              x={note.x + panOffset.x}
-              y={note.y + panOffset.y}
+              x={(note.x * scale) + panOffset.x}
+              y={(note.y * scale) + panOffset.y}
+              width={note.width * scale}
+              height={note.height * scale}
+              scale={scale}
               panOffset={panOffset}
               limit={WORLD_LIMIT}
-              onUpdate={(id, data) => {
-                // Zapis: odejmujemy offset (Screen -> World) i spłaszczamy strukturę
-                const cleanData = { ...data };
-
-                // Jeśli komponent wysłał obiekt 'position', użyj go do wyliczenia x/y
-                if (cleanData.position) {
-                  cleanData.x = cleanData.position.x - panOffset.x;
-                  cleanData.y = cleanData.position.y - panOffset.y;
-                  delete cleanData.position; // Usuwamy, żeby nie dublować danych w bazie
-                } else {
-                  // Fallback, jeśli wysłał płaskie x/y (ale są to coordy ekranowe z Note.jsx)
-                  if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
-                  if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
-                }
-
-                handleNoteUpdate(id, cleanData);
-              }}
+              onUpdate={(id, data) => handleChildUpdate(handleNoteUpdate, id, data)}
               onRemove={handleNoteDelete}
               selectedNoteId={selectedNoteId}
               setSelectedNoteId={setSelectedNoteId}
@@ -1809,31 +1831,16 @@ const Canvas = ({
           <Text
             key={textBox.id}
             id={textBox.id}
-            // Wyświetlanie: World -> Screen
-            x={textBox.x + panOffset.x}
-            y={textBox.y + panOffset.y}
+            x={(textBox.x * scale) + panOffset.x}
+            y={(textBox.y * scale) + panOffset.y}
+            width={textBox.width * scale}
+            height={textBox.height * scale}
+            scale={scale}
             panOffset={panOffset}
             limit={WORLD_LIMIT}
-            width={textBox.width}
-            height={textBox.height}
             text={textBox.text}
             tool={tool}
-            onUpdate={(id, data) => {
-              // Zapis: Screen -> World
-              const cleanData = { ...data };
-
-              // Text.jsx wysyła głównie 'position'
-              if (cleanData.position) {
-                cleanData.x = cleanData.position.x - panOffset.x;
-                cleanData.y = cleanData.position.y - panOffset.y;
-                delete cleanData.position;
-              } else {
-                if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
-                if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
-              }
-
-              handleTextUpdate(id, cleanData);
-            }}
+            onUpdate={(id, data) => handleChildUpdate(handleTextUpdate, id, data)}
             onRemove={removeTextBox}
             selected={selectedTextBoxId === textBox.id}
             setSelected={setSelectedTextBoxId}
@@ -1844,38 +1851,32 @@ const Canvas = ({
           <Emoji
             key={emojiData.id}
             {...emojiData}
-            x={emojiData.x + panOffset.x}
-            y={emojiData.y + panOffset.y}
+            x={(emojiData.x * scale) + panOffset.x}
+            y={(emojiData.y * scale) + panOffset.y}
+            size={emojiData.size * scale}
+            scale={scale}
             panOffset={panOffset}
             limit={WORLD_LIMIT}
             tool={tool}
             selected={selectedEmojiId === emojiData.id}
             onSelect={setSelectedEmojiId}
             onRemove={removeEmoji}
-            onUpdate={(id, data) => {
-              const cleanData = { ...data };
-              if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
-              if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
-              handleEmojiUpdate(id, cleanData);
-            }}
+            onUpdate={(id, data) => handleChildUpdate(handleEmojiUpdate, id, data)}
           />
         ))}
         {gifs.map(gif => (
           <Gif
             key={gif.id}
             {...gif}
-            x={gif.x + panOffset.x}
-            y={gif.y + panOffset.y}
+            x={(gif.x * scale) + panOffset.x}
+            y={(gif.y * scale) + panOffset.y}
+            width={gif.width * scale}
+            scale={scale}
             panOffset={panOffset}
             limit={WORLD_LIMIT}
             selected={selectedGifId === gif.id}
             onSelect={setSelectedGifId}
-            onUpdate={(id, data) => {
-              const cleanData = { ...data };
-              if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
-              if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
-              handleGifUpdate(id, cleanData);
-            }}
+            onUpdate={(id, data) => handleChildUpdate(handleGifUpdate, id, data)}
             tool={tool}
           />
         ))}
@@ -1883,56 +1884,44 @@ const Canvas = ({
           <ImageItem
             key={image.id}
             {...image}
-            x={image.x + panOffset.x}
-            y={image.y + panOffset.y}
+            x={(image.x * scale) + panOffset.x}
+            y={(image.y * scale) + panOffset.y}
+            width={image.width * scale}
+            scale={scale}
             panOffset={panOffset}
             limit={WORLD_LIMIT}
             selected={selectedImageId === image.id}
             onSelect={setSelectedImageId}
-            onUpdate={(id, data) => {
-              const cleanData = { ...data };
-              if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
-              if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
-              handleImageUpdate(id, cleanData);
-            }}
+            onUpdate={(id, data) => handleChildUpdate(handleImageUpdate, id, data)}
           />
         ))}
-
         {shapes.map(shape => {
-          // 1. Najpierw szukamy "żywego" użytkownika na liście online
           const creator = users ? users.find(u => u.id === shape.userId) : null;
-
-          // 2. LOGIKA PRIORYTETÓW:
           const dynamicColor = creator ? creator.color : (shape.color || '#000000');
-
           return (
             <Shape
               key={shape.id}
               {...shape}
-              x={shape.x + panOffset.x}
-              y={shape.y + panOffset.y}
+              x={(shape.x * scale) + panOffset.x}
+              y={(shape.y * scale) + panOffset.y}
+              width={shape.width * scale}
+              height={shape.height * scale}
+              scale={scale}
               panOffset={panOffset}
               limit={WORLD_LIMIT}
               color={dynamicColor}
               selected={selectedShapeId === shape.id}
               onSelect={setSelectedShapeId}
               onRemove={removeShape}
-              onUpdate={(id, data) => {
-                const cleanData = { ...data };
-                if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
-                if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
-                handleShapeUpdate(id, cleanData);
-              }}
+              onUpdate={(id, data) => handleChildUpdate(handleShapeUpdate, id, data)}
               tool={tool}
             />
           );
         })}
 
         {remoteCursorsArray.map((cursor, index) => {
-          // Pobierz dane usera z obiektu kursora
           const userName = cursor.user?.name || 'Unknown';
           const userColor = cursor.user?.color || '#ff4444';
-
           return (
             cursor.position && (
               <div
@@ -1940,49 +1929,17 @@ const Canvas = ({
                 className="remote-cursor"
                 style={{
                   position: 'absolute',
-                  // Dodajemy offset do kursorów innych użytkowników
-                  left: cursor.position.x + panOffset.x,
-                  top: cursor.position.y + panOffset.y,
+                  left: (cursor.position.x * scale) + panOffset.x,
+                  top: (cursor.position.y * scale) + panOffset.y,
                   pointerEvents: 'none',
                   zIndex: 1000,
                   transition: 'left 0.1s linear, top 0.1s linear'
                 }}
               >
-                {/* Ikona kursora (kropka) */}
-                <svg
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    transform: 'translate(-2px, -2px)',
-                    fill: userColor,
-                    stroke: 'white',
-                    strokeWidth: 2,
-                    filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))'
-                  }}
-                >
+                <svg width="24" height="24" viewBox="0 0 24 24" style={{ position: 'absolute', top: 0, left: 0, transform: 'translate(-2px, -2px)', fill: userColor, stroke: 'white', strokeWidth: 2, filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))' }}>
                   <path d="M5.5 3.21l10.08 5.31c1.26.66 1.13 2.51-.2 2.98l-3.32 1.17a1 1 0 0 1-.65.25l-3.46.74a1 1 0 0 0-.71.56l-1.24 3.06c-.52 1.28-2.35 1.18-2.7-.15L2.1 4.38c-.2-.77.58-1.5 1.32-1.17H5.5z" />
                 </svg>
-
-                {/* Etykieta z nazwą */}
-                <div style={{
-                  position: 'absolute',
-                  left: '16px',
-                  top: '12px',
-                  backgroundColor: userColor,
-                  color: 'white',
-                  padding: '4px 8px',
-                  borderRadius: '12px',
-                  fontSize: '12px',
-                  fontWeight: 'bold',
-                  whiteSpace: 'nowrap',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                  border: '2px solid white',
-                  pointerEvents: 'none'
-                }}>
+                <div style={{ position: 'absolute', left: '16px', top: '12px', backgroundColor: userColor, color: 'white', padding: '4px 8px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold', whiteSpace: 'nowrap', boxShadow: '0 2px 4px rgba(0,0,0,0.2)', border: '2px solid white', pointerEvents: 'none' }}>
                   {userName}
                 </div>
               </div>
@@ -1990,43 +1947,17 @@ const Canvas = ({
           );
         })}
 
-        <button
-          className="background-toggle"
-          onClick={toggleBackground}
-          title={`Tło: ${backgroundModes.find(mode => mode.id === backgroundMode)?.name}`}
-          style={{ pointerEvents: isWorkingTool ? 'none' : 'auto' }}
-        >
-          {getCurrentBackgroundIcon()}
+        <button className="background-toggle" onClick={() => { const idx = ['white','grid','lines','black'].indexOf(backgroundMode); if(onBackgroundChange) onBackgroundChange(['white','grid','lines','black'][(idx+1)%4]); }} title="Zmień tło" style={{ pointerEvents: isWorkingTool ? 'none' : 'auto' }}>
+          {backgroundMode === 'white' ? '🌕' : backgroundMode === 'grid' ? '🏁' : backgroundMode === 'lines' ? '📐' : '🌑'}
         </button>
 
-        <button
-          // 🔹 ZMODYFIKOWANA KLASA: Dodajemy 'has-unread' jeśli są nowe wiadomości
-          className={`chat-toggle ${isChatVisible ? 'active-chat' : ''} ${hasUnreadMessages ? 'has-unread' : ''}`}
-          onClick={() => {
-            setIsChatVisible(!isChatVisible);
-            // 🔹 DODANE: Jeśli otwieramy czat, resetujemy powiadomienie
-            if (!isChatVisible) {
-              setHasUnreadMessages(false);
-            }
-          }}
-          title={isChatVisible ? "Ukryj chat" : "Pokaż chat"}
-          style={{ pointerEvents: isWorkingTool ? 'none' : 'auto' }}
-        >
+        <button className={`chat-toggle ${isChatVisible ? 'active-chat' : ''} ${hasUnreadMessages ? 'has-unread' : ''}`} onClick={() => { setIsChatVisible(!isChatVisible); if(!isChatVisible) setHasUnreadMessages(false); }} title={isChatVisible ? "Ukryj chat" : "Pokaż chat"} style={{ pointerEvents: isWorkingTool ? 'none' : 'auto' }}>
           {isChatVisible ? "✖" : "💬"}
         </button>
 
-        {/* CHAT */}
-        {isChatVisible && (
-          <Chat
-            socket={socket}
-            whiteboardId={whiteboardId}
-            currentUser={currentUser}
-            onClose={() => setIsChatVisible(false)}
-          />
-        )}
-
+        {isChatVisible && <Chat socket={socket} whiteboardId={whiteboardId} currentUser={currentUser} onClose={() => setIsChatVisible(false)} />}
       </div>
-    </div >
+    </div>
   );
 };
 
