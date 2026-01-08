@@ -386,29 +386,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
           ))}
         </div>
 
-        <div className="toolbar-section">
-          <h4>Akcje</h4>
-          <div className="tool-undo-redo">
-            <button
-              className={`tool-btn ${!canUndo ? 'disabled' : ''}`}
-              title="Cofnij (Ctrl+Z)"
-              onClick={handleUndo}
-              disabled={!canUndo}
-              style={{ cursor: canUndo ? 'default' : 'not-allowed' }}
-            >
-              ↩️
-            </button>
-            <button
-              className={`tool-btn ${!canRedo ? 'disabled' : ''}`}
-              title="Ponów (Ctrl+Y)"
-              onClick={handleRedo}
-              disabled={!canRedo}
-              style={{ cursor: canRedo ? 'default' : 'not-allowed' }}
-            >
-              ↪️
-            </button>
-          </div>
-        </div>
+        
 
         <div className="toolbar-section">
           <h4>Kolor</h4>
