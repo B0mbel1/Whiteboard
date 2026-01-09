@@ -11,7 +11,9 @@ import Shape from './Shape';
 import Chat from './Chat';
 
 // --- STAŁE GRANICZNE ---
-const WORLD_LIMIT = 1500;
+const WORLD_LIMIT = 2500; //wczesniej 1500
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 3.5;
 
 const Canvas = ({
   tool,
@@ -62,6 +64,9 @@ const Canvas = ({
   const [isChatVisible, setIsChatVisible] = useState(false);
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
 
+  // 🔹 Stan Zoomu
+  const [zoom, setZoom] = useState(1);
+
   const backgroundModeRef = useRef(backgroundMode);
   const currentMousePosRef = useRef({ x: 0, y: 0 });
 
@@ -78,8 +83,6 @@ const Canvas = ({
   const [notes, setNotes] = useState(initialNotes || []);
   const [textBoxes, setTextBoxes] = useState(initialTextBoxes || []);
 
-  // --- ZMIANA: Zamiast historii, trzymamy lokalne rysunki w prostej tablicy ---
-  // Służy to tylko do przerysowywania canvasu (np. przy resize), bez undo.
   const localDrawingsRef = useRef([]);
 
   // --- STANY DO PANNINGU (PRZESUWANIA) ---
@@ -133,13 +136,38 @@ const Canvas = ({
   useEffect(() => {
     panOffsetRef.current = panOffset;
   }, [panOffset]);
+  
+  // --- 🔹 DODANO OBSŁUGĘ ZOOMOWANIA (Wheel) ---
+  const handleWheel = (e) => {
+    e.preventDefault();
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    // Oblicz punkt w świecie przed zoomem
+    const worldX = (mouseX - panOffset.x) / zoom;
+    const worldY = (mouseY - panOffset.y) / zoom;
+
+    // Oblicz nowy zoom
+    const zoomSensitivity = 0.001;
+    const delta = -e.deltaY * zoomSensitivity;
+    const newZoom = Math.min(Math.max(zoom + delta, MIN_ZOOM), MAX_ZOOM);
+
+    // Oblicz nowy panOffset, aby punkt pod myszką pozostał w tym samym miejscu
+    const newPanX = mouseX - (worldX * newZoom);
+    const newPanY = mouseY - (worldY * newZoom);
+
+    setZoom(newZoom);
+    setPanOffset({ x: newPanX, y: newPanY });
+  };
 
   // --- OBSŁUGA KLAWISZA SPACJI ---
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Usunięto obsługę skrótów Undo/Redo (Ctrl+Z / Ctrl+Y)
-
-      // Obsługa Spacji (Panning)
       if (e.code === 'Space' && !e.repeat) {
         const activeElement = document.activeElement;
         if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) return;
@@ -209,17 +237,8 @@ const Canvas = ({
     const img = new Image();
     img.onload = () => {
       setupDrawingContext();
+      // Rysujemy obrazek na canvasie, który już ma transform (zoom/pan)
       ctx.drawImage(img, selectionBox.x, selectionBox.y, selectionBox.width, selectionBox.height);
-
-      // Zapisujemy "wklejenie" jako lokalny rysunek, aby przetrwało odświeżenie
-      // (W uproszczonej wersji bez undo nie mamy obiektu "paste", ale canvas jest bitmapą)
-      // W idealnym świecie powinniśmy wysłać obrazek do innych, ale tutaj zakładamy tryb rysowania.
-      // Aby to działało poprawnie z redrawCanvas, musielibyśmy zapisać to jako akcję.
-      // Dla uproszczenia w wersji bez Undo: Canvas po prostu zostaje pomalowany.
-      // Ale uwaga: redrawCanvas wyczyści to, jeśli nie zapiszemy w localDrawingsRef.
-      // Ponieważ "paste" to skomplikowana operacja bitmapowa, a redrawCanvas rysuje wektory,
-      // narzędzie Select/Cut/Paste w tym modelu działa najlepiej "tu i teraz".
-      // Jeśli chcemy trwałości, powinniśmy zamienić wycinek na ImageItem.
     };
     img.src = selectionSnapshot;
 
@@ -232,8 +251,12 @@ const Canvas = ({
     const context = drawingContextRef.current;
     if (!context) return;
 
-    // 1. Wyczyść
-    clearDrawingCanvas();
+    // Reset transformacji do czyszczenia
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.clearRect(0, 0, drawingCanvasRef.current.width, drawingCanvasRef.current.height);
+    
+    // Przywróć transformację zoom/pan
+    setupDrawingContext();
 
     // 2. Przygotuj listę operacji (Remote + Local)
     let allOperations = [];
@@ -243,7 +266,7 @@ const Canvas = ({
       allOperations = [...remoteDrawingsRef.current];
     }
 
-    // B. Local (zamiast historii używamy localDrawingsRef)
+    // B. Local
     if (localDrawingsRef.current && localDrawingsRef.current.length > 0) {
       allOperations = [...allOperations, ...localDrawingsRef.current];
     }
@@ -263,6 +286,7 @@ const Canvas = ({
     });
   };
 
+  // Funkcje usuwania
   const removeShape = (id) => {
     const shapeToDelete = shapes.find(s => s.id === id);
     if (shapeToDelete) {
@@ -326,14 +350,19 @@ const Canvas = ({
     context.fillStyle = '#e5e5e5';
     context.fillRect(0, 0, width, height);
 
-    context.save();
+    context.save(); 
+    // Tło również musi uwzględniać zoom
     context.translate(panOffsetRef.current.x, panOffsetRef.current.y);
-
+    context.scale(zoom, zoom);
+    
     const areaStart = -WORLD_LIMIT;
     const areaSize = WORLD_LIMIT * 2;
 
     context.shadowColor = 'rgba(0, 0, 0, 0.2)';
     context.shadowBlur = 20;
+
+    // Dostosuj grubość linii do zoomu, aby nie znikały
+    const lineWidth = 1 / zoom;
 
     switch (backgroundModeRef.current) {
       case 'white':
@@ -346,7 +375,7 @@ const Canvas = ({
         context.fillRect(areaStart, areaStart, areaSize, areaSize);
         context.shadowColor = 'transparent';
         context.strokeStyle = '#d0d0d0';
-        context.lineWidth = 1;
+        context.lineWidth = lineWidth;
         context.beginPath();
         const gridSize = 20;
         for (let x = areaStart; x <= WORLD_LIMIT; x += gridSize) {
@@ -365,7 +394,7 @@ const Canvas = ({
         context.fillRect(areaStart, areaStart, areaSize, areaSize);
         context.shadowColor = 'transparent';
         context.strokeStyle = '#e0e0e0';
-        context.lineWidth = 1;
+        context.lineWidth = lineWidth;
         const lineSpacing = 24;
         context.beginPath();
         for (let y = areaStart; y <= WORLD_LIMIT; y += lineSpacing) {
@@ -403,7 +432,7 @@ const Canvas = ({
   useEffect(() => {
     drawBackground();
     redrawCanvas();
-  }, [panOffset]);
+  }, [panOffset, zoom]); // Dodano zoom do zależności
 
   const setupDrawingContext = () => {
     const ctx = drawingContextRef.current;
@@ -415,8 +444,9 @@ const Canvas = ({
     ctx.lineWidth = getToolSize();
     ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
 
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.translate(panOffsetRef.current.x, panOffsetRef.current.y);
+    // 🔹 POPRAWKA: setTransform(a, b, c, d, e, f) ustawia zarówno skalę jak i translację.
+    // Usunięto nadmiarowe ctx.translate(), które powodowało podwójny offset.
+    ctx.setTransform(zoom, 0, 0, zoom, panOffsetRef.current.x, panOffsetRef.current.y);
   };
 
   useEffect(() => {
@@ -478,7 +508,7 @@ const Canvas = ({
 
   useEffect(() => {
     setupDrawingContext();
-  }, [color, size, tool, panOffset]);
+  }, [color, size, tool, panOffset, zoom]);
 
   useEffect(() => {
     if (socket) {
@@ -557,6 +587,7 @@ const Canvas = ({
       };
     }
   }, [socket, currentUser]);
+  
 
   const clearDrawingCanvas = () => {
     const context = drawingContextRef.current;
@@ -581,13 +612,23 @@ const Canvas = ({
     drawCompletePath(context, data.tool, data.color, data.size, data.points);
   };
 
+  // 🔹 WSPÓŁRZĘDNE Z UWZGLĘDNIENIEM ZOOMU
   const getCanvasCoordinates = (clientX, clientY) => {
     const canvas = drawingCanvasRef.current;
     const rect = canvas.getBoundingClientRect();
+    
+    // Wzór: (ScreenPos - Pan) / Zoom
     return {
-      x: clientX - rect.left - panOffsetRef.current.x,
-      y: clientY - rect.top - panOffsetRef.current.y
+      x: (clientX - rect.left - panOffsetRef.current.x) / zoom,
+      y: (clientY - rect.top - panOffsetRef.current.y) / zoom
     };
+  };
+
+  const getWorldFromScreen = (screenX, screenY) => {
+     return {
+         x: (screenX - panOffset.x) / zoom,
+         y: (screenY - panOffset.y) / zoom
+     };
   };
 
   const handleGifUpdate = (id, updates) => {
@@ -685,15 +726,33 @@ const Canvas = ({
         if (width > 5 && height > 5) {
           if (!selectionSnapshot) {
             const ctx = drawingContextRef.current;
-            const bitmapX = x + panOffset.x;
-            const bitmapY = y + panOffset.y;
-            const imageData = ctx.getImageData(bitmapX, bitmapY, width, height);
+            // Przeliczenie współrzędnych bitmapy dla getImageData jest skomplikowane przy zoomie.
+            // getImageData pobiera piksele ekranowe (jeśli canvas nie jest skalowany przez CSS).
+            // Używamy tutaj transformacji canvasa, więc współrzędne x, y są w świecie.
+            // Niestety getImageData ignoruje transformacje kontekstu.
+            // Aby to działało idealnie z zoomem, należy przeliczyć x/y na ekranowe.
+            
+            // Tymczasowe uproszczenie: Pobieramy obszar "świata", ale uwzględniając offsety
+            // UWAGA: To narzędzie w trybie Zoom może wymagać głębszej refaktoryzacji "Select tool".
+            // Dla prostego "wytnij/wklej" przy zoom=1 działa, przy zoom!=1 może być przesunięcie.
+            
+            // Próba naprawy dla Zoom:
+            // Musimy wiedzieć gdzie fizycznie na canvasie (piksele) jest ten obszar.
+            // ScreenX = WorldX * Zoom + PanX
+            const screenX = x * zoom + panOffset.x;
+            const screenY = y * zoom + panOffset.y;
+            const screenW = width * zoom;
+            const screenH = height * zoom;
+
+            const imageData = ctx.getImageData(screenX, screenY, screenW, screenH);
             ctx.clearRect(x, y, width, height);
+            
             const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = width;
-            tempCanvas.height = height;
+            tempCanvas.width = screenW;
+            tempCanvas.height = screenH;
             const tempCtx = tempCanvas.getContext('2d');
             tempCtx.putImageData(imageData, 0, 0);
+            
             const capturedImage = tempCanvas.toDataURL();
             setSelectionSnapshot(capturedImage);
             setOriginalCaptureRect({ x, y, width, height });
@@ -720,7 +779,6 @@ const Canvas = ({
 
     if (currentDrawingRef.current && onDrawing) {
       onDrawing(currentDrawingRef.current);
-      // --- ZMIANA: Zapisz do lokalnej tablicy zamiast historii ---
       localDrawingsRef.current.push(currentDrawingRef.current);
     }
     currentDrawingRef.current = null;
@@ -954,7 +1012,6 @@ const Canvas = ({
                 timestamp: Date.now()
               });
             }
-            // Zapisz lokalnie wymazanie, aby przetrwało redrawCanvas
             localDrawingsRef.current.push({
               type: 'erase-area',
               x: originalCaptureRect.x,
@@ -1073,16 +1130,7 @@ const Canvas = ({
       setPanOffset(prev => {
         const container = containerRef.current;
         if (!container) return { x: prev.x + dx, y: prev.y + dy };
-
-        const halfW = container.clientWidth / 2;
-        const halfH = container.clientHeight / 2;
-        const OFFSET_LIMIT = WORLD_LIMIT + 500;
-        const newX = prev.x + dx;
-        const newY = prev.y + dy;
-        const clampedX = Math.min(halfW + OFFSET_LIMIT, Math.max(halfW - OFFSET_LIMIT, newX));
-        const clampedY = Math.min(halfH + OFFSET_LIMIT, Math.max(halfH - OFFSET_LIMIT, newY));
-
-        return { x: clampedX, y: clampedY };
+        return { x: prev.x + dx, y: prev.y + dy };
       });
 
       lastMousePosRef.current = { x: e.clientX, y: e.clientY };
@@ -1155,7 +1203,6 @@ const Canvas = ({
     }
   }, [socket]);
 
-  // Usuwamy reset historii przy zmianie tablicy, resetujemy tylko lokalny ref
   useEffect(() => {
     localDrawingsRef.current = [];
   }, [whiteboardId]);
@@ -1165,11 +1212,16 @@ const Canvas = ({
   return (
     <div className="canvas-container" ref={containerRef}>
       <div
-        className={`canvas-area background-${backgroundMode} ${tool === 'select' ? 'is-selecting' : ''} ${isPanning ? 'is-grabbing' : ''}`} onClick={handleCanvasClick}
+        className={`canvas-area background-${backgroundMode} ${tool === 'select' ? 'is-selecting' : ''} ${isPanning ? 'is-grabbing' : ''}`} 
+        onClick={handleCanvasClick}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
         onContextMenu={(e) => e.preventDefault()}
-        style={{ backgroundPosition: `${panOffset.x}px ${panOffset.y}px` }}
+        onWheel={handleWheel}
+        style={{ 
+            backgroundPosition: `${panOffset.x}px ${panOffset.y}px`,
+            backgroundSize: `${20 * zoom}px ${20 * zoom}px`
+        }}
       >
         <canvas
           ref={backgroundCanvasRef}
@@ -1192,10 +1244,10 @@ const Canvas = ({
           <div
             className="selection-overlay"
             style={{
-              left: selectionBox.x + panOffset.x,
-              top: selectionBox.y + panOffset.y,
-              width: selectionBox.width,
-              height: selectionBox.height,
+              left: (selectionBox.x * zoom) + panOffset.x,
+              top: (selectionBox.y * zoom) + panOffset.y,
+              width: selectionBox.width * zoom,
+              height: selectionBox.height * zoom,
               border: '1px dashed #3498db'
             }}
           >
@@ -1205,24 +1257,27 @@ const Canvas = ({
           </div>
         )}
 
-        {notes.map(note => (
+       {notes.map(note => (
           <div key={note.id} style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none', width: '100%', height: '100%' }}>
             <Note
               key={note.id}
               {...note}
-              x={note.x + panOffset.x}
-              y={note.y + panOffset.y}
+              x={(note.x * zoom) + panOffset.x}
+              y={(note.y * zoom) + panOffset.y}
+              width={note.width}
+              height={note.height}
+              zoom={zoom}
               panOffset={panOffset}
               limit={WORLD_LIMIT}
               onUpdate={(id, data) => {
                 const cleanData = { ...data };
                 if (cleanData.position) {
-                  cleanData.x = cleanData.position.x - panOffset.x;
-                  cleanData.y = cleanData.position.y - panOffset.y;
+                  cleanData.x = (cleanData.position.x - panOffset.x) / zoom;
+                  cleanData.y = (cleanData.position.y - panOffset.y) / zoom;
                   delete cleanData.position;
-                } else {
-                  if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
-                  if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
+                } else if (cleanData.x !== undefined && cleanData.y !== undefined) {
+                    cleanData.x = (cleanData.x - panOffset.x) / zoom;
+                    cleanData.y = (cleanData.y - panOffset.y) / zoom;
                 }
                 handleNoteUpdate(id, cleanData);
               }}
@@ -1234,27 +1289,29 @@ const Canvas = ({
             />
           </div>
         ))}
+
         {textBoxes.map(textBox => (
           <Text
             key={textBox.id}
             id={textBox.id}
-            x={textBox.x + panOffset.x}
-            y={textBox.y + panOffset.y}
-            panOffset={panOffset}
-            limit={WORLD_LIMIT}
+            x={(textBox.x * zoom) + panOffset.x}
+            y={(textBox.y * zoom) + panOffset.y}
             width={textBox.width}
             height={textBox.height}
+            zoom={zoom}
             text={textBox.text}
+            panOffset={panOffset}
+            limit={WORLD_LIMIT}
             tool={tool}
             onUpdate={(id, data) => {
               const cleanData = { ...data };
               if (cleanData.position) {
-                cleanData.x = cleanData.position.x - panOffset.x;
-                cleanData.y = cleanData.position.y - panOffset.y;
+                cleanData.x = (cleanData.position.x - panOffset.x) / zoom;
+                cleanData.y = (cleanData.position.y - panOffset.y) / zoom;
                 delete cleanData.position;
-              } else {
-                if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
-                if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
+              } else if (cleanData.x !== undefined) {
+                cleanData.x = (cleanData.x - panOffset.x) / zoom;
+                cleanData.y = (cleanData.y - panOffset.y) / zoom;
               }
               handleTextUpdate(id, cleanData);
             }}
@@ -1264,12 +1321,14 @@ const Canvas = ({
             socket={socket}
           />
         ))}
+
         {emojis.map(emojiData => (
           <Emoji
             key={emojiData.id}
             {...emojiData}
-            x={emojiData.x + panOffset.x}
-            y={emojiData.y + panOffset.y}
+            x={(emojiData.x * zoom) + panOffset.x}
+            y={(emojiData.y * zoom) + panOffset.y}
+            size={(emojiData.size || 48) * zoom}
             panOffset={panOffset}
             limit={WORLD_LIMIT}
             tool={tool}
@@ -1278,50 +1337,60 @@ const Canvas = ({
             onRemove={removeEmoji}
             onUpdate={(id, data) => {
               const cleanData = { ...data };
-              if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
-              if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
+              if (cleanData.x !== undefined) cleanData.x = (cleanData.x - panOffset.x) / zoom;
+              if (cleanData.y !== undefined) cleanData.y = (cleanData.y - panOffset.y) / zoom;
               handleEmojiUpdate(id, cleanData);
             }}
           />
         ))}
+
+        {/* 🔹 POPRAWKA: Gify skalowane przez mnożenie x, y, width przez zoom */}
         {gifs.map(gif => (
           <Gif
             key={gif.id}
             {...gif}
-            x={gif.x + panOffset.x}
-            y={gif.y + panOffset.y}
+            x={(gif.x * zoom) + panOffset.x}
+            y={(gif.y * zoom) + panOffset.y}
+            width={(gif.width || 150) * zoom} // Skalujemy szerokość
             panOffset={panOffset}
             limit={WORLD_LIMIT}
             selected={selectedGifId === gif.id}
             onSelect={setSelectedGifId}
             onUpdate={(id, data) => {
               const cleanData = { ...data };
-              if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
-              if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
+              // Odwracamy zoom przy zapisie
+              if (cleanData.x !== undefined) cleanData.x = (cleanData.x - panOffset.x) / zoom;
+              if (cleanData.y !== undefined) cleanData.y = (cleanData.y - panOffset.y) / zoom;
+              if (cleanData.width !== undefined) cleanData.width = cleanData.width / zoom;
               handleGifUpdate(id, cleanData);
             }}
             tool={tool}
           />
         ))}
+
+        {/* 🔹 POPRAWKA: Obrazy skalowane przez mnożenie x, y, width przez zoom */}
         {images.map(image => (
           <ImageItem
             key={image.id}
             {...image}
-            x={image.x + panOffset.x}
-            y={image.y + panOffset.y}
+            x={(image.x * zoom) + panOffset.x}
+            y={(image.y * zoom) + panOffset.y}
+            width={(image.width || 200) * zoom}
             panOffset={panOffset}
             limit={WORLD_LIMIT}
             selected={selectedImageId === image.id}
             onSelect={setSelectedImageId}
             onUpdate={(id, data) => {
               const cleanData = { ...data };
-              if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
-              if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
+              if (cleanData.x !== undefined) cleanData.x = (cleanData.x - panOffset.x) / zoom;
+              if (cleanData.y !== undefined) cleanData.y = (cleanData.y - panOffset.y) / zoom;
+              if (cleanData.width !== undefined) cleanData.width = cleanData.width / zoom;
               handleImageUpdate(id, cleanData);
             }}
           />
         ))}
 
+        {/* 🔹 POPRAWKA: Kształty skalowane przez mnożenie x, y, width, height przez zoom */}
         {shapes.map(shape => {
           const creator = users ? users.find(u => u.id === shape.userId) : null;
           const dynamicColor = creator ? creator.color : (shape.color || '#000000');
@@ -1330,8 +1399,10 @@ const Canvas = ({
             <Shape
               key={shape.id}
               {...shape}
-              x={shape.x + panOffset.x}
-              y={shape.y + panOffset.y}
+              x={(shape.x * zoom) + panOffset.x}
+              y={(shape.y * zoom) + panOffset.y}
+              width={(shape.width || 100) * zoom}
+              height={(shape.height || 100) * zoom}
               panOffset={panOffset}
               limit={WORLD_LIMIT}
               color={dynamicColor}
@@ -1340,8 +1411,10 @@ const Canvas = ({
               onRemove={removeShape}
               onUpdate={(id, data) => {
                 const cleanData = { ...data };
-                if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
-                if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
+                if (cleanData.x !== undefined) cleanData.x = (cleanData.x - panOffset.x) / zoom;
+                if (cleanData.y !== undefined) cleanData.y = (cleanData.y - panOffset.y) / zoom;
+                if (cleanData.width !== undefined) cleanData.width = cleanData.width / zoom;
+                if (cleanData.height !== undefined) cleanData.height = cleanData.height / zoom;
                 handleShapeUpdate(id, cleanData);
               }}
               tool={tool}
@@ -1349,6 +1422,7 @@ const Canvas = ({
           );
         })}
 
+        {/* 🔹 POPRAWKA: Kursory skalowane przez mnożenie pozycji przez zoom */}
         {remoteCursorsArray.map((cursor, index) => {
           const userName = cursor.user?.name || 'Unknown';
           const userColor = cursor.user?.color || '#ff4444';
@@ -1360,8 +1434,8 @@ const Canvas = ({
                 className="remote-cursor"
                 style={{
                   position: 'absolute',
-                  left: cursor.position.x + panOffset.x,
-                  top: cursor.position.y + panOffset.y,
+                  left: (cursor.position.x * zoom) + panOffset.x,
+                  top: (cursor.position.y * zoom) + panOffset.y,
                   pointerEvents: 'none',
                   zIndex: 1000,
                   transition: 'left 0.1s linear, top 0.1s linear'

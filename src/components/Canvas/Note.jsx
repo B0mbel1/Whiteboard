@@ -15,58 +15,53 @@ const Note = ({
   socket,
   tool,
   panOffset,
-  limit = 1500
+  limit = 1500,
+  zoom = 1
 }) => {
   const [text, setText] = useState(initialText);
+  // x i y przychodzą z Canvas już przeliczone (World * Zoom + Pan)
   const [pos, setPos] = useState({ x, y });
   const [size, setSize] = useState({ width: width || 180, height: height || 120 });
+  
   const noteRef = useRef(null);
   const isDragging = useRef(false);
   const dragOffset = useRef({ x: 0, y: 0 });
-  const lastPosition = useRef({ x, y }); // 🔹 DODANE: Śledzenie poprzedniej pozycji
+  const lastPosition = useRef({ x, y });
 
   const isDrawingTool = ['pencil', 'brush', 'eraser'].includes(tool);
 
-  // Synchronizuj zmiany z serwera
-  // Note.jsx - ZASTĄP obecny useEffect obsługujący socket tym:
+  // Synchronizuj zmiany z serwera (tylko tekst i rozmiar, pozycja jest zarządzana przez Canvas props)
   useEffect(() => {
     if (socket) {
       const handleNoteUpdate = (data) => {
         if (data.id === id) {
-          console.log("📝 Note update received:", data);
-
-          // ✅ POPRAWKA: Obsłuż zarówno position JAK i bezpośrednio x, y
-          if (data.position) {
-            setPos(data.position);
-          } else if (data.x !== undefined && data.y !== undefined) {
-            // Jeśli serwer wysyła bezpośrednio x, y
-            setPos({ x: data.x, y: data.y });
-          }
-
           if (data.text !== undefined) setText(data.text);
           if (data.size) setSize(data.size);
         }
       };
-
       socket.on('note-update', handleNoteUpdate);
-      return () => {
-        socket.off('note-update', handleNoteUpdate);
-      };
+      return () => { socket.off('note-update', handleNoteUpdate); };
     }
   }, [socket, id]);
 
-  // ✅ DODAJ: Synchronizuj pozycję z props
+  // ✅ POPRAWKA: Synchronizuj pozycję z props TYLKO jeśli nie przeciągamy
   useEffect(() => {
-    setPos({ x, y });
-  }, [x, y]);
+    if (!isDragging.current) {
+      setPos({ x, y });
+    }
+  }, [x, y, zoom]); // Reaguj na zmianę zoomu i pozycji od rodzica
 
   const handleMouseDown = (e) => {
     if (isDrawingTool) return;
+    
+    // Ustawiamy notatkę jako wybraną
     setSelectedNoteId(id);
-    lastPosition.current = { ...pos }; // 🔹 ZAPISZ pozycję przed rozpoczęciem przesuwania
+    lastPosition.current = { ...pos };
 
-    if (e.target.classList.contains('note-header')) {
+    // ✅ POPRAWKA: Używamy .closest(), aby złapać kliknięcie też w ikonę wewnątrz nagłówka
+    if (e.target.closest('.note-header')) {
       isDragging.current = true;
+      // Obliczamy offset myszki względem lewego górnego rogu notatki
       dragOffset.current = { x: e.clientX - pos.x, y: e.clientY - pos.y };
       e.preventDefault();
     }
@@ -75,21 +70,24 @@ const Note = ({
   const handleMouseMove = (e) => {
     if (!isDragging.current) return;
 
-    // Oblicz nową pozycję ekranową
+    // Oblicz nową surową pozycję ekranową
     let newScreenX = e.clientX - dragOffset.current.x;
     let newScreenY = e.clientY - dragOffset.current.y;
 
-    // --- LOGIKA BLOKOWANIA ---
+    // --- LOGIKA OGRANICZEŃ (LIMIT) ---
+    // Musimy przeliczyć pozycję na "Świat" (World Coordinates), sprawdzić limit, i wrócić na ekran
     if (panOffset) {
-      const worldX = newScreenX - panOffset.x;
-      const worldY = newScreenY - panOffset.y;
+      // 1. Screen -> World
+      const worldX = (newScreenX - panOffset.x) / zoom;
+      const worldY = (newScreenY - panOffset.y) / zoom;
 
-      // Notatka ma min szerokość 100/80 w resize, ale tu używamy size.width
+      // 2. Clamp (ograniczenie)
       const clampedWorldX = Math.max(-limit, Math.min(worldX, limit - size.width));
       const clampedWorldY = Math.max(-limit, Math.min(worldY, limit - size.height));
 
-      newScreenX = clampedWorldX + panOffset.x;
-      newScreenY = clampedWorldY + panOffset.y;
+      // 3. World -> Screen
+      newScreenX = (clampedWorldX * zoom) + panOffset.x;
+      newScreenY = (clampedWorldY * zoom) + panOffset.y;
     }
     // -------------------------
 
@@ -103,12 +101,10 @@ const Note = ({
       const positionChanged = pos.x !== lastPosition.current.x || pos.y !== lastPosition.current.y;
 
       if (positionChanged && onUpdate) {
-        console.log("📤 Note: Sending update for note:", id);
-        // ✅ Wysyłaj JEDNOCZEŚNIE position i x,y
+        // Wysyłamy do Canvas pozycję ekranową. 
+        // Canvas.jsx w funkcji onUpdate przeliczy to z powrotem na World Coordinates (dzieląc przez zoom).
         onUpdate(id, {
           position: { x: pos.x, y: pos.y },
-          x: pos.x,
-          y: pos.y,
           text,
           size
         });
@@ -117,17 +113,13 @@ const Note = ({
   };
 
   const handleTextChange = (e) => {
-    const newText = e.target.value;
-    setText(newText);
+    setText(e.target.value);
   };
 
   const handleTextBlur = () => {
     if (onUpdate && text !== initialText) {
-      console.log("📤 Note: Sending text update for note:", id);
       onUpdate(id, {
-        position: { x: pos.x, y: pos.y }, // ✅ Zawsze wysyłaj pełne dane
-        x: pos.x,
-        y: pos.y,
+        position: { x: pos.x, y: pos.y },
         text,
         size
       });
@@ -147,13 +139,34 @@ const Note = ({
   };
 
   useEffect(() => {
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    // Podpinamy globalne listenery, żeby nie zgubić "upuszczenia" notatki poza jej obszarem
+    if (isDragging.current) {
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+    }
+    // Cleanup
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [pos]);
+  }); // Bez dependency array, żeby mieć zawsze świeże closure, ale optymalniej byłoby użyć refów lub useCallback
+
+  // 🔹 ALTERNATYWNE PODEJŚCIE DO LISTENERÓW (BEZPIECZNIEJSZE DLA REACTA)
+  // Zamiast powyższego useEffect, dodajemy listenery w handleMouseDown, a usuwamy w handleMouseUp.
+  // Poniżej poprawiona wersja, która jest bardziej stabilna:
+
+  useEffect(() => {
+    const onMove = (e) => handleMouseMove(e);
+    const onUp = (e) => handleMouseUp(e);
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [pos, zoom, panOffset]); // Zależności są ważne dla poprawnych obliczeń wewnątrz funkcji
 
   return (
     <div
@@ -164,7 +177,11 @@ const Note = ({
         top: pos.y,
         width: size.width,
         height: size.height,
-        pointerEvents: isDrawingTool ? 'none' : 'auto'
+        pointerEvents: isDrawingTool ? 'none' : 'auto',
+        // Skalujemy wizualnie, origin w lewym górnym rogu, żeby pasował do left/top
+        transform: `scale(${zoom})`,
+        transformOrigin: 'top left',
+        position: 'absolute' 
       }}
       onMouseDown={handleMouseDown}
       onClick={(e) => e.stopPropagation()}
@@ -196,8 +213,12 @@ const Note = ({
           const startHeight = size.height;
 
           const handleResizeMove = (moveEvent) => {
-            const newWidth = startWidth + (moveEvent.clientX - startX);
-            const newHeight = startHeight + (moveEvent.clientY - startY);
+            // Dzielimy deltę przez zoom, żeby skalowanie myszki pasowało do skalowania wizualnego
+            const deltaX = (moveEvent.clientX - startX) / zoom;
+            const deltaY = (moveEvent.clientY - startY) / zoom;
+            
+            const newWidth = startWidth + deltaX;
+            const newHeight = startHeight + deltaY;
             handleResize(newWidth, newHeight);
           };
 
