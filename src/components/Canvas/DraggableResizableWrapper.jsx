@@ -107,15 +107,13 @@ const DraggableResizableWrapper = ({
 
       if (isResizing) {
         const dx = e.clientX - resizeStartRef.current.x;
-        // eslint-disable-next-line no-unused-vars
-        const dy = e.clientY - resizeStartRef.current.y;
-
         const { startWidth, startLeft, startTop, startHeight, aspectRatio } = resizeStartRef.current;
 
         let newWidth = startWidth;
         let newX = startLeft;
         let newY = startTop;
 
+        // 1. Oblicz surowe wartości
         if (isResizing.includes('w')) {
           newWidth = startWidth - dx;
           newX = startLeft + dx;
@@ -123,17 +121,52 @@ const DraggableResizableWrapper = ({
           newWidth = startWidth + dx;
         }
 
+        // 2. Minimalna szerokość
         if (newWidth < minWidth) {
-          if (isResizing.includes('w')) {
-            newX = (startLeft + startWidth) - minWidth;
-          }
+          if (isResizing.includes('w')) newX = (startLeft + startWidth) - minWidth;
           newWidth = minWidth;
         }
 
+        // 3. 🔹 CLAMP: Sprawdź granice ŚWIATA 🔹
+        if (panOffset) {
+          const worldX = newX - panOffset.x;
+
+          // A. Jeśli rozciągamy w prawo (handles: ne, se) -> Sprawdzamy prawą ścianę
+          if (!isResizing.includes('w')) {
+            // Prawa krawędź elementu w świecie
+            const rightEdge = worldX + newWidth;
+            if (rightEdge > limit) {
+              newWidth = limit - worldX;
+            }
+          }
+          // B. Jeśli rozciągamy w lewo (handles: nw, sw) -> Sprawdzamy lewą ścianę
+          else {
+            if (worldX < -limit) {
+              // Nie możemy wyjść poza -limit. 
+              // Musimy cofnąć newX do -limit i zmniejszyć newWidth o tyle samo
+              const overflow = -limit - worldX; // o ile wyszliśmy (wartość dodatnia)
+              newX += overflow; // przesuwamy X w prawo na granicę
+              newWidth -= overflow; // zmniejszamy szerokość
+            }
+          }
+        }
+
+        // 4. Oblicz wysokość z proporcji (po clampowaniu szerokości!)
         if (aspectRatioLocked) {
           const newHeight = newWidth / aspectRatio;
           if (isResizing.includes('n')) {
             newY = startTop + (startHeight - newHeight);
+
+            // Opcjonalnie: Clampowanie góry (Y)
+            if (panOffset) {
+              const worldY = newY - panOffset.y;
+              if (worldY < -limit) {
+                // Jeśli wychodzimy górą, to w trybie aspect ratio ciężko to obsłużyć 
+                // bez psucia proporcji lub szerokości. 
+                // Najprościej: zablokować zmianę, jeśli góra wychodzi.
+                // Ale dla obrazków ważniejsza jest zazwyczaj szerokość.
+              }
+            }
           }
         }
 
