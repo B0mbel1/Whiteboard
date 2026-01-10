@@ -693,6 +693,8 @@ const WhiteboardRouter = () => {
           active={tool === 'pointer'}
           socket={socketRef.current}
           whiteboardId={whiteboardId}
+          zoom={zoom}             // 🔹 Dodaj toS
+          panOffset={panOffset}
         />
 
         <Canvas
