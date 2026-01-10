@@ -32,7 +32,7 @@ const Text = ({
   const isResizing = useRef(false);
   const dragOffset = useRef({ x: 0, y: 0 });
 
-  // Refy do przechowywania NAJNOWSZYCH wartości stanu (rozwiązuje problem "stale closures")
+  // Refy do przechowywania NAJNOWSZYCH wartości stanu
   const latestText = useRef(text);
   const latestSize = useRef(size);
   const latestPosition = useRef(position);
@@ -46,7 +46,7 @@ const Text = ({
     latestPosition.current = position;
   }, [text, size, position]);
 
-  // 1. NAPRAWA "USUWANIA TEKSTU": Synchronizacja tekstu z props (np. po załadowaniu strony)
+  // Synchronizacja tekstu z props
   useEffect(() => {
     if (!isEditing && initialText !== undefined && initialText !== text) {
       setText(initialText);
@@ -54,14 +54,13 @@ const Text = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialText, isEditing]);
 
-  // 2. Synchronizacja z Socketem
+  // Synchronizacja z Socketem
   useEffect(() => {
     if (socket) {
       const handleTextUpdate = (data) => {
         if (data.id === id) {
           if (!isEditing && data.text !== undefined) setText(data.text);
           
-          // Aktualizuj rozmiar/pozycję z serwera TYLKO jeśli my ich nie zmieniamy
           if (!isDragging.current && !isResizing.current) {
              if (data.size) setSize(data.size);
              if (data.position) setPosition(data.position);
@@ -76,8 +75,7 @@ const Text = ({
     }
   }, [socket, id, isEditing]);
 
-  // 3. NAPRAWA "NIE MOŻNA PRZESUWAĆ": Synchronizacja pozycji z props
-  // Ignorujemy aktualizacje z góry, jeśli użytkownik właśnie przesuwa lub skaluje element.
+  // Synchronizacja pozycji z props
   useEffect(() => {
     if (!isDragging.current && !isResizing.current) {
       setPosition({ x: x || 0, y: y || 0 });
@@ -94,7 +92,6 @@ const Text = ({
     }
     
     setSelected(id);
-    
     isDragging.current = true;
     
     dragOffset.current = {
@@ -132,7 +129,6 @@ const Text = ({
   const handleMouseUp = () => {
     if (isDragging.current) {
       isDragging.current = false;
-      // Używamy refów, aby mieć pewność, że wysyłamy najnowsze dane
       if (onUpdate) {
         onUpdate(id, { 
           position: latestPosition.current, 
@@ -172,12 +168,11 @@ const Text = ({
       window.removeEventListener('mousemove', handleResizeMove);
       window.removeEventListener('mouseup', stopResize);
       
-      // NAPRAWA DUPLIKATÓW/BŁĘDÓW: Używamy refów do odczytu najnowszego stanu
       if (onUpdate) {
         onUpdate(id, { 
             position: latestPosition.current, 
             text: latestText.current, 
-            size: latestSize.current // Tu bierzemy najnowszy rozmiar z refa
+            size: latestSize.current 
         });
       }
     };
@@ -215,15 +210,18 @@ const Text = ({
     }
   }, [isEditing]);
 
+  // --- 🔹 NAPRAWA PRZESUWANIA ---
   // Globalne listenery dla dragowania
   useEffect(() => {
     const onMove = (e) => handleMouseMove(e);
     const onUp = (e) => handleMouseUp(e);
 
-    if (isDragging.current) {
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('mouseup', onUp);
-    }
+    // USUNIĘTO: if (isDragging.current) { ... }
+    // Teraz listenery są aktywne zawsze, ale logika wewnątrz handleMouseMove
+    // sprawdza isDragging.current, więc nie obciąża to aplikacji.
+    
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
     
     return () => {
       window.removeEventListener('mousemove', onMove);
