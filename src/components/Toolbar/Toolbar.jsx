@@ -4,7 +4,7 @@ import MultimediaModal from '../MultimediaModal/MultimediaModal.jsx';
 import PointerTrail from './PointerTrail.jsx';
 import ToolRangeCircle from './ToolRangeCircle.jsx';
 
-const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker, activeEmoji, setActiveEmoji, setActiveGif, setActiveShape, onImageCreate }) => {
+const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker, activeEmoji, setActiveEmoji, setActiveGif, setActiveShape, onImageCreate, panOffset }) => {
   // DEBUG: Sprawdźmy co Toolbar dostaje
   useEffect(() => {
     console.log("🛠️ Toolbar mounted. Props onImageCreate:", typeof onImageCreate);
@@ -24,6 +24,30 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
       return localStorage.getItem('whiteboard-active-color') || color || '#000000';
     } catch (e) {
       return color || '#000000';
+    }
+  };
+
+  const handleLocalImageCreate = (imageObj) => {
+    // A. Pobieramy środek ekranu użytkownika
+    const centerX = window.innerWidth / 2;
+    const centerY = window.innerHeight / 2;
+
+    // B. Obliczamy pozycję w świecie (World Coordinates)
+    // Wzór: Pozycja_Świata = Pozycja_Ekranu - Przesunięcie
+    // Odejmujemy połowę szerokości obrazka (zakładamy ok. 300px), żeby wycentrować go idealnie
+    const targetX = centerX - (panOffset?.x || 0) - 150;
+    const targetY = centerY - (panOffset?.y || 0) - 100;
+
+    // C. Nadpisujemy x i y w obiekcie zdjęcia
+    const imageWithCorrectPosition = {
+      ...imageObj,
+      x: targetX,
+      y: targetY
+    };
+
+    // D. Wywołujemy oryginalną funkcję z WhiteboardRouter
+    if (onImageCreate) {
+      onImageCreate(imageWithCorrectPosition);
     }
   };
 
@@ -362,29 +386,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
           ))}
         </div>
 
-        <div className="toolbar-section">
-          <h4>Akcje</h4>
-          <div className="tool-undo-redo">
-            <button
-              className={`tool-btn ${!canUndo ? 'disabled' : ''}`}
-              title="Cofnij (Ctrl+Z)"
-              onClick={handleUndo}
-              disabled={!canUndo}
-              style={{ cursor: canUndo ? 'default' : 'not-allowed' }}
-            >
-              ↩️
-            </button>
-            <button
-              className={`tool-btn ${!canRedo ? 'disabled' : ''}`}
-              title="Ponów (Ctrl+Y)"
-              onClick={handleRedo}
-              disabled={!canRedo}
-              style={{ cursor: canRedo ? 'default' : 'not-allowed' }}
-            >
-              ↪️
-            </button>
-          </div>
-        </div>
+        
 
         <div className="toolbar-section">
           <h4>Kolor</h4>
@@ -547,7 +549,12 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
         <span className={`arrow ${collapsed ? 'arrow-right' : 'arrow-left'}`}>➤</span>
       </div>
 
-      {showMultimedia && <MultimediaModal onClose={() => { setShowMultimedia(false); setTool('cursor'); }} onImageCreate={onImageCreate} />}
+      {showMultimedia && (
+        <MultimediaModal
+          onClose={() => { setShowMultimedia(false); setTool('cursor'); }}
+          onImageCreate={handleLocalImageCreate} // <-- ZMIANA TUTAJ
+        />
+      )}
 
       <ToolRangeCircle tool={tool} size={size} />
     </>

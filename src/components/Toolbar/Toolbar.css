@@ -1,7 +1,6 @@
 .toolbar {
   position: fixed;
   top: 52px;
-  /* 🔹 usuwa odstęp od góry */
   left: 0;
   width: 130px;
   background: #ecf0f1;
@@ -18,16 +17,13 @@
 
 .toolbar::-webkit-scrollbar {
   display: none;
-  /* Chrome, Safari */
 }
 
-/* 🔹 Zwinięty toolbar – całkowicie znika z widoku */
 .toolbar.collapsed {
   transform: translateX(-120px);
   opacity: 0.3;
 }
 
-/* Sekcje i tytuły */
 .toolbar-section {
   margin-bottom: 20px;
 }
@@ -38,7 +34,6 @@
   color: #7f8c8d;
 }
 
-/* Narzędzia */
 .tool-item {
   margin-bottom: 10px;
   position: relative;
@@ -96,12 +91,8 @@
   border-radius: 3px;
 }
 
-.tool-undo-redo {
-  display: flex;
-  gap: 5px;
-}
+/* Usunięto .tool-undo-redo */
 
-/* Popupy */
 .floating-shapes-popup,
 .floating-emojis-popup {
   position: fixed;
@@ -113,7 +104,6 @@
   animation: fadeIn 0.2s ease-in-out;
 }
 
-/* Kształty */
 .floating-shapes-popup {
   background: white;
   border: 1px solid #ccc;
@@ -142,15 +132,11 @@
   color: white;
 }
 
-/* Emotki */
 .floating-emojis-popup {
   background: white;
-  /* Zmiana z ciemnego na biały (jak w shapes) */
   border: 1px solid #ccc;
-  /* Zmiana z grubego ciemnego na cienki szary */
   grid-template-columns: repeat(5, 1fr);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  /* Cień dopasowany do shapes */
 }
 
 .emoji-btn {
@@ -165,22 +151,18 @@
 
 .emoji-btn:hover {
   background: #3498db;
-  /* Zmiana na niebieski przy najechaniu (jak shape-btn:hover) */
   transform: scale(1.1);
 }
 
 .emoji-btn.selected {
   background: #2ecc71;
-  /* Zmiana na zielony przy aktywności (spójne z shapes) */
   transform: scale(1.15);
 }
 
-/* 🔽 Strzałka chowająca toolbar */
 .collapse-toggle.small {
   position: fixed;
   top: 50%;
   left: 122px;
-  /* na krawędzi toolbaru */
   transform: translateY(-50%);
   width: 26px;
   height: 26px;
@@ -220,7 +202,6 @@
   transform: rotate(0deg);
 }
 
-/* Kolor */
 .color-picker {
   margin-top: 10px;
   display: flex;
@@ -241,7 +222,6 @@
   color: #555;
 }
 
-/* Historia kolorów */
 .last-colors-section {
   margin-top: 10px;
 }
@@ -286,8 +266,6 @@
   outline: none;
 }
 
-/* Popup GIFów */
-/* Popup GIFów */
 .floating-gifs-popup {
   position: fixed;
   width: 360px;
@@ -297,21 +275,16 @@
   border: 1px solid #ccc;
   border-radius: 8px;
   padding: 12px 0;
-  /* tylko góra i dół, bez paddingu po bokach */
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   z-index: 10000;
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* aby elementy były wyśrodkowane */
 }
 
-/* Pasek wyszukiwania */
 .floating-gifs-popup input[type="text"] {
   width: 90%;
-  /* teraz input rozciąga się prawie do boków popupu */
   margin-bottom: 8px;
-  /* odstęp od GIFów */
   padding: 6px 8px;
   border-radius: 6px;
   border: 1px solid #ccc;
@@ -319,7 +292,6 @@
   font-size: 14px;
 }
 
-/* Grid GIFów */
 .gif-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -328,9 +300,7 @@
 
 .gif-grid img {
   width: 100%;
-  /* wypełnia kolumnę */
   aspect-ratio: 1;
-  /* kwadratowy GIF */
   object-fit: cover;
   border-radius: 8px;
   cursor: pointer;
@@ -339,27 +309,4 @@
 
 .gif-grid img:hover {
   transform: scale(1.05);
-}
-
-/* 🔹 DODANE: Stylowanie przycisków undo/redo */
-.tool-undo-redo {
-  display: flex;
-  gap: 5px;
-  margin-bottom: 10px;
-}
-
-.tool-undo-redo .tool-btn {
-  flex: 1;
-  padding: 8px;
-  font-size: 16px;
-}
-
-.tool-undo-redo .tool-btn.disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.tool-undo-redo .tool-btn:not(.disabled):hover {
-  background: #3498db;
-  color: white;
 }

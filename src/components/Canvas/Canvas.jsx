@@ -7,11 +7,10 @@ import Text from './Text';
 import Emoji from './Emoji';
 import Gif from './Gif';
 import ImageItem from './ImageItem';
-import Video from './Video';
 import Shape from './Shape';
 import Chat from './Chat';
 
-// --- STAŁE GRANICZNE (z Canvas2) ---
+// --- STAŁE GRANICZNE ---
 const WORLD_LIMIT = 1500;
 
 const Canvas = ({
@@ -49,10 +48,6 @@ const Canvas = ({
   onImageCreate,
   onImageUpdate,
   onImageDelete,
-  video: initialVideos,
-  onVideoCreate,
-  onVideoUpdate,
-  onVideoDelete,
   shapes: initialShapes,
   activeShape,
   onShapeCreate,
@@ -60,13 +55,16 @@ const Canvas = ({
   onShapeUpdate,
   backgroundMode,
   onBackgroundChange,
+  panOffset,
+  setPanOffset
 }) => {
   const [remoteCursors, setRemoteCursors] = useState(new Map());
   const [isChatVisible, setIsChatVisible] = useState(false);
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
 
   const backgroundModeRef = useRef(backgroundMode);
-  const currentMousePosRef = useRef({ x: 0, y: 0 }); // 🔹 DODAJ TO (śledzenie kursora)
+  const currentMousePosRef = useRef({ x: 0, y: 0 });
+
   // Dwa canvasy: tło i rysunek
   const backgroundCanvasRef = useRef(null);
   const drawingCanvasRef = useRef(null);
@@ -80,15 +78,12 @@ const Canvas = ({
   const [notes, setNotes] = useState(initialNotes || []);
   const [textBoxes, setTextBoxes] = useState(initialTextBoxes || []);
 
-  // Historia undo/redo
-  const [history, setHistory] = useState([]);
-  const [historyStep, setHistoryStep] = useState(-1);
-  const historyRef = useRef({ history: [], step: -1 });
+  // --- ZMIANA: Zamiast historii, trzymamy lokalne rysunki w prostej tablicy ---
+  // Służy to tylko do przerysowywania canvasu (np. przy resize), bez undo.
+  const localDrawingsRef = useRef([]);
 
   // --- STANY DO PANNINGU (PRZESUWANIA) ---
-  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
-  const panOffsetRef = useRef({ x: 0, y: 0 }); // Ref dla socketów i renderowania
-
+  const panOffsetRef = useRef(panOffset);
   const [isPanning, setIsPanning] = useState(false);
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const lastMousePosRef = useRef({ x: 0, y: 0 });
@@ -113,10 +108,6 @@ const Canvas = ({
   const [images, setImages] = useState(initialImages || []);
   const [selectedImageId, setSelectedImageId] = useState(null);
 
-  // Videos
-  const [videos, setVideos] = useState([]);
-  const [selectedVideoId, setSelectedVideoId] = useState(null);
-
   // Shapes
   const [shapes, setShapes] = useState(initialShapes || []);
   const [selectedShapeId, setSelectedShapeId] = useState(null);
@@ -125,7 +116,7 @@ const Canvas = ({
   const [selectionBox, setSelectionBox] = useState(null);
   const [selectionStart, setSelectionStart] = useState(null);
 
-  const [selectionSnapshot, setSelectionSnapshot] = useState(null); // Stores the cut image URL
+  const [selectionSnapshot, setSelectionSnapshot] = useState(null);
   const [isDraggingSelection, setIsDraggingSelection] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [originalCaptureRect, setOriginalCaptureRect] = useState(null);
@@ -134,27 +125,7 @@ const Canvas = ({
 
   const isWorkingTool = ['select', 'pencil', 'brush', 'eraser'].includes(tool);
 
-  const ACTION_TYPES = {
-    DRAWING: 'drawing',
-    NOTE_CREATE: 'note_create',
-    NOTE_DELETE: 'note_delete',
-    TEXT_CREATE: 'text_create',
-    TEXT_DELETE: 'text_delete',
-    EMOJI_CREATE: 'emoji_create',
-    EMOJI_DELETE: 'emoji_delete',
-    GIF_CREATE: 'gif_create',
-    GIF_DELETE: 'gif_delete',
-    IMAGE_CREATE: 'image_create',
-    IMAGE_DELETE: 'image_delete',
-    VIDEO_CREATE: 'video_create',
-    VIDEO_UPDATE: 'video_update',
-    VIDEO_DELETE: 'video_delete',
-    SHAPE_CREATE: 'shape_create',
-    SHAPE_DELETE: 'shape_delete',
-    CLEAR_AREA: 'clear_area',
-    MASS_DELETE: 'mass_delete',
-    ERASE_AREA: 'erase_area' // ➕ DODANO NOWY TYP
-  };
+  const remoteDrawingsRef = useRef([]);
 
   useEffect(() => { setShapes(initialShapes || []); }, [initialShapes]);
 
@@ -163,25 +134,10 @@ const Canvas = ({
     panOffsetRef.current = panOffset;
   }, [panOffset]);
 
-  // --- START NA ŚRODKU EKRANU ---
-  useEffect(() => {
-    if (containerRef.current) {
-      const { clientWidth, clientHeight } = containerRef.current;
-      const startOffset = {
-        x: clientWidth / 2,
-        y: clientHeight / 2
-      };
-      setPanOffset(startOffset);
-      panOffsetRef.current = startOffset;
-    }
-  }, []);
-
   // --- OBSŁUGA KLAWISZA SPACJI ---
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Obsługa skrótów Undo/Redo
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
+      // Usunięto obsługę skrótów Undo/Redo (Ctrl+Z / Ctrl+Y)
 
       // Obsługa Spacji (Panning)
       if (e.code === 'Space' && !e.repeat) {
@@ -204,10 +160,10 @@ const Canvas = ({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, []); // Dependencies will be handled via refs in undo/redo
+  }, []);
 
   const handleDragOver = (e) => {
-    e.preventDefault(); // Niezbędne, aby pozwolić na upuszczenie
+    e.preventDefault();
     e.stopPropagation();
   };
 
@@ -215,30 +171,24 @@ const Canvas = ({
     e.preventDefault();
     e.stopPropagation();
 
-    // Pobieramy pliki
     const files = e.dataTransfer.files;
-
-    // Pobieramy współrzędne myszy w momencie upuszczenia
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
 
     if (files && files.length > 0) {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
 
-        // Sprawdzamy czy to obrazek
         if (file.type.startsWith('image/')) {
           const reader = new FileReader();
           reader.onload = (event) => {
             const url = event.target.result;
-
             const newImage = {
               id: `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-              x: x - 150, // Centrujemy obrazek względem kursora (połowa domyślnej szerokości 300)
-              y: y - 100, // Centrujemy (połowa przybliżonej wysokości)
+              x: x - 150,
+              y: y - 100,
               url: url,
               width: 300
             };
-
             if (onImageCreate) onImageCreate(newImage);
           };
           reader.readAsDataURL(file);
@@ -246,265 +196,11 @@ const Canvas = ({
       }
     }
   };
-  
-  //OBSŁUGA VIDEO
-  const updateVideo = (id, data) => {
-    setVideos(prev =>
-      prev.map(v => v.id === id ? { ...v, ...data } : v)
-    );
-
-    socket.emit("videos:update", { id, data });
-  };
-
-  const addVideo = (video) => {
-    setVideos(prev => [...prev, video]);
-    socket.emit("videos:add", video);
-  };
-
-  const removeVideo = (id) => {
-    setVideos(prev => prev.filter(v => v.id !== id));
-    socket.emit("videos:remove", id);
-  };
-
-
-  // Funkcje historii
-  const saveToHistory = (actionType, data) => {
-    const newHistory = historyRef.current.history.slice(0, historyRef.current.step + 1);
-    const historyItem = { type: actionType, data: data, timestamp: Date.now() };
-    newHistory.push(historyItem);
-    if (newHistory.length > 50) newHistory.shift();
-
-    historyRef.current = { history: newHistory, step: newHistory.length - 1 };
-    setHistory(newHistory);
-    setHistoryStep(newHistory.length - 1);
-  };
 
   useEffect(() => {
     backgroundModeRef.current = backgroundMode;
     drawBackground();
   }, [backgroundMode]);
-
-  const undo = () => {
-    if (historyRef.current.step < 0) return;
-    const currentStep = historyRef.current.step;
-    const action = historyRef.current.history[currentStep];
-
-    switch (action.type) {
-      case ACTION_TYPES.DRAWING:
-        historyRef.current.step = currentStep - 1;
-        setHistoryStep(currentStep - 1);
-        redrawCanvas(); // redrawCanvas obsługuje clearDrawingCanvas wewnątrz
-        break;
-      case ACTION_TYPES.NOTE_CREATE:
-        setNotes(prev => prev.filter(note => note.id !== action.data.note.id));
-        if (onNoteDelete && action.data.note.id) onNoteDelete(action.data.note.id);
-        historyRef.current.step = currentStep - 1;
-        setHistoryStep(currentStep - 1);
-        break;
-      case ACTION_TYPES.NOTE_DELETE:
-        setNotes(prev => [...prev, action.data.note]);
-        if (onNoteCreate && action.data.note) onNoteCreate(action.data.note);
-        historyRef.current.step = currentStep - 1;
-        setHistoryStep(currentStep - 1);
-        break;
-      case ACTION_TYPES.TEXT_CREATE:
-        setTextBoxes(prev => prev.filter(textBox => textBox.id !== action.data.textBox.id));
-        if (socket && action.data.textBox.id) socket.emit('text-delete', { whiteboardId, id: action.data.textBox.id });
-        historyRef.current.step = currentStep - 1;
-        setHistoryStep(currentStep - 1);
-        break;
-      case ACTION_TYPES.TEXT_DELETE:
-        setTextBoxes(prev => [...prev, action.data.textBox]);
-        if (socket && action.data.textBox) socket.emit('text-create', { whiteboardId, textBox: action.data.textBox });
-        historyRef.current.step = currentStep - 1;
-        setHistoryStep(currentStep - 1);
-        break;
-      case ACTION_TYPES.EMOJI_CREATE:
-        setEmojis(prev => prev.filter(e => e.id !== action.data.emoji.id));
-        if (onEmojiDelete && action.data.emoji.id) onEmojiDelete(action.data.emoji.id);
-        historyRef.current.step = currentStep - 1;
-        setHistoryStep(currentStep - 1);
-        break;
-      case ACTION_TYPES.EMOJI_DELETE:
-        setEmojis(prev => [...prev, action.data.emoji]);
-        if (onEmojiCreate && action.data.emoji) onEmojiCreate(action.data.emoji);
-        historyRef.current.step = currentStep - 1;
-        setHistoryStep(currentStep - 1);
-        break;
-      case ACTION_TYPES.GIF_CREATE:
-        setGifs(prev => prev.filter(g => g.id !== action.data.gif.id));
-        if (onGifDelete && action.data.gif.id) onGifDelete(action.data.gif.id);
-        historyRef.current.step = currentStep - 1;
-        setHistoryStep(currentStep - 1);
-        break;
-      case ACTION_TYPES.GIF_DELETE:
-        setGifs(prev => [...prev, action.data.gif]);
-        if (onGifCreate && action.data.gif) onGifCreate(action.data.gif);
-        historyRef.current.step = currentStep - 1;
-        setHistoryStep(currentStep - 1);
-        break;
-      case ACTION_TYPES.IMAGE_CREATE:
-        setImages(prev => prev.filter(img => img.id !== action.data.image.id));
-        if (onImageDelete && action.data.image.id) onImageDelete(action.data.image.id);
-        historyRef.current.step = currentStep - 1;
-        setHistoryStep(currentStep - 1);
-        break;
-      case ACTION_TYPES.IMAGE_DELETE:
-        setImages(prev => [...prev, action.data.image]);
-        if (onImageCreate && action.data.image) onImageCreate(action.data.image);
-        historyRef.current.step = currentStep - 1;
-        setHistoryStep(currentStep - 1);
-        break;
-      case ACTION_TYPES.SHAPE_CREATE:
-        setShapes(prev => prev.filter(s => s.id !== action.data.shape.id));
-        if (onShapeDelete) onShapeDelete(action.data.shape.id);
-        historyRef.current.step = currentStep - 1;
-        setHistoryStep(currentStep - 1);
-        break;
-      case ACTION_TYPES.SHAPE_DELETE:
-        setShapes(prev => [...prev, action.data.shape]);
-        if (onShapeCreate) onShapeCreate(action.data.shape);
-        historyRef.current.step = currentStep - 1;
-        setHistoryStep(currentStep - 1);
-        break;
-      case ACTION_TYPES.ERASE_AREA:
-        historyRef.current.step = currentStep - 1;
-        setHistoryStep(currentStep - 1);
-        redrawCanvas();
-        break;
-      case ACTION_TYPES.MASS_DELETE:
-        if (action.data.notes) setNotes(prev => [...prev, ...action.data.notes]);
-        if (action.data.textBoxes) setTextBoxes(prev => [...prev, ...action.data.textBoxes]);
-        if (action.data.emojis) setEmojis(prev => [...prev, ...action.data.emojis]);
-        if (action.data.gifs) setGifs(prev => [...prev, ...action.data.gifs]);
-        if (action.data.images) setImages(prev => [...prev, ...action.data.images]);
-        if (action.data.shapes) setShapes(prev => [...prev, ...action.data.shapes]);
-        redrawCanvas();
-        historyRef.current.step = currentStep - 1;
-        setHistoryStep(currentStep - 1);
-        break;
-
-      default:
-        historyRef.current.step = currentStep - 1;
-        setHistoryStep(currentStep - 1);
-    }
-  };
-
-  const redo = () => {
-    if (historyRef.current.step >= historyRef.current.history.length - 1) return;
-    const nextStep = historyRef.current.step + 1;
-    const action = historyRef.current.history[nextStep];
-
-    switch (action.type) {
-      case ACTION_TYPES.DRAWING:
-        historyRef.current.step = nextStep;
-        setHistoryStep(nextStep);
-        redrawCanvas();
-        break;
-      case ACTION_TYPES.NOTE_CREATE:
-        setNotes(prev => [...prev, action.data.note]);
-        if (onNoteCreate) onNoteCreate(action.data.note);
-        historyRef.current.step = nextStep;
-        setHistoryStep(nextStep);
-        break;
-      case ACTION_TYPES.NOTE_DELETE:
-        setNotes(prev => prev.filter(note => note.id !== action.data.note.id));
-        if (onNoteDelete && action.data.note.id) onNoteDelete(action.data.note.id);
-        historyRef.current.step = nextStep;
-        setHistoryStep(nextStep);
-        break;
-      case ACTION_TYPES.TEXT_CREATE:
-        setTextBoxes(prev => [...prev, action.data.textBox]);
-        if (socket && action.data.textBox) socket.emit('text-create', { whiteboardId, textBox: action.data.textBox });
-        historyRef.current.step = nextStep;
-        setHistoryStep(nextStep);
-        break;
-      case ACTION_TYPES.TEXT_DELETE:
-        setTextBoxes(prev => prev.filter(textBox => textBox.id !== action.data.textBox.id));
-        if (socket && action.data.textBox.id) socket.emit('text-delete', { whiteboardId, id: action.data.textBox.id });
-        historyRef.current.step = nextStep;
-        setHistoryStep(nextStep);
-        break;
-      case ACTION_TYPES.EMOJI_CREATE:
-        setEmojis(prev => [...prev, action.data.emoji]);
-        if (onEmojiCreate) onEmojiCreate(action.data.emoji);
-        historyRef.current.step = nextStep;
-        setHistoryStep(nextStep);
-        break;
-      case ACTION_TYPES.EMOJI_DELETE:
-        setEmojis(prev => prev.filter(e => e.id !== action.data.emoji.id));
-        if (onEmojiDelete) onEmojiDelete(action.data.emoji.id);
-        historyRef.current.step = nextStep;
-        setHistoryStep(nextStep);
-        break;
-      case ACTION_TYPES.GIF_CREATE:
-        setGifs(prev => [...prev, action.data.gif]);
-        if (onGifCreate) onGifCreate(action.data.gif);
-        historyRef.current.step = nextStep;
-        setHistoryStep(nextStep);
-        break;
-      case ACTION_TYPES.GIF_DELETE:
-        setGifs(prev => prev.filter(g => g.id !== action.data.gif.id));
-        if (onGifDelete) onGifDelete(action.data.gif.id);
-        historyRef.current.step = nextStep;
-        setHistoryStep(nextStep);
-        break;
-      case ACTION_TYPES.IMAGE_CREATE:
-        setImages(prev => [...prev, action.data.image]);
-        if (onImageCreate) onImageCreate(action.data.image);
-        historyRef.current.step = nextStep;
-        setHistoryStep(nextStep);
-        break;
-      case ACTION_TYPES.IMAGE_DELETE:
-        setImages(prev => prev.filter(img => img.id !== action.data.image.id));
-        if (onImageDelete) onImageDelete(action.data.image.id);
-        historyRef.current.step = nextStep;
-        setHistoryStep(nextStep);
-        break;
-      case ACTION_TYPES.SHAPE_CREATE:
-        setShapes(prev => [...prev, action.data.shape]);
-        if (onShapeCreate) onShapeCreate(action.data.shape);
-        historyRef.current.step = nextStep;
-        setHistoryStep(nextStep);
-        break;
-      case ACTION_TYPES.SHAPE_DELETE:
-        setShapes(prev => prev.filter(s => s.id !== action.data.shape.id));
-        if (onShapeDelete) onShapeDelete(action.data.shape.id);
-        historyRef.current.step = nextStep;
-        setHistoryStep(nextStep);
-        break;
-      case ACTION_TYPES.ERASE_AREA:
-        historyRef.current.step = nextStep;
-        setHistoryStep(nextStep);
-        redrawCanvas();
-        break;
-      case ACTION_TYPES.MASS_DELETE:
-        // Ponownie usuwamy elementy
-        const idsToRemove = {
-          notes: action.data.notes?.map(x => x.id) || [],
-          textBoxes: action.data.textBoxes?.map(x => x.id) || [],
-          emojis: action.data.emojis?.map(x => x.id) || [],
-          gifs: action.data.gifs?.map(x => x.id) || [],
-          images: action.data.images?.map(x => x.id) || [],
-          shapes: action.data.shapes?.map(x => x.id) || []
-        };
-
-        if (idsToRemove.notes.length) setNotes(prev => prev.filter(x => !idsToRemove.notes.includes(x.id)));
-        if (idsToRemove.textBoxes.length) setTextBoxes(prev => prev.filter(x => !idsToRemove.textBoxes.includes(x.id)));
-        if (idsToRemove.emojis.length) setEmojis(prev => prev.filter(x => !idsToRemove.emojis.includes(x.id)));
-        if (idsToRemove.gifs.length) setGifs(prev => prev.filter(x => !idsToRemove.gifs.includes(x.id)));
-        if (idsToRemove.images.length) setImages(prev => prev.filter(x => !idsToRemove.images.includes(x.id)));
-        if (idsToRemove.shapes.length) setShapes(prev => prev.filter(x => !idsToRemove.shapes.includes(x.id)));
-
-        redrawCanvas();
-        historyRef.current.step = nextStep;
-        setHistoryStep(nextStep);
-        break;
-      default:
-        historyRef.current.step = nextStep;
-        setHistoryStep(nextStep);
-    }
-  };
 
   const commitSelection = () => {
     if (!selectionSnapshot || !selectionBox) return;
@@ -512,18 +208,21 @@ const Canvas = ({
     const ctx = drawingContextRef.current;
     const img = new Image();
     img.onload = () => {
-      // Restore drawing settings
       setupDrawingContext();
-      // Draw image at current selection position
       ctx.drawImage(img, selectionBox.x, selectionBox.y, selectionBox.width, selectionBox.height);
 
-      saveToHistory(ACTION_TYPES.DRAWING, {
-        tool: 'paste',
-      });
+      // Zapisujemy "wklejenie" jako lokalny rysunek, aby przetrwało odświeżenie
+      // (W uproszczonej wersji bez undo nie mamy obiektu "paste", ale canvas jest bitmapą)
+      // W idealnym świecie powinniśmy wysłać obrazek do innych, ale tutaj zakładamy tryb rysowania.
+      // Aby to działało poprawnie z redrawCanvas, musielibyśmy zapisać to jako akcję.
+      // Dla uproszczenia w wersji bez Undo: Canvas po prostu zostaje pomalowany.
+      // Ale uwaga: redrawCanvas wyczyści to, jeśli nie zapiszemy w localDrawingsRef.
+      // Ponieważ "paste" to skomplikowana operacja bitmapowa, a redrawCanvas rysuje wektory,
+      // narzędzie Select/Cut/Paste w tym modelu działa najlepiej "tu i teraz".
+      // Jeśli chcemy trwałości, powinniśmy zamienić wycinek na ImageItem.
     };
     img.src = selectionSnapshot;
 
-    // Reset selection state
     setSelectionSnapshot(null);
     setSelectionBox(null);
     setOriginalCaptureRect(null);
@@ -533,30 +232,40 @@ const Canvas = ({
     const context = drawingContextRef.current;
     if (!context) return;
 
-    // Najpierw wyczyść drawing canvas
+    // 1. Wyczyść
     clearDrawingCanvas();
 
-    // Narysuj historię
-    for (let i = 0; i <= historyRef.current.step; i++) {
-      const action = historyRef.current.history[i];
+    // 2. Przygotuj listę operacji (Remote + Local)
+    let allOperations = [];
 
-      if (action.type === ACTION_TYPES.DRAWING && action.data && action.data.points && action.data.points.length > 1) {
-        drawCompletePath(context, action.data.tool, action.data.color, action.data.size, action.data.points);
-      }
-      // ➕ DODANO: Jeśli w historii jest akcja wymazania obszaru, wykonaj ją ponownie na canvasie
-      else if (action.type === ACTION_TYPES.ERASE_AREA) {
-        const { x, y, width, height } = action.data;
-        // Ponieważ setupDrawingContext ustawia transformację (translate), 
-        // możemy używać współrzędnych świata (x, y) bezpośrednio.
-        context.clearRect(x, y, width, height);
-      }
+    // A. Remote
+    if (remoteDrawingsRef.current && remoteDrawingsRef.current.length > 0) {
+      allOperations = [...remoteDrawingsRef.current];
     }
+
+    // B. Local (zamiast historii używamy localDrawingsRef)
+    if (localDrawingsRef.current && localDrawingsRef.current.length > 0) {
+      allOperations = [...allOperations, ...localDrawingsRef.current];
+    }
+
+    // 3. Sortuj chronologicznie
+    allOperations.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+
+    // 4. Rysuj
+    allOperations.forEach(op => {
+      if (op.type === 'erase-area') {
+        context.clearRect(op.x, op.y, op.width, op.height);
+      } else {
+        if (op.points && op.points.length > 1) {
+          drawCompletePath(context, op.tool, op.color, op.size, op.points);
+        }
+      }
+    });
   };
 
   const removeShape = (id) => {
     const shapeToDelete = shapes.find(s => s.id === id);
     if (shapeToDelete) {
-      saveToHistory(ACTION_TYPES.SHAPE_DELETE, { shapeId: id, shape: shapeToDelete });
       setShapes(prev => prev.filter(s => s.id !== id));
       if (selectedShapeId === id) setSelectedShapeId(null);
       if (onShapeDelete) onShapeDelete(id);
@@ -566,7 +275,6 @@ const Canvas = ({
   const removeGif = (id) => {
     const gifToDelete = gifs.find(g => g.id === id);
     if (gifToDelete) {
-      saveToHistory(ACTION_TYPES.GIF_DELETE, { gifId: id, gif: gifToDelete });
       setGifs(prev => prev.filter(g => g.id !== id));
       if (selectedGifId === id) setSelectedGifId(null);
       if (onGifDelete) onGifDelete(id);
@@ -576,7 +284,6 @@ const Canvas = ({
   const removeImage = (id) => {
     const imageToDelete = images.find(img => img.id === id);
     if (imageToDelete) {
-      saveToHistory(ACTION_TYPES.IMAGE_DELETE, { imageId: id, image: imageToDelete });
       setImages(prev => prev.filter(img => img.id !== id));
       if (selectedImageId === id) setSelectedImageId(null);
       if (onImageDelete) onImageDelete(id);
@@ -586,7 +293,6 @@ const Canvas = ({
   const removeEmoji = (id) => {
     const emojiToDelete = emojis.find(e => e.id === id);
     if (emojiToDelete) {
-      saveToHistory(ACTION_TYPES.EMOJI_DELETE, { emojiId: id, emoji: emojiToDelete });
       setEmojis(prev => prev.filter(e => e.id !== id));
       if (selectedEmojiId === id) setSelectedEmojiId(null);
       if (onEmojiDelete) onEmojiDelete(id);
@@ -596,24 +302,6 @@ const Canvas = ({
   useEffect(() => { setGifs(initialGifs || []); }, [initialGifs]);
   useEffect(() => { setImages(initialImages || []); }, [initialImages]);
   useEffect(() => { setEmojis(initialEmojis || []); }, [initialEmojis]);
-
-  useEffect(() => {
-    const toolbar = document.querySelector('.toolbar');
-    if (toolbar) {
-      toolbar.undo = undo;
-      toolbar.redo = redo;
-      toolbar.canUndo = () => historyRef.current.step >= 0;
-      toolbar.canRedo = () => historyRef.current.step < historyRef.current.history.length - 1;
-    }
-  }, []);
-
-  useEffect(() => {
-    const toolbar = document.querySelector('.toolbar');
-    if (toolbar) {
-      toolbar.updateUndoRedoState?.();
-    }
-  }, [historyStep, history]);
-
   useEffect(() => { setTextBoxes(initialTextBoxes || []); }, [initialTextBoxes]);
   useEffect(() => { setNotes(initialNotes || []); }, [initialNotes]);
 
@@ -624,7 +312,6 @@ const Canvas = ({
     { id: 'black', name: 'Czarne tło', icon: '🌑' },
   ];
 
-  // Funkcja do rysowania tła (ZAKTUALIZOWANA o Panning)
   const drawBackground = () => {
     const canvas = backgroundCanvasRef.current;
     const context = backgroundContextRef.current;
@@ -633,16 +320,13 @@ const Canvas = ({
     const width = canvas.width;
     const height = canvas.height;
 
-    // Reset transformacji dla tła
     context.setTransform(1, 0, 0, 1, 0, 0);
     context.clearRect(0, 0, width, height);
 
-    // Szare tło poza światem
     context.fillStyle = '#e5e5e5';
     context.fillRect(0, 0, width, height);
 
     context.save();
-    // Przesuń układ współrzędnych
     context.translate(panOffsetRef.current.x, panOffsetRef.current.y);
 
     const areaStart = -WORLD_LIMIT;
@@ -661,26 +345,18 @@ const Canvas = ({
         context.fillStyle = '#f0f0f0';
         context.fillRect(areaStart, areaStart, areaSize, areaSize);
         context.shadowColor = 'transparent';
-
-        // Rysuj kratkę
         context.strokeStyle = '#d0d0d0';
         context.lineWidth = 1;
-
         context.beginPath();
         const gridSize = 20;
-
-        // Pionowe linie
         for (let x = areaStart; x <= WORLD_LIMIT; x += gridSize) {
           context.moveTo(x, areaStart);
           context.lineTo(x, WORLD_LIMIT);
         }
-
-        // Poziome linie
         for (let y = areaStart; y <= WORLD_LIMIT; y += gridSize) {
           context.moveTo(areaStart, y);
           context.lineTo(WORLD_LIMIT, y);
         }
-
         context.stroke();
         break;
 
@@ -688,19 +364,14 @@ const Canvas = ({
         context.fillStyle = 'white';
         context.fillRect(areaStart, areaStart, areaSize, areaSize);
         context.shadowColor = 'transparent';
-
-        // Rysuj linie jak w zeszycie
         context.strokeStyle = '#e0e0e0';
         context.lineWidth = 1;
-
         const lineSpacing = 24;
         context.beginPath();
-
         for (let y = areaStart; y <= WORLD_LIMIT; y += lineSpacing) {
           context.moveTo(areaStart, y);
           context.lineTo(WORLD_LIMIT, y);
         }
-
         context.stroke();
         break;
 
@@ -715,29 +386,25 @@ const Canvas = ({
     }
     context.restore();
   };
+
   useEffect(() => {
     if (!socket) return;
-
     const handleNewMessageNotification = (data) => {
-      // Jeśli otrzymamy wiadomość, a czat jest ukryty -> ustaw flagę nieprzeczytanych
       if (data && data.whiteboardId === whiteboardId && !isChatVisible) {
         setHasUnreadMessages(true);
       }
     };
-
     socket.on('chat-message', handleNewMessageNotification);
-
     return () => {
       socket.off('chat-message', handleNewMessageNotification);
     };
   }, [socket, whiteboardId, isChatVisible]);
-  // Przerysowanie przy zmianie pozycji
+
   useEffect(() => {
     drawBackground();
     redrawCanvas();
   }, [panOffset]);
 
-  // Funkcja do konfiguracji kontekstu rysowania (ZAKTUALIZOWANA o Panning)
   const setupDrawingContext = () => {
     const ctx = drawingContextRef.current;
     if (!ctx) return;
@@ -748,7 +415,6 @@ const Canvas = ({
     ctx.lineWidth = getToolSize();
     ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
 
-    // Kluczowe: używamy REF do transformacji
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.translate(panOffsetRef.current.x, panOffsetRef.current.y);
   };
@@ -756,29 +422,15 @@ const Canvas = ({
   useEffect(() => {
     const canvas = drawingCanvasRef.current;
     if (!canvas) return;
-
     let cursorStyle = 'default';
-
     switch (tool) {
-      case 'pencil':
-        cursorStyle = 'url("/cursors/pencil.png") 0 32, auto';
-        break;
-      case 'brush':
-        cursorStyle = 'url("/cursors/brush.png") 0 32, auto';
-        break;
-      case 'eraser':
-        cursorStyle = 'url("/cursors/rubber.png") 0 32, auto';
-        break;
-      case 'pointer':
-        cursorStyle = 'pointer';
-        break;
-      case 'select':
-        cursorStyle = 'crosshair';
-        break;
-      default:
-        cursorStyle = 'default';
+      case 'pencil': cursorStyle = 'url("/cursors/pencil.png") 0 32, auto'; break;
+      case 'brush': cursorStyle = 'url("/cursors/brush.png") 0 32, auto'; break;
+      case 'eraser': cursorStyle = 'url("/cursors/rubber.png") 0 32, auto'; break;
+      case 'pointer': cursorStyle = 'pointer'; break;
+      case 'select': cursorStyle = 'crosshair'; break;
+      default: cursorStyle = 'default';
     }
-
     canvas.style.cursor = cursorStyle;
   }, [tool]);
 
@@ -789,7 +441,6 @@ const Canvas = ({
     }
   };
 
-  // Inicjalizacja dwóch canvasów
   useEffect(() => {
     const backgroundCanvas = backgroundCanvasRef.current;
     const drawingCanvas = drawingCanvasRef.current;
@@ -802,23 +453,17 @@ const Canvas = ({
       const width = rect.width;
       const height = rect.height;
 
-      // Ustaw rozmiar dla obu canvasów
       backgroundCanvas.width = width;
       backgroundCanvas.height = height;
       drawingCanvas.width = width;
       drawingCanvas.height = height;
 
-      // Inicjalizuj konteksty
       backgroundContextRef.current = backgroundCanvas.getContext('2d');
       drawingContextRef.current = drawingCanvas.getContext('2d');
 
-      // Skonfiguruj kontekst rysowania
       setupDrawingContext();
-
-      // Narysuj tło
       drawBackground();
 
-      // Przerysuj historię na canvasie rysowania
       setTimeout(() => {
         refreshWhiteboardData();
       }, 100);
@@ -826,21 +471,30 @@ const Canvas = ({
 
     updateCanvasSize();
     window.addEventListener('resize', updateCanvasSize);
-
     return () => {
       window.removeEventListener('resize', updateCanvasSize);
     };
   }, []);
 
-  // 🔹 DODANE: Aktualizuj kontekst rysowania gdy zmieniają się narzędzia/kolor/rozmiar/pan
   useEffect(() => {
     setupDrawingContext();
   }, [color, size, tool, panOffset]);
 
   useEffect(() => {
     if (socket) {
-      console.log("📡 Setting up canvas listeners");
-      const handleRemoteDrawing = (data) => { drawRemote(data); };
+      const handleRemoteDrawing = (data) => {
+        remoteDrawingsRef.current.push(data);
+        drawRemote(data);
+      };
+
+      const handleEraseArea = (data) => {
+        remoteDrawingsRef.current.push({ ...data, type: 'erase-area' });
+        const ctx = drawingContextRef.current;
+        if (ctx) {
+          setupDrawingContext();
+          ctx.clearRect(data.x, data.y, data.width, data.height);
+        }
+      };
       const handleRemoteCursorMove = (data) => {
         if (data.userId !== socket.id) {
           setRemoteCursors(prev => {
@@ -856,8 +510,7 @@ const Canvas = ({
         }
       };
       const handleWhiteboardState = (data) => {
-        console.log("🎨 Redrawing", data.drawingData.length, "existing drawings");
-
+        remoteDrawingsRef.current = data.drawingData || [];
         clearDrawingCanvas();
         setTimeout(() => {
           data.drawingData.forEach(drawing => { drawRemote(drawing); });
@@ -892,6 +545,7 @@ const Canvas = ({
       socket.on('whiteboard-data', handleWhiteboardState);
       socket.on('user-joined', handleUsersUpdated);
       socket.on('user-left', handleUsersUpdated);
+      socket.on('erase-area', handleEraseArea);
 
       return () => {
         socket.off('drawing', handleRemoteDrawing);
@@ -899,6 +553,7 @@ const Canvas = ({
         socket.off('whiteboard-data', handleWhiteboardState);
         socket.off('user-joined', handleUsersUpdated);
         socket.off('user-left', handleUsersUpdated);
+        socket.off('erase-area', handleEraseArea);
       };
     }
   }, [socket, currentUser]);
@@ -908,29 +563,24 @@ const Canvas = ({
     const canvas = drawingCanvasRef.current;
     if (!context || !canvas) return;
 
-    // Reset transform before clearing
     context.setTransform(1, 0, 0, 1, 0, 0);
     context.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Restore transform (via setup)
     setupDrawingContext();
   };
 
   const drawRemote = (data) => {
+    if (!data) return;
     const context = drawingContextRef.current;
     if (!context) return;
 
     if (data.type === 'erase-area') {
-      // Przy erase-area musimy uwzględnić transformację, ale setupDrawingContext jest już wywołany
       context.clearRect(data.x, data.y, data.width, data.height);
       return;
     }
-
     if (!data.points || data.points.length < 2) return;
     drawCompletePath(context, data.tool, data.color, data.size, data.points);
   };
 
-  // ZAKTUALIZOWANE: Pobieranie koordynatów z uwzględnieniem Pan
   const getCanvasCoordinates = (clientX, clientY) => {
     const canvas = drawingCanvasRef.current;
     const rect = canvas.getBoundingClientRect();
@@ -950,16 +600,6 @@ const Canvas = ({
     if (onImageUpdate) onImageUpdate(id, updates);
   };
 
-  const handleVideoCreate = (video) => { const newVideo = {...video, id: `video_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`};
-  setVideos(prev => [...prev, newVideo]);
-  addVideo(newVideo);
-  };
-  
-  const handleVideoUpdate = (id, updates) => {
-  setVideos(prev => prev.map(video => video.id === id? { ...video, ...updates } : video));
-  };
-  const handleVideoDelete = (id) => { setVideos(prev => prev.filter(video => video.id !== id));};
-
   const getToolSize = () => {
     const base = (typeof size === "object" && size?.[tool]) ? size[tool] : (typeof size === "number" ? size : 3);
     return getDisplaySize(tool, base);
@@ -978,65 +618,35 @@ const Canvas = ({
     }
   }, [tool]);
 
-  useEffect(() => {
-    if (socket) {
-      const handleEraseArea = (data) => {
-        const ctx = drawingContextRef.current;
-        if (ctx) {
-          // Upewnij się że context jest setup
-          setupDrawingContext();
-          ctx.clearRect(data.x, data.y, data.width, data.height);
-        }
-      };
-
-      socket.on('erase-area', handleEraseArea);
-      return () => {
-        socket.off('erase-area', handleEraseArea);
-      };
-    }
-  }, [socket]);
-
   const startDrawing = ({ nativeEvent }) => {
-    // --- OBSŁUGA PANNINGU (SPACJA + MYSZ) ---
-    if (isSpacePressed && nativeEvent.button === 0) {
+    if (nativeEvent.button === 2) {
       setIsPanning(true);
       lastMousePosRef.current = { x: nativeEvent.clientX, y: nativeEvent.clientY };
       return;
     }
 
     if (nativeEvent.button !== 0) return;
-    const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
 
-    // Sprawdzenie granic świata
+    const { x, y } = getCanvasCoordinates(nativeEvent.clientX, nativeEvent.clientY);
     if (!isWithinBounds(x, y)) return;
 
-    // --- HANDLE SELECTION TOOL ---
     if (tool === 'select') {
       if (selectionBox &&
         x >= selectionBox.x && x <= selectionBox.x + selectionBox.width &&
         y >= selectionBox.y && y <= selectionBox.y + selectionBox.height) {
 
         setIsDraggingSelection(true);
-        setDragOffset({
-          x: x - selectionBox.x,
-          y: y - selectionBox.y
-        });
+        setDragOffset({ x: x - selectionBox.x, y: y - selectionBox.y });
         return;
       }
-
-      if (selectionSnapshot) {
-        commitSelection();
-      }
-      else if (selectionBox) {
-        setSelectionBox(null);
-      }
+      if (selectionSnapshot) { commitSelection(); }
+      else if (selectionBox) { setSelectionBox(null); }
 
       setSelectionStart({ x, y });
       setSelectionBox({ x, y, width: 0, height: 0 });
       setIsDrawing(true);
       return;
     }
-    // -----------------------------
 
     if (!['pencil', 'brush', 'eraser'].includes(tool)) return;
 
@@ -1048,7 +658,14 @@ const Canvas = ({
     ctx.lineTo(x, y);
     ctx.stroke();
     setIsDrawing(true);
-    currentDrawingRef.current = { tool, color, size, points: [{ x, y }, { x, y }] };
+
+    currentDrawingRef.current = {
+      tool,
+      color,
+      size,
+      points: [{ x, y }, { x, y }],
+      timestamp: Date.now()
+    };
   };
 
   const stopDrawing = () => {
@@ -1057,26 +674,19 @@ const Canvas = ({
       return;
     }
 
-    // --- OBSŁUGA NARZĘDZIA SELECT (ZAZNACZANIE) ---
     if (tool === 'select') {
       setIsDrawing(false);
-
       if (isDraggingSelection) {
         setIsDraggingSelection(false);
         return;
       }
-
       if (selectionBox) {
         const { x, y, width, height } = selectionBox;
-
         if (width > 5 && height > 5) {
           if (!selectionSnapshot) {
             const ctx = drawingContextRef.current;
-
-            // Przy getImageData musimy uwzględnić transformację (canvas raw coordinates)
             const bitmapX = x + panOffset.x;
             const bitmapY = y + panOffset.y;
-
             const imageData = ctx.getImageData(bitmapX, bitmapY, width, height);
             ctx.clearRect(x, y, width, height);
             const tempCanvas = document.createElement('canvas');
@@ -1084,44 +694,34 @@ const Canvas = ({
             tempCanvas.height = height;
             const tempCtx = tempCanvas.getContext('2d');
             tempCtx.putImageData(imageData, 0, 0);
-
             const capturedImage = tempCanvas.toDataURL();
             setSelectionSnapshot(capturedImage);
-
             setOriginalCaptureRect({ x, y, width, height });
           }
         } else {
-          if (!selectionSnapshot) {
-            setSelectionBox(null);
-          }
+          if (!selectionSnapshot) { setSelectionBox(null); }
         }
       }
-
       setSelectionStart(null);
       return;
     }
-    // ----------------------------------------------
 
-    // --- OBSŁUGA STANDARDOWEGO RYSOWANIA ---
     if (!isDrawing) return;
-
     if (!['pencil', 'brush', 'eraser'].includes(tool)) {
       setIsDrawing(false);
       return;
     }
 
     setupDrawingContext();
-
     if (drawingContextRef.current) {
       drawingContextRef.current.closePath();
     }
-
     setIsDrawing(false);
 
-    // Zapisz do historii
     if (currentDrawingRef.current && onDrawing) {
       onDrawing(currentDrawingRef.current);
-      saveToHistory(ACTION_TYPES.DRAWING, currentDrawingRef.current);
+      // --- ZMIANA: Zapisz do lokalnej tablicy zamiast historii ---
+      localDrawingsRef.current.push(currentDrawingRef.current);
     }
     currentDrawingRef.current = null;
   };
@@ -1139,7 +739,6 @@ const Canvas = ({
       points.push({ x, y });
 
       setupDrawingContext();
-
       drawPathSegment(drawingContextRef.current, tool, color, size, previousPoint, { x, y });
     }
   };
@@ -1149,12 +748,15 @@ const Canvas = ({
     if (onShapeUpdate) onShapeUpdate(id, newProps);
   };
 
+  const clampCreationPos = (x, y, w, h) => {
+    const safeX = Math.max(-WORLD_LIMIT, Math.min(x, WORLD_LIMIT - w));
+    const safeY = Math.max(-WORLD_LIMIT, Math.min(y, WORLD_LIMIT - h));
+    return { x: safeX, y: safeY };
+  };
+
   const handleCanvasClick = (e) => {
-    if (isSpacePressed || isPanning) return;
-
-    // Blokujemy stawianie elementów prawym przyciskiem
+    if (isPanning) return;
     if (e.button !== 0) return;
-
     if (e.target.closest('.shape-item') || e.target.closest('.emoji-item')) return;
     setSelectedNoteId(null); setSelectedTextBoxId(null); setSelectedEmojiId(null); setSelectedGifId(null); setSelectedShapeId(null); setSelectedImageId(null);
 
@@ -1162,42 +764,57 @@ const Canvas = ({
     if (!isWithinBounds(x, y)) return;
 
     if (tool === 'notes') {
-      const newNote = { id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x, y, text: '', width: 180, height: 120 };
+      const w = 180, h = 120;
+      const { x: safeX, y: safeY } = clampCreationPos(x, y, w, h);
+      const newNote = { id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: safeX, y: safeY, text: '', width: w, height: h };
       setNotes(prev => prev.some(note => note.id === newNote.id) ? prev : [...prev, newNote]);
-      saveToHistory(ACTION_TYPES.NOTE_CREATE, { note: newNote });
       if (onNoteCreate) onNoteCreate(newNote);
       if (setTool) setTool('cursor');
     } else if (tool === 'text') {
-      const newTextBox = { id: `text_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x, y, text: '', width: 200, height: 100 };
+      const w = 200, h = 100;
+      const { x: safeX, y: safeY } = clampCreationPos(x, y, w, h);
+      const newTextBox = { id: `text_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: safeX, y: safeY, text: '', width: w, height: h };
       if (onTextCreate) onTextCreate(newTextBox);
-      saveToHistory(ACTION_TYPES.TEXT_CREATE, { textBox: newTextBox });
       setTextBoxes(prev => [...prev, newTextBox]);
       if (socket) socket.emit('text-create', { whiteboardId, textBox: newTextBox });
       if (setTool) setTool('cursor');
     }
 
     if (tool === 'emoji' && activeEmoji) {
-      const newEmoji = { id: `emoji_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x, y, emoji: activeEmoji, size: 48 };
+      const size = 48;
+      const half = size / 2;
+      const safeX = Math.max(-WORLD_LIMIT + half, Math.min(x, WORLD_LIMIT - half));
+      const safeY = Math.max(-WORLD_LIMIT + half, Math.min(y, WORLD_LIMIT - half));
+
+      const newEmoji = { id: `emoji_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: safeX, y: safeY, emoji: activeEmoji, size: size };
       setEmojis(prev => [...prev, newEmoji]);
-      saveToHistory(ACTION_TYPES.EMOJI_CREATE, { emoji: newEmoji });
       if (onEmojiCreate) onEmojiCreate(newEmoji);
       if (setTool) setTool('cursor');
       if (setActiveEmoji) setActiveEmoji(null);
     }
 
     if (tool === 'gif' && activeGif) {
-      const newGif = { id: `gif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: x - 75, y: y - 75, url: activeGif, width: 150 };
+      const w = 150;
+      const rawX = x - (w / 2);
+      const rawY = y - (w / 2);
+      const { x: safeX, y: safeY } = clampCreationPos(rawX, rawY, w, w);
+
+      const newGif = { id: `gif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: safeX, y: safeY, url: activeGif, width: w };
       setGifs(prev => [...prev, newGif]);
-      saveToHistory(ACTION_TYPES.GIF_CREATE, { gif: newGif });
       if (onGifCreate) onGifCreate(newGif);
       if (setTool) setTool('cursor');
     }
     if (tool === 'shape' && activeShape) {
-      let defaultWidth = 100, defaultHeight = 100, startX = x - 50, startY = y - 50;
-      if (activeShape === 'arrow') { startX = x; startY = y; defaultWidth = 150; defaultHeight = 0; }
-      const newShape = { id: `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: startX, y: startY, width: defaultWidth, height: defaultHeight, type: activeShape, userId: currentUser.id, color: currentUser.color };
+      let defaultWidth = 100, defaultHeight = 100;
+      let startX = x - 50, startY = y - 50;
+
+      if (activeShape === 'arrow') {
+        startX = x; startY = y; defaultWidth = 150; defaultHeight = 50;
+      }
+
+      const { x: safeX, y: safeY } = clampCreationPos(startX, startY, defaultWidth, defaultHeight);
+      const newShape = { id: `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: safeX, y: safeY, width: defaultWidth, height: defaultHeight, type: activeShape, userId: currentUser.id, color: currentUser.color };
       setShapes(prev => [...prev, newShape]);
-      saveToHistory(ACTION_TYPES.SHAPE_CREATE, { shape: newShape });
       if (onShapeCreate) onShapeCreate(newShape);
       if (setTool) setTool('cursor');
     }
@@ -1206,7 +823,6 @@ const Canvas = ({
   const removeNote = (id) => {
     const noteToDelete = notes.find(note => note.id === id);
     if (noteToDelete) {
-      saveToHistory(ACTION_TYPES.NOTE_DELETE, { noteId: id, note: noteToDelete });
       setNotes(prev => prev.filter(n => n.id !== id));
       if (selectedNoteId === id) setSelectedNoteId(null);
       if (onNoteDelete) onNoteDelete(id);
@@ -1219,41 +835,22 @@ const Canvas = ({
   };
 
   const handleNoteUpdate = (id, updates) => {
-    if (onNoteUpdate) {
-      onNoteUpdate(id, updates);
-    }
+    if (onNoteUpdate) { onNoteUpdate(id, updates); }
   };
 
   const handleNoteDelete = (id) => { removeNote(id); };
 
-  // const removeTextBox = (id) => {
-  //   const textBoxToDelete = textBoxes.find(textBox => textBox.id === id);
-  //   if (textBoxToDelete) {
-  //     saveToHistory(ACTION_TYPES.TEXT_DELETE, { textBoxId: id, textBox: textBoxToDelete });
-  //     setTextBoxes(prev => prev.filter(tb => tb.id !== id));
-  //     if (selectedTextBoxId === id) setSelectedTextBoxId(null);
-  //     if (socket) socket.emit('text-delete', { whiteboardId, id });
-  //   }
-  // };
-
   const handleTextUpdate = (id, updates) => {
-    if (onTextUpdate) {
-      onTextUpdate(id, updates);
-    }
+    if (onTextUpdate) { onTextUpdate(id, updates); }
   };
 
   const removeTextBox = (id) => {
-    if (onTextDelete) {
-      onTextDelete(id);
-      setSelectedTextBoxId(null);
-    }
+    if (onTextDelete) { onTextDelete(id); setSelectedTextBoxId(null); }
   };
 
-  // Obsługa wklejania zdjęć (Ctrl+V ze schowka systemowego)
   useEffect(() => {
     const handlePaste = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-
       const items = (e.clipboardData || e.originalEvent.clipboardData).items;
 
       for (const item of items) {
@@ -1263,30 +860,17 @@ const Canvas = ({
           const reader = new FileReader();
           reader.onload = (event) => {
             const url = event.target.result;
-
-            // 🔹 NOWA LOGIKA:
-            // Używamy helpera getCanvasCoordinates, który już masz w kodzie.
-            // Przelicza on pozycję ekranową (clientX/Y) na pozycję na płótnie (uwzględniając Panowanie)
-
-            // Pobieramy współrzędne z naszego refa (ostatnia pozycja myszy)
             const mouseX = currentMousePosRef.current.x || (window.innerWidth / 2);
             const mouseY = currentMousePosRef.current.y || (window.innerHeight / 2);
-
-            // Obliczamy pozycję w świecie gry
             const { x, y } = getCanvasCoordinates(mouseX, mouseY);
-
-            // Centrujemy obrazek względem kursora (zakładając szerokość 300px)
-            // Jeśli kursor jest poza oknem (np. 0,0), fallback do środka ekranu można pominąć,
-            // bo user zazwyczaj ma myszkę na ekranie jak klika Ctrl+V.
 
             const newImage = {
               id: `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-              x: x - 150, // Odejmujemy połowę szerokości, żeby kursor był na środku obrazka
-              y: y - 100, // Odejmujemy połowę przybliżonej wysokości
+              x: x - 150,
+              y: y - 100,
               url: url,
               width: 300
             };
-
             if (onImageCreate) onImageCreate(newImage);
           };
           reader.readAsDataURL(blob);
@@ -1297,118 +881,52 @@ const Canvas = ({
 
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
-  }, [onImageCreate /*panOffset*/]); // Dodano panOffset do dependencies
+  }, [onImageCreate]);
 
-  // Obsługa klawiszy (Delete, Backspace, Ctrl+C etc.)
   useEffect(() => {
     const handleKeyDown = (e) => {
       const activeElement = document.activeElement;
       if (activeElement && (activeElement.tagName.toLowerCase() === 'input' || activeElement.tagName.toLowerCase() === 'textarea')) return;
 
-      // --- KOPIOWANIE (Ctrl + C) ---
       if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
         let itemToCopy = null;
         let type = null;
 
-        if (selectedNoteId) {
-          itemToCopy = notes.find(n => n.id === selectedNoteId);
-          type = 'note';
-        } else if (selectedTextBoxId) {
-          itemToCopy = textBoxes.find(t => t.id === selectedTextBoxId);
-          type = 'text';
-        } else if (selectedEmojiId) {
-          itemToCopy = emojis.find(em => em.id === selectedEmojiId);
-          type = 'emoji';
-        } else if (selectedGifId) {
-          itemToCopy = gifs.find(g => g.id === selectedGifId);
-          type = 'gif';
-        } else if (selectedImageId) {
-          itemToCopy = images.find(img => img.id === selectedImageId);
-          type = 'image';
-        } else if (selectedShapeId) {
-          itemToCopy = shapes.find(s => s.id === selectedShapeId);
-          type = 'shape';
-        }
+        if (selectedNoteId) { itemToCopy = notes.find(n => n.id === selectedNoteId); type = 'note'; }
+        else if (selectedTextBoxId) { itemToCopy = textBoxes.find(t => t.id === selectedTextBoxId); type = 'text'; }
+        else if (selectedEmojiId) { itemToCopy = emojis.find(em => em.id === selectedEmojiId); type = 'emoji'; }
+        else if (selectedGifId) { itemToCopy = gifs.find(g => g.id === selectedGifId); type = 'gif'; }
+        else if (selectedImageId) { itemToCopy = images.find(img => img.id === selectedImageId); type = 'image'; }
+        else if (selectedShapeId) { itemToCopy = shapes.find(s => s.id === selectedShapeId); type = 'shape'; }
 
         if (itemToCopy) {
           setClipboard({ type, data: { ...itemToCopy } });
-          console.log(`📋 Copied ${type} to clipboard`);
         }
         return;
       }
 
-      // --- WKLEJANIE (Ctrl + V) ---
       if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
         if (!clipboard) return;
-
         e.preventDefault();
-
         const offset = 20;
         const newId = `${clipboard.type}_${Date.now()}_copy_${Math.random().toString(36).substr(2, 5)}`;
-
-        const newItem = {
-          ...clipboard.data,
-          id: newId,
-          x: clipboard.data.x + offset,
-          y: clipboard.data.y + offset
-        };
+        const newItem = { ...clipboard.data, id: newId, x: clipboard.data.x + offset, y: clipboard.data.y + offset };
 
         switch (clipboard.type) {
-          case 'note':
-            setNotes(prev => [...prev, newItem]);
-            if (onNoteCreate) onNoteCreate(newItem);
-            saveToHistory(ACTION_TYPES.NOTE_CREATE, { note: newItem });
-            setSelectedNoteId(newId);
-            break;
-
-          case 'text':
-            setTextBoxes(prev => [...prev, newItem]);
-            if (socket) socket.emit('text-create', { whiteboardId, textBox: newItem });
-            saveToHistory(ACTION_TYPES.TEXT_CREATE, { textBox: newItem });
-            setSelectedTextBoxId(newId);
-            break;
-
-          case 'emoji':
-            setEmojis(prev => [...prev, newItem]);
-            if (onEmojiCreate) onEmojiCreate(newItem);
-            saveToHistory(ACTION_TYPES.EMOJI_CREATE, { emoji: newItem });
-            setSelectedEmojiId(newId);
-            break;
-
-          case 'gif':
-            setGifs(prev => [...prev, newItem]);
-            if (onGifCreate) onGifCreate(newItem);
-            saveToHistory(ACTION_TYPES.GIF_CREATE, { gif: newItem });
-            setSelectedGifId(newId);
-            break;
-
-          case 'image':
-            setImages(prev => [...prev, newItem]);
-            if (onImageCreate) onImageCreate(newItem);
-            saveToHistory(ACTION_TYPES.IMAGE_CREATE, { image: newItem });
-            setSelectedImageId(newId);
-            break;
-
-          case 'shape':
-            setShapes(prev => [...prev, newItem]);
-            if (onShapeCreate) onShapeCreate(newItem);
-            saveToHistory(ACTION_TYPES.SHAPE_CREATE, { shape: newItem });
-            setSelectedShapeId(newId);
-            break;
-
-          default:
-            break;
+          case 'note': setNotes(prev => [...prev, newItem]); if (onNoteCreate) onNoteCreate(newItem); setSelectedNoteId(newId); break;
+          case 'text': setTextBoxes(prev => [...prev, newItem]); if (socket) socket.emit('text-create', { whiteboardId, textBox: newItem }); setSelectedTextBoxId(newId); break;
+          case 'emoji': setEmojis(prev => [...prev, newItem]); if (onEmojiCreate) onEmojiCreate(newItem); setSelectedEmojiId(newId); break;
+          case 'gif': setGifs(prev => [...prev, newItem]); if (onGifCreate) onGifCreate(newItem); setSelectedGifId(newId); break;
+          case 'image': setImages(prev => [...prev, newItem]); if (onImageCreate) onImageCreate(newItem); setSelectedImageId(newId); break;
+          case 'shape': setShapes(prev => [...prev, newItem]); if (onShapeCreate) onShapeCreate(newItem); setSelectedShapeId(newId); break;
+          default: break;
         }
         return;
       }
 
-      // --- USUWANIE (Delete / Backspace) ---
       if (e.key === 'Backspace' || e.key === 'Delete') {
-
         if (selectionBox) {
           e.preventDefault();
-
-          // A. ZNAJDŹ WSZYSTKIE ELEMENTY DO USUNIĘCIA (współrzędne świata)
           const isInsideSelection = (objX, objY, objW, objH) => {
             return (
               objX < selectionBox.x + selectionBox.width &&
@@ -1425,43 +943,28 @@ const Canvas = ({
           const imagesToDelete = images.filter(img => isInsideSelection(img.x, img.y, img.width || 200, 100));
           const shapesToDelete = shapes.filter(s => isInsideSelection(s.x, s.y, s.width || 100, Math.max(s.height || 100, 10)));
 
-          // Zapisz masowe usuwanie obiektów (jeśli cokolwiek usuwamy)
-          if (notesToDelete.length > 0 || textsToDelete.length > 0 || emojisToDelete.length > 0 || gifsToDelete.length > 0 || imagesToDelete.length > 0 || shapesToDelete.length > 0 || selectionSnapshot) {
-            saveToHistory(ACTION_TYPES.MASS_DELETE, {
-              notes: notesToDelete,
-              textBoxes: textsToDelete,
-              emojis: emojisToDelete,
-              gifs: gifsToDelete,
-              images: imagesToDelete,
-              shapes: shapesToDelete,
-              wasSnapshotDeleted: !!selectionSnapshot
-            });
-          }
-
-          // 🔹 NOWOŚĆ: Obsługa wymazywania obszaru (obrazka/rysunków) 🔹
           if (selectionSnapshot && originalCaptureRect) {
-
-            // 1. Wyślij informację do innych użytkowników
             if (socket) {
               socket.emit('erase-area', {
                 whiteboardId,
                 x: originalCaptureRect.x,
                 y: originalCaptureRect.y,
                 width: originalCaptureRect.width,
-                height: originalCaptureRect.height
+                height: originalCaptureRect.height,
+                timestamp: Date.now()
               });
             }
-
-            // 2. Zapisz akcję wymazania do lokalnej historii (dla redrawCanvas)
-            saveToHistory(ACTION_TYPES.ERASE_AREA, {
+            // Zapisz lokalnie wymazanie, aby przetrwało redrawCanvas
+            localDrawingsRef.current.push({
+              type: 'erase-area',
               x: originalCaptureRect.x,
               y: originalCaptureRect.y,
               width: originalCaptureRect.width,
-              height: originalCaptureRect.height
+              height: originalCaptureRect.height,
+              timestamp: Date.now()
             });
           }
 
-          // Usuwanie elementów ze stanu
           if (notesToDelete.length) { setNotes(prev => prev.filter(n => !notesToDelete.some(del => del.id === n.id))); notesToDelete.forEach(n => socket && socket.emit('note-delete', { whiteboardId, id: n.id })); }
           if (textsToDelete.length) { setTextBoxes(prev => prev.filter(t => !textsToDelete.some(del => del.id === t.id))); textsToDelete.forEach(t => socket && socket.emit('text-delete', { whiteboardId, id: t.id })); }
           if (emojisToDelete.length) { setEmojis(prev => prev.filter(e => !emojisToDelete.some(del => del.id === e.id))); emojisToDelete.forEach(e => socket && socket.emit('emoji-delete', { whiteboardId, id: e.id })); }
@@ -1473,12 +976,10 @@ const Canvas = ({
           setSelectionBox(null);
           setOriginalCaptureRect(null);
 
-          // 🔹 NOWOŚĆ: Przerysuj canvas, aby uwzględnić "dziurę" po ERASE_AREA
           redrawCanvas();
           return;
         }
 
-        // Usuwanie pojedyncze
         if (selectedNoteId) removeNote(selectedNoteId);
         if (selectedTextBoxId) removeTextBox(selectedTextBoxId);
         if (selectedEmojiId) removeEmoji(selectedEmojiId);
@@ -1491,10 +992,10 @@ const Canvas = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
-    notes, textBoxes, emojis, gifs, shapes,
+    notes, textBoxes, emojis, gifs, shapes, images,
     selectedNoteId, selectedTextBoxId, selectedEmojiId, selectedGifId, selectedShapeId,
     selectionBox, selectionSnapshot,
-    undo, redo, clipboard
+    clipboard
   ]);
 
   useEffect(() => {
@@ -1564,7 +1065,6 @@ const Canvas = ({
   }, [socket]);
 
   const handleMouseMove = (e) => {
-    // --- HANDLE PANNING ---
     currentMousePosRef.current = { x: e.clientX, y: e.clientY };
     if (isPanning) {
       const dx = e.clientX - lastMousePosRef.current.x;
@@ -1576,7 +1076,7 @@ const Canvas = ({
 
         const halfW = container.clientWidth / 2;
         const halfH = container.clientHeight / 2;
-        const OFFSET_LIMIT = WORLD_LIMIT + 500; // margines
+        const OFFSET_LIMIT = WORLD_LIMIT + 500;
         const newX = prev.x + dx;
         const newY = prev.y + dy;
         const clampedX = Math.min(halfW + OFFSET_LIMIT, Math.max(halfW - OFFSET_LIMIT, newX));
@@ -1588,22 +1088,15 @@ const Canvas = ({
       lastMousePosRef.current = { x: e.clientX, y: e.clientY };
       return;
     }
-    // ---------------------
 
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
     if (onCursorMove) onCursorMove({ x, y });
 
-    // --- HANDLE SELECTION DRAG/RESIZE ---
     if (tool === 'select') {
       if (isDraggingSelection && selectionBox) {
-        setSelectionBox({
-          ...selectionBox,
-          x: x - dragOffset.x,
-          y: y - dragOffset.y
-        });
+        setSelectionBox({ ...selectionBox, x: x - dragOffset.x, y: y - dragOffset.y });
         return;
       }
-
       if (isDrawing && selectionStart) {
         const newWidth = x - selectionStart.x;
         const newHeight = y - selectionStart.y;
@@ -1624,21 +1117,13 @@ const Canvas = ({
     const currentIndex = backgroundModes.findIndex(mode => mode.id === backgroundMode);
     const nextIndex = (currentIndex + 1) % backgroundModes.length;
     const newMode = backgroundModes[nextIndex].id;
-
-    if (onBackgroundChange) {
-      onBackgroundChange(newMode);
-    }
+    if (onBackgroundChange) onBackgroundChange(newMode);
   };
 
   const getCurrentBackgroundIcon = () => backgroundModes.find(mode => mode.id === backgroundMode)?.icon;
 
-  const handleMouseLeave = () => {
-    stopDrawing();
-  };
-
-  const handleMouseEnter = () => {
-    //
-  };
+  const handleMouseLeave = () => { stopDrawing(); };
+  const handleMouseEnter = () => { };
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -1670,51 +1155,32 @@ const Canvas = ({
     }
   }, [socket]);
 
+  // Usuwamy reset historii przy zmianie tablicy, resetujemy tylko lokalny ref
   useEffect(() => {
-    historyRef.current = { history: [], step: -1 };
-    setHistory([]);
-    setHistoryStep(-1);
+    localDrawingsRef.current = [];
   }, [whiteboardId]);
 
   const remoteCursorsArray = Array.from(remoteCursors.values());
 
   return (
-
     <div className="canvas-container" ref={containerRef}>
-
       <div
-        className={`canvas-area background-${backgroundMode} ${tool === 'select' ? 'is-selecting' : ''} ${isSpacePressed ? (isPanning ? 'is-grabbing' : 'is-grab') : ''}`}
-        onClick={handleCanvasClick}
+        className={`canvas-area background-${backgroundMode} ${tool === 'select' ? 'is-selecting' : ''} ${isPanning ? 'is-grabbing' : ''}`} onClick={handleCanvasClick}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
-        style={{
-          // Przesuwamy tło (grid/lines) zgodnie z panOffset
-          backgroundPosition: `${panOffset.x}px ${panOffset.y}px`
-        }}
+        onContextMenu={(e) => e.preventDefault()}
+        style={{ backgroundPosition: `${panOffset.x}px ${panOffset.y}px` }}
       >
         <canvas
           ref={backgroundCanvasRef}
           className="background-canvas"
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            zIndex: 1,
-            pointerEvents: 'none'
-          }}
+          style={{ position: 'absolute', top: 0, left: 0, zIndex: 1, pointerEvents: 'none' }}
         />
 
-        {/* Główny canvas do rysowania */}
         <canvas
           ref={drawingCanvasRef}
           className="drawing-canvas"
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            zIndex: 2,
-            backgroundColor: 'transparent'
-          }}
+          style={{ position: 'absolute', top: 0, left: 0, zIndex: 2, backgroundColor: 'transparent' }}
           onMouseDown={startDrawing}
           onMouseUp={stopDrawing}
           onMouseMove={handleMouseMove}
@@ -1722,7 +1188,6 @@ const Canvas = ({
           onMouseEnter={handleMouseEnter}
         />
 
-        {/* Renderowanie prostokąta zaznaczania (dodano Pan Offset) */}
         {selectionBox && (
           <div
             className="selection-overlay"
@@ -1735,12 +1200,7 @@ const Canvas = ({
             }}
           >
             {selectionSnapshot && (
-              <img
-                src={selectionSnapshot}
-                alt="Selected area"
-                className="selection-image"
-                draggable={false}
-              />
+              <img src={selectionSnapshot} alt="Selected area" className="selection-image" draggable={false} />
             )}
           </div>
         )}
@@ -1750,26 +1210,20 @@ const Canvas = ({
             <Note
               key={note.id}
               {...note}
-              // Wyświetlanie: dodajemy offset (World -> Screen)
               x={note.x + panOffset.x}
               y={note.y + panOffset.y}
               panOffset={panOffset}
               limit={WORLD_LIMIT}
               onUpdate={(id, data) => {
-                // Zapis: odejmujemy offset (Screen -> World) i spłaszczamy strukturę
                 const cleanData = { ...data };
-
-                // Jeśli komponent wysłał obiekt 'position', użyj go do wyliczenia x/y
                 if (cleanData.position) {
                   cleanData.x = cleanData.position.x - panOffset.x;
                   cleanData.y = cleanData.position.y - panOffset.y;
-                  delete cleanData.position; // Usuwamy, żeby nie dublować danych w bazie
+                  delete cleanData.position;
                 } else {
-                  // Fallback, jeśli wysłał płaskie x/y (ale są to coordy ekranowe z Note.jsx)
                   if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
                   if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
                 }
-
                 handleNoteUpdate(id, cleanData);
               }}
               onRemove={handleNoteDelete}
@@ -1784,7 +1238,6 @@ const Canvas = ({
           <Text
             key={textBox.id}
             id={textBox.id}
-            // Wyświetlanie: World -> Screen
             x={textBox.x + panOffset.x}
             y={textBox.y + panOffset.y}
             panOffset={panOffset}
@@ -1794,10 +1247,7 @@ const Canvas = ({
             text={textBox.text}
             tool={tool}
             onUpdate={(id, data) => {
-              // Zapis: Screen -> World
               const cleanData = { ...data };
-
-              // Text.jsx wysyła głównie 'position'
               if (cleanData.position) {
                 cleanData.x = cleanData.position.x - panOffset.x;
                 cleanData.y = cleanData.position.y - panOffset.y;
@@ -1806,7 +1256,6 @@ const Canvas = ({
                 if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
                 if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
               }
-
               handleTextUpdate(id, cleanData);
             }}
             onRemove={removeTextBox}
@@ -1873,34 +1322,8 @@ const Canvas = ({
           />
         ))}
 
-        {videos.map(video => (
-          <Video
-            key={video.id}
-            {...video}
-            x={video.x + panOffset.x}
-            y={video.y + panOffset.y}
-            panOffset={panOffset}
-            limit={WORLD_LIMIT}
-            selected={selectedVideoId === video.id}
-            onSelect={setSelectedVideoId}
-            onUpdate={(id, data) => {
-              const cleanData = { ...data };
-
-              // 🔹 cofamy panOffset przed zapisem / socketem
-              if (cleanData.x !== undefined) cleanData.x -= panOffset.x;
-              if (cleanData.y !== undefined) cleanData.y -= panOffset.y;
-
-              handleVideoUpdate(id, cleanData);
-            }}
-            onDelete={() => handleVideoDelete(video.id)}
-          />
-        ))}
-
         {shapes.map(shape => {
-          // 1. Najpierw szukamy "żywego" użytkownika na liście online
           const creator = users ? users.find(u => u.id === shape.userId) : null;
-
-          // 2. LOGIKA PRIORYTETÓW:
           const dynamicColor = creator ? creator.color : (shape.color || '#000000');
 
           return (
@@ -1927,7 +1350,6 @@ const Canvas = ({
         })}
 
         {remoteCursorsArray.map((cursor, index) => {
-          // Pobierz dane usera z obiektu kursora
           const userName = cursor.user?.name || 'Unknown';
           const userColor = cursor.user?.color || '#ff4444';
 
@@ -1938,7 +1360,6 @@ const Canvas = ({
                 className="remote-cursor"
                 style={{
                   position: 'absolute',
-                  // Dodajemy offset do kursorów innych użytkowników
                   left: cursor.position.x + panOffset.x,
                   top: cursor.position.y + panOffset.y,
                   pointerEvents: 'none',
@@ -1946,7 +1367,6 @@ const Canvas = ({
                   transition: 'left 0.1s linear, top 0.1s linear'
                 }}
               >
-                {/* Ikona kursora (kropka) */}
                 <svg
                   width="24"
                   height="24"
@@ -1965,7 +1385,6 @@ const Canvas = ({
                   <path d="M5.5 3.21l10.08 5.31c1.26.66 1.13 2.51-.2 2.98l-3.32 1.17a1 1 0 0 1-.65.25l-3.46.74a1 1 0 0 0-.71.56l-1.24 3.06c-.52 1.28-2.35 1.18-2.7-.15L2.1 4.38c-.2-.77.58-1.5 1.32-1.17H5.5z" />
                 </svg>
 
-                {/* Etykieta z nazwą */}
                 <div style={{
                   position: 'absolute',
                   left: '16px',
@@ -1998,14 +1417,10 @@ const Canvas = ({
         </button>
 
         <button
-          // 🔹 ZMODYFIKOWANA KLASA: Dodajemy 'has-unread' jeśli są nowe wiadomości
           className={`chat-toggle ${isChatVisible ? 'active-chat' : ''} ${hasUnreadMessages ? 'has-unread' : ''}`}
           onClick={() => {
             setIsChatVisible(!isChatVisible);
-            // 🔹 DODANE: Jeśli otwieramy czat, resetujemy powiadomienie
-            if (!isChatVisible) {
-              setHasUnreadMessages(false);
-            }
+            if (!isChatVisible) { setHasUnreadMessages(false); }
           }}
           title={isChatVisible ? "Ukryj chat" : "Pokaż chat"}
           style={{ pointerEvents: isWorkingTool ? 'none' : 'auto' }}
@@ -2013,7 +1428,6 @@ const Canvas = ({
           {isChatVisible ? "✖" : "💬"}
         </button>
 
-        {/* CHAT */}
         {isChatVisible && (
           <Chat
             socket={socket}
@@ -2022,7 +1436,6 @@ const Canvas = ({
             onClose={() => setIsChatVisible(false)}
           />
         )}
-
       </div>
     </div >
   );
