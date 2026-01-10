@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
+// 🔹 Dodajemy zoom do propsów (domyślnie 1)
 const Emoji = ({
   id,
   x,
@@ -12,15 +13,15 @@ const Emoji = ({
   onUpdate,
   tool,
   panOffset,
-  limit = 1500
+  limit = 1500,
+  zoom = 1 
 }) => {
   const [isResizing, setIsResizing] = useState(false);
   
-  // Przechowujemy początkowe wartości, żeby resize był płynny
   const resizeStartRef = useRef({ 
     y: 0, 
     startSize: 0,
-    startX: 0, // 🔹 Dodane: Zapamiętujemy pozycję startową
+    startX: 0, 
     startY: 0 
   });
   
@@ -29,16 +30,16 @@ const Emoji = ({
 
   const BORDER_BUFFER = 6; 
 
-  // 1. Logika SKALOWANIA (ZMODYFIKOWANA)
+  // 1. Logika SKALOWANIA (Z POPRAWKĄ NA ZOOM)
   const handleResizeStart = (e) => {
     e.stopPropagation();
     e.preventDefault();
     setIsResizing(true);
     resizeStartRef.current = {
       y: e.clientY,
-      startSize: size,
-      startX: x, // 🔹 Zapamiętujemy X
-      startY: y  // 🔹 Zapamiętujemy Y
+      startSize: size, // To jest rozmiar ekranowy (już przemnożony przez zoom w Canvas)
+      startX: x, 
+      startY: y  
     };
   };
 
@@ -48,55 +49,56 @@ const Emoji = ({
     const handleResizeMove = (e) => {
       const deltaY = e.clientY - resizeStartRef.current.y;
       
-      // 1. Obliczamy nowy rozmiar (bez limitów na razie)
-      // Pozwalamy mu rosnąć, nawet jeśli jest przy ścianie
-      let newSize = Math.max(16, resizeStartRef.current.startSize + deltaY);
+      // 1. Obliczamy nowy rozmiar EKRANOWY
+      // Minimalny rozmiar to 16px (skalowane zoomem, żeby nie zniknęło przy oddaleniu)
+      let newScreenSize = Math.max(16 * zoom, resizeStartRef.current.startSize + deltaY);
 
-      // Pobieramy aktualną pozycję (dla płynności używamy prop 'x' i 'y' lub refów, 
-      // tutaj bazujemy na propsach przekazywanych z góry, które są aktualizowane przez onUpdate)
       let newScreenX = x;
       let newScreenY = y;
 
       if (panOffset) {
-        // --- LOGIKA "ODPYCHANIA" OD ŚCIAN ---
+        // --- LOGIKA "ODPYCHANIA" OD ŚCIAN Z ZOOMEM ---
 
-        // 2. Konwersja na świat
-        let worldX = newScreenX - panOffset.x;
-        let worldY = newScreenY - panOffset.y;
+        // 2. Konwersja na świat (Screen -> World)
+        let worldX = (newScreenX - panOffset.x) / zoom;
+        let worldY = (newScreenY - panOffset.y) / zoom;
+        
+        // Rozmiar w świecie
+        const worldSize = newScreenSize / zoom;
 
-        // Promień (połowa rozmiaru) + bufor ramki
-        const halfSize = (newSize + BORDER_BUFFER) / 2;
+        // Promień (połowa rozmiaru) + bufor ramki (w jednostkach świata)
+        // Dzielimy BORDER_BUFFER przez zoom, żeby ramka była stała wizualnie
+        const halfSizeWorld = (worldSize + (BORDER_BUFFER / zoom)) / 2;
 
-        // 3. Sprawdzamy kolizje z każdą ścianą
-        // Jeśli nowa krawędź (worldX + halfSize) wychodzi poza limit...
-        // ...to przesuwamy środek (worldX) w lewo, żeby krawędź została na limicie.
+        // 3. Sprawdzamy kolizje w świecie
         
         // Prawa ściana
-        if (worldX + halfSize > limit) {
-          worldX = limit - halfSize;
+        if (worldX + halfSizeWorld > limit) {
+          worldX = limit - halfSizeWorld;
         }
         // Lewa ściana
-        else if (worldX - halfSize < -limit) {
-          worldX = -limit + halfSize;
+        else if (worldX - halfSizeWorld < -limit) {
+          worldX = -limit + halfSizeWorld;
         }
 
         // Dolna ściana
-        if (worldY + halfSize > limit) {
-          worldY = limit - halfSize;
+        if (worldY + halfSizeWorld > limit) {
+          worldY = limit - halfSizeWorld;
         }
         // Górna ściana
-        else if (worldY - halfSize < -limit) {
-          worldY = -limit + halfSize;
+        else if (worldY - halfSizeWorld < -limit) {
+          worldY = -limit + halfSizeWorld;
         }
 
-        // 4. Aktualizujemy współrzędne ekranowe po przesunięciu
-        newScreenX = worldX + panOffset.x;
-        newScreenY = worldY + panOffset.y;
+        // 4. Powrót na ekran (World -> Screen)
+        newScreenX = (worldX * zoom) + panOffset.x;
+        newScreenY = (worldY * zoom) + panOffset.y;
       }
 
-      // 5. Wysyłamy aktualizację ZARÓWNO rozmiaru JAK I pozycji
+      // 5. Wysyłamy aktualizację (wartości ekranowe)
+      // Canvas.jsx w onUpdate podzieli je przez zoom przed zapisem do bazy
       onUpdate(id, { 
-        size: newSize,
+        size: newScreenSize,
         x: newScreenX,
         y: newScreenY
       });
@@ -113,9 +115,9 @@ const Emoji = ({
       window.removeEventListener('mousemove', handleResizeMove);
       window.removeEventListener('mouseup', handleResizeEnd);
     };
-  }, [isResizing, id, onUpdate, x, y, panOffset, limit]);
+  }, [isResizing, id, onUpdate, x, y, panOffset, limit, zoom]);
 
-  // 2. Logika PRZESUWANIA (Bez zmian)
+  // 2. Logika PRZESUWANIA (Z POPRAWKĄ NA ZOOM)
   const handleDragStart = (e) => {
     e.stopPropagation();
     if (e.target.tagName === 'BUTTON' || isResizing) return;
@@ -137,19 +139,25 @@ const Emoji = ({
       let newScreenY = e.clientY - dragOffsetRef.current.y;
 
       if (panOffset) {
-        const worldX = newScreenX - panOffset.x;
-        const worldY = newScreenY - panOffset.y;
+        // 1. Konwersja Screen -> World
+        const worldX = (newScreenX - panOffset.x) / zoom;
+        const worldY = (newScreenY - panOffset.y) / zoom;
 
-        const halfSize = (size + BORDER_BUFFER) / 2;
+        // Rozmiar w świecie i bufor
+        const worldSize = size / zoom;
+        const halfSizeWorld = (worldSize + (BORDER_BUFFER / zoom)) / 2;
         
-        const minBound = -limit + halfSize;
-        const maxBound = limit - halfSize;
+        // Granice w świecie
+        const minBound = -limit + halfSizeWorld;
+        const maxBound = limit - halfSizeWorld;
 
+        // 2. Clamp w świecie
         const clampedWorldX = Math.max(minBound, Math.min(worldX, maxBound));
         const clampedWorldY = Math.max(minBound, Math.min(worldY, maxBound));
 
-        newScreenX = clampedWorldX + panOffset.x;
-        newScreenY = clampedWorldY + panOffset.y;
+        // 3. Konwersja World -> Screen
+        newScreenX = (clampedWorldX * zoom) + panOffset.x;
+        newScreenY = (clampedWorldY * zoom) + panOffset.y;
       }
 
       onUpdate(id, { x: newScreenX, y: newScreenY });
@@ -166,7 +174,7 @@ const Emoji = ({
       window.removeEventListener('mousemove', handleDragMove);
       window.removeEventListener('mouseup', handleDragEnd);
     };
-  }, [isDragging, id, onUpdate, panOffset, limit, size]);
+  }, [isDragging, id, onUpdate, panOffset, limit, size, zoom]); // Dodano zoom do zależności
 
   const isDrawingTool = ['pencil', 'brush', 'eraser'].includes(tool);
   

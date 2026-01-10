@@ -136,7 +136,7 @@ const Canvas = ({
   useEffect(() => {
     panOffsetRef.current = panOffset;
   }, [panOffset]);
-  
+
   // --- 🔹 DODANO OBSŁUGĘ ZOOMOWANIA (Wheel) ---
   const handleWheel = (e) => {
     e.preventDefault();
@@ -254,7 +254,7 @@ const Canvas = ({
     // Reset transformacji do czyszczenia
     context.setTransform(1, 0, 0, 1, 0, 0);
     context.clearRect(0, 0, drawingCanvasRef.current.width, drawingCanvasRef.current.height);
-    
+
     // Przywróć transformację zoom/pan
     setupDrawingContext();
 
@@ -350,11 +350,11 @@ const Canvas = ({
     context.fillStyle = '#e5e5e5';
     context.fillRect(0, 0, width, height);
 
-    context.save(); 
+    context.save();
     // Tło również musi uwzględniać zoom
     context.translate(panOffsetRef.current.x, panOffsetRef.current.y);
     context.scale(zoom, zoom);
-    
+
     const areaStart = -WORLD_LIMIT;
     const areaSize = WORLD_LIMIT * 2;
 
@@ -587,7 +587,7 @@ const Canvas = ({
       };
     }
   }, [socket, currentUser]);
-  
+
 
   const clearDrawingCanvas = () => {
     const context = drawingContextRef.current;
@@ -616,7 +616,7 @@ const Canvas = ({
   const getCanvasCoordinates = (clientX, clientY) => {
     const canvas = drawingCanvasRef.current;
     const rect = canvas.getBoundingClientRect();
-    
+
     // Wzór: (ScreenPos - Pan) / Zoom
     return {
       x: (clientX - rect.left - panOffsetRef.current.x) / zoom,
@@ -625,10 +625,10 @@ const Canvas = ({
   };
 
   const getWorldFromScreen = (screenX, screenY) => {
-     return {
-         x: (screenX - panOffset.x) / zoom,
-         y: (screenY - panOffset.y) / zoom
-     };
+    return {
+      x: (screenX - panOffset.x) / zoom,
+      y: (screenY - panOffset.y) / zoom
+    };
   };
 
   const handleGifUpdate = (id, updates) => {
@@ -731,11 +731,11 @@ const Canvas = ({
             // Używamy tutaj transformacji canvasa, więc współrzędne x, y są w świecie.
             // Niestety getImageData ignoruje transformacje kontekstu.
             // Aby to działało idealnie z zoomem, należy przeliczyć x/y na ekranowe.
-            
+
             // Tymczasowe uproszczenie: Pobieramy obszar "świata", ale uwzględniając offsety
             // UWAGA: To narzędzie w trybie Zoom może wymagać głębszej refaktoryzacji "Select tool".
             // Dla prostego "wytnij/wklej" przy zoom=1 działa, przy zoom!=1 może być przesunięcie.
-            
+
             // Próba naprawy dla Zoom:
             // Musimy wiedzieć gdzie fizycznie na canvasie (piksele) jest ten obszar.
             // ScreenX = WorldX * Zoom + PanX
@@ -746,13 +746,13 @@ const Canvas = ({
 
             const imageData = ctx.getImageData(screenX, screenY, screenW, screenH);
             ctx.clearRect(x, y, width, height);
-            
+
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = screenW;
             tempCanvas.height = screenH;
             const tempCtx = tempCanvas.getContext('2d');
             tempCtx.putImageData(imageData, 0, 0);
-            
+
             const capturedImage = tempCanvas.toDataURL();
             setSelectionSnapshot(capturedImage);
             setOriginalCaptureRect({ x, y, width, height });
@@ -1212,15 +1212,15 @@ const Canvas = ({
   return (
     <div className="canvas-container" ref={containerRef}>
       <div
-        className={`canvas-area background-${backgroundMode} ${tool === 'select' ? 'is-selecting' : ''} ${isPanning ? 'is-grabbing' : ''}`} 
+        className={`canvas-area background-${backgroundMode} ${tool === 'select' ? 'is-selecting' : ''} ${isPanning ? 'is-grabbing' : ''}`}
         onClick={handleCanvasClick}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
         onContextMenu={(e) => e.preventDefault()}
         onWheel={handleWheel}
-        style={{ 
-            backgroundPosition: `${panOffset.x}px ${panOffset.y}px`,
-            backgroundSize: `${20 * zoom}px ${20 * zoom}px`
+        style={{
+          backgroundPosition: `${panOffset.x}px ${panOffset.y}px`,
+          backgroundSize: `${20 * zoom}px ${20 * zoom}px`
         }}
       >
         <canvas
@@ -1257,7 +1257,7 @@ const Canvas = ({
           </div>
         )}
 
-       {notes.map(note => (
+        {notes.map(note => (
           <div key={note.id} style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none', width: '100%', height: '100%' }}>
             <Note
               key={note.id}
@@ -1276,8 +1276,8 @@ const Canvas = ({
                   cleanData.y = (cleanData.position.y - panOffset.y) / zoom;
                   delete cleanData.position;
                 } else if (cleanData.x !== undefined && cleanData.y !== undefined) {
-                    cleanData.x = (cleanData.x - panOffset.x) / zoom;
-                    cleanData.y = (cleanData.y - panOffset.y) / zoom;
+                  cleanData.x = (cleanData.x - panOffset.x) / zoom;
+                  cleanData.y = (cleanData.y - panOffset.y) / zoom;
                 }
                 handleNoteUpdate(id, cleanData);
               }}
@@ -1328,17 +1328,21 @@ const Canvas = ({
             {...emojiData}
             x={(emojiData.x * zoom) + panOffset.x}
             y={(emojiData.y * zoom) + panOffset.y}
-            size={(emojiData.size || 48) * zoom}
+            size={(emojiData.size || 48) * zoom} // Rozmiar wysyłamy przeskalowany
             panOffset={panOffset}
             limit={WORLD_LIMIT}
+            zoom={zoom} // 🔹 DODAJEMY ZOOM
             tool={tool}
             selected={selectedEmojiId === emojiData.id}
             onSelect={setSelectedEmojiId}
             onRemove={removeEmoji}
             onUpdate={(id, data) => {
               const cleanData = { ...data };
+              // Odwracamy zoom dla pozycji
               if (cleanData.x !== undefined) cleanData.x = (cleanData.x - panOffset.x) / zoom;
               if (cleanData.y !== undefined) cleanData.y = (cleanData.y - panOffset.y) / zoom;
+              // 🔹 Odwracamy zoom dla rozmiaru (bo Emoji.jsx oblicza nowy rozmiar w pikselach ekranu)
+              if (cleanData.size !== undefined) cleanData.size = cleanData.size / zoom;
               handleEmojiUpdate(id, cleanData);
             }}
           />
