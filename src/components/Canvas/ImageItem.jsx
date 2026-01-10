@@ -1,7 +1,19 @@
 import React from 'react';
 import DraggableResizableWrapper from './DraggableResizableWrapper';
 
-const ImageItem = ({ id, x, y, url, width = 200, selected, onSelect, onUpdate, panOffset, limit = 1500     // 🔹 Odbieramy
+// 🔹 Dodajemy 'zoom' do destrukturyzacji propsów (domyślnie 1)
+const ImageItem = ({ 
+  id, 
+  x, 
+  y, 
+  url, 
+  width = 200, 
+  selected, 
+  onSelect, 
+  onUpdate, 
+  panOffset, 
+  limit = 1500,
+  zoom = 1 // 🔹 Odbieramy zoom
 }) => {
   return (
     <DraggableResizableWrapper
@@ -13,8 +25,9 @@ const ImageItem = ({ id, x, y, url, width = 200, selected, onSelect, onUpdate, p
       onSelect={onSelect}
       onUpdate={onUpdate}
       aspectRatioLocked={true}
-      panOffset={panOffset} // 🔹 Przekazujemy dalej
-      limit={limit}         // 🔹 Przekazujemy dalej
+      panOffset={panOffset}
+      limit={limit}
+      zoom={zoom} // 🔹 Przekazujemy zoom do wrappera
     >
       <img
         src={url}

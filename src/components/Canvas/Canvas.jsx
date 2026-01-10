@@ -200,6 +200,8 @@ const Canvas = ({
     e.stopPropagation();
 
     const files = e.dataTransfer.files;
+
+    // getCanvasCoordinates zwraca już współrzędne ŚWIATA (uwzględniając zoom i pan)
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
 
     if (files && files.length > 0) {
@@ -210,13 +212,39 @@ const Canvas = ({
           const reader = new FileReader();
           reader.onload = (event) => {
             const url = event.target.result;
+
+            // Ustalamy domyślne wymiary (zgodnie z Twoim kodem width=300)
+            const defaultWidth = 300;
+            const defaultHeight = 200; // Zakładamy przybliżoną wysokość do centrowania
+
+            // 1. Obliczamy pozycję lewego górnego rogu (centrujemy obrazek na kursore)
+            let finalX = x - (defaultWidth / 2);
+            let finalY = y - (defaultHeight / 2);
+
+            // 2. --- 🔹 LOGIKA OGRANICZEŃ (CLAMP) 🔹 ---
+
+            // A. Sprawdzamy lewą i górną granicę (-WORLD_LIMIT)
+            // Jeśli wychodzi poza -2500, ustawiamy na -2500
+            finalX = Math.max(-WORLD_LIMIT, finalX);
+            finalY = Math.max(-WORLD_LIMIT, finalY);
+
+            // B. Sprawdzamy prawą i dolną granicę (WORLD_LIMIT)
+            // Jeśli pozycja + szerokość wychodzi poza 2500, cofamy pozycję
+            if (finalX + defaultWidth > WORLD_LIMIT) {
+              finalX = WORLD_LIMIT - defaultWidth;
+            }
+            if (finalY + defaultHeight > WORLD_LIMIT) {
+              finalY = WORLD_LIMIT - defaultHeight;
+            }
+
             const newImage = {
               id: `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-              x: x - 150,
-              y: y - 100,
+              x: finalX,
+              y: finalY,
               url: url,
-              width: 300
+              width: defaultWidth
             };
+
             if (onImageCreate) onImageCreate(newImage);
           };
           reader.readAsDataURL(file);
@@ -906,9 +934,13 @@ const Canvas = ({
     if (onTextDelete) { onTextDelete(id); setSelectedTextBoxId(null); }
   };
 
+  // W pliku Canvas.jsx
+
   useEffect(() => {
     const handlePaste = (e) => {
+      // Ignorujemy wklejanie w inputach/textarea
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
       const items = (e.clipboardData || e.originalEvent.clipboardData).items;
 
       for (const item of items) {
@@ -916,19 +948,44 @@ const Canvas = ({
           e.preventDefault();
           const blob = item.getAsFile();
           const reader = new FileReader();
+
           reader.onload = (event) => {
             const url = event.target.result;
+
+            // Pobieramy pozycję myszki lub środek ekranu
             const mouseX = currentMousePosRef.current.x || (window.innerWidth / 2);
             const mouseY = currentMousePosRef.current.y || (window.innerHeight / 2);
-            const { x, y } = getCanvasCoordinates(mouseX, mouseY);
 
+            // 1. Obliczamy pozycję w świecie (World Coordinates)
+            let worldX = (mouseX - panOffset.x) / zoom;
+            let worldY = (mouseY - panOffset.y) / zoom;
+
+            // 2. Szacujemy wymiary obrazka (domyślnie ImageItem ma 200px szerokości, zakładamy kwadrat dla bezpieczeństwa)
+            const estimatedWidth = 200;
+            const estimatedHeight = 200;
+
+            // 3. LOGIKA OGRANICZEŃ (CLAMP)
+            // Sprawdzamy lewą i górną krawędź
+            if (worldX < -WORLD_LIMIT) worldX = -WORLD_LIMIT;
+            if (worldY < -WORLD_LIMIT) worldY = -WORLD_LIMIT;
+
+            // Sprawdzamy prawą i dolną krawędź
+            if (worldX + estimatedWidth > WORLD_LIMIT) {
+              worldX = WORLD_LIMIT - estimatedWidth;
+            }
+            if (worldY + estimatedHeight > WORLD_LIMIT) {
+              worldY = WORLD_LIMIT - estimatedHeight;
+            }
+
+            // 4. Tworzymy obiekt z bezpiecznymi współrzędnymi
             const newImage = {
               id: `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-              x: x - 150,
-              y: y - 100,
+              x: worldX, // Zapisujemy współrzędne ŚWIATA
+              y: worldY,
               url: url,
-              width: 300
+              width: estimatedWidth
             };
+
             if (onImageCreate) onImageCreate(newImage);
           };
           reader.readAsDataURL(blob);
@@ -939,7 +996,7 @@ const Canvas = ({
 
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
-  }, [onImageCreate]);
+  }, [onImageCreate, panOffset, zoom]); // Dodano zależności panOffset i zoom
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -1383,6 +1440,7 @@ const Canvas = ({
             width={(image.width || 200) * zoom}
             panOffset={panOffset}
             limit={WORLD_LIMIT}
+            zoom={zoom} // 🔹 <--- DODAJ TĘ LINIJKĘ
             selected={selectedImageId === image.id}
             onSelect={setSelectedImageId}
             onUpdate={(id, data) => {
