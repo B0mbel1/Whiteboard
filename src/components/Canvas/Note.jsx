@@ -7,7 +7,7 @@ const Note = ({
   y,
   width,
   height,
-  initialText = '',
+  text: incomingText = '', // 🔹 ZMIANA: Odbieramy 'text' (zgodnie z tym co wysyła serwer), nie 'initialText'
   onUpdate,
   onRemove,
   selectedNoteId,
@@ -18,8 +18,8 @@ const Note = ({
   limit = 1500,
   zoom = 1
 }) => {
-  const [text, setText] = useState(initialText);
-  // x i y przychodzą z Canvas już przeliczone (World * Zoom + Pan)
+  // Inicjalizacja stanu tekstem z propsów
+  const [text, setText] = useState(incomingText);
   const [pos, setPos] = useState({ x, y });
   const [size, setSize] = useState({ width: width || 180, height: height || 120 });
   
@@ -27,15 +27,28 @@ const Note = ({
   const isDragging = useRef(false);
   const dragOffset = useRef({ x: 0, y: 0 });
   const lastPosition = useRef({ x, y });
+  const isEditingRef = useRef(false); // Ref, aby nie nadpisywać tekstu podczas pisania
 
   const isDrawingTool = ['pencil', 'brush', 'eraser'].includes(tool);
 
-  // Synchronizuj zmiany z serwera (tylko tekst i rozmiar, pozycja jest zarządzana przez Canvas props)
+  // 🔹 NAPRAWA: Synchronizacja stanu lokalnego, gdy dane przyjdą z serwera (np. po refreshu)
+  useEffect(() => {
+    // Aktualizujemy tylko jeśli nie edytujemy i tekst jest inny
+    if (!isEditingRef.current && incomingText !== undefined && incomingText !== text) {
+      setText(incomingText);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incomingText]);
+
+  // Synchronizuj zmiany z serwera (socket) w czasie rzeczywistym
   useEffect(() => {
     if (socket) {
       const handleNoteUpdate = (data) => {
         if (data.id === id) {
-          if (data.text !== undefined) setText(data.text);
+          // Jeśli ktoś inny edytuje, a my nie, zaktualizuj tekst
+          if (data.text !== undefined && !isEditingRef.current) {
+            setText(data.text);
+          }
           if (data.size) setSize(data.size);
         }
       };
@@ -44,24 +57,21 @@ const Note = ({
     }
   }, [socket, id]);
 
-  // ✅ POPRAWKA: Synchronizuj pozycję z props TYLKO jeśli nie przeciągamy
+  // Synchronizuj pozycję z props TYLKO jeśli nie przeciągamy
   useEffect(() => {
     if (!isDragging.current) {
       setPos({ x, y });
     }
-  }, [x, y, zoom]); // Reaguj na zmianę zoomu i pozycji od rodzica
+  }, [x, y, zoom]); 
 
   const handleMouseDown = (e) => {
     if (isDrawingTool) return;
     
-    // Ustawiamy notatkę jako wybraną
     setSelectedNoteId(id);
     lastPosition.current = { ...pos };
 
-    // ✅ POPRAWKA: Używamy .closest(), aby złapać kliknięcie też w ikonę wewnątrz nagłówka
     if (e.target.closest('.note-header')) {
       isDragging.current = true;
-      // Obliczamy offset myszki względem lewego górnego rogu notatki
       dragOffset.current = { x: e.clientX - pos.x, y: e.clientY - pos.y };
       e.preventDefault();
     }
@@ -70,26 +80,18 @@ const Note = ({
   const handleMouseMove = (e) => {
     if (!isDragging.current) return;
 
-    // Oblicz nową surową pozycję ekranową
     let newScreenX = e.clientX - dragOffset.current.x;
     let newScreenY = e.clientY - dragOffset.current.y;
 
-    // --- LOGIKA OGRANICZEŃ (LIMIT) ---
-    // Musimy przeliczyć pozycję na "Świat" (World Coordinates), sprawdzić limit, i wrócić na ekran
     if (panOffset) {
-      // 1. Screen -> World
       const worldX = (newScreenX - panOffset.x) / zoom;
       const worldY = (newScreenY - panOffset.y) / zoom;
-
-      // 2. Clamp (ograniczenie)
       const clampedWorldX = Math.max(-limit, Math.min(worldX, limit - size.width));
       const clampedWorldY = Math.max(-limit, Math.min(worldY, limit - size.height));
 
-      // 3. World -> Screen
       newScreenX = (clampedWorldX * zoom) + panOffset.x;
       newScreenY = (clampedWorldY * zoom) + panOffset.y;
     }
-    // -------------------------
 
     setPos({ x: newScreenX, y: newScreenY });
   };
@@ -97,12 +99,9 @@ const Note = ({
   const handleMouseUp = () => {
     if (isDragging.current) {
       isDragging.current = false;
-
       const positionChanged = pos.x !== lastPosition.current.x || pos.y !== lastPosition.current.y;
 
       if (positionChanged && onUpdate) {
-        // Wysyłamy do Canvas pozycję ekranową. 
-        // Canvas.jsx w funkcji onUpdate przeliczy to z powrotem na World Coordinates (dzieląc przez zoom).
         onUpdate(id, {
           position: { x: pos.x, y: pos.y },
           text,
@@ -116,8 +115,14 @@ const Note = ({
     setText(e.target.value);
   };
 
+  const handleFocus = () => {
+    isEditingRef.current = true;
+  };
+
   const handleTextBlur = () => {
-    if (onUpdate && text !== initialText) {
+    isEditingRef.current = false;
+    // Wyślij aktualizację tylko jeśli tekst jest inny niż ten z propsów
+    if (onUpdate && text !== incomingText) {
       onUpdate(id, {
         position: { x: pos.x, y: pos.y },
         text,
@@ -139,23 +144,6 @@ const Note = ({
   };
 
   useEffect(() => {
-    // Podpinamy globalne listenery, żeby nie zgubić "upuszczenia" notatki poza jej obszarem
-    if (isDragging.current) {
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('mouseup', handleMouseUp);
-    }
-    // Cleanup
-    return () => {
-        window.removeEventListener('mousemove', handleMouseMove);
-        window.removeEventListener('mouseup', handleMouseUp);
-    };
-  }); // Bez dependency array, żeby mieć zawsze świeże closure, ale optymalniej byłoby użyć refów lub useCallback
-
-  // 🔹 ALTERNATYWNE PODEJŚCIE DO LISTENERÓW (BEZPIECZNIEJSZE DLA REACTA)
-  // Zamiast powyższego useEffect, dodajemy listenery w handleMouseDown, a usuwamy w handleMouseUp.
-  // Poniżej poprawiona wersja, która jest bardziej stabilna:
-
-  useEffect(() => {
     const onMove = (e) => handleMouseMove(e);
     const onUp = (e) => handleMouseUp(e);
 
@@ -166,7 +154,7 @@ const Note = ({
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [pos, zoom, panOffset]); // Zależności są ważne dla poprawnych obliczeń wewnątrz funkcji
+  }, [pos, zoom, panOffset]);
 
   return (
     <div
@@ -178,7 +166,6 @@ const Note = ({
         width: size.width,
         height: size.height,
         pointerEvents: isDrawingTool ? 'none' : 'auto',
-        // Skalujemy wizualnie, origin w lewym górnym rogu, żeby pasował do left/top
         transform: `scale(${zoom})`,
         transformOrigin: 'top left',
         position: 'absolute' 
@@ -198,6 +185,7 @@ const Note = ({
         value={text}
         onChange={handleTextChange}
         onBlur={handleTextBlur}
+        onFocus={handleFocus} // 🔹 Rejestrujemy wejście w tryb edycji
         placeholder="Twoja notatka..."
         onMouseDown={(e) => e.stopPropagation()}
         disabled={isDrawingTool}
@@ -213,7 +201,6 @@ const Note = ({
           const startHeight = size.height;
 
           const handleResizeMove = (moveEvent) => {
-            // Dzielimy deltę przez zoom, żeby skalowanie myszki pasowało do skalowania wizualnego
             const deltaX = (moveEvent.clientX - startX) / zoom;
             const deltaY = (moveEvent.clientY - startY) / zoom;
             

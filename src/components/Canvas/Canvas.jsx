@@ -59,15 +59,12 @@ const Canvas = ({
   onBackgroundChange,
   panOffset,
   setPanOffset,
-  zoom,    // 🔹 ODBIERAMY Z PROPS
-  setZoom  // 🔹 ODBIERAMY Z PROPS
+  zoom,    
+  setZoom  
 }) => {
   const [remoteCursors, setRemoteCursors] = useState(new Map());
   const [isChatVisible, setIsChatVisible] = useState(false);
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
-
-  // 🔹 Stan Zoomu
-  // const [zoom, setZoom] = useState(1);
 
   const backgroundModeRef = useRef(backgroundMode);
   const currentMousePosRef = useRef({ x: 0, y: 0 });
@@ -842,6 +839,8 @@ const Canvas = ({
     return { x: safeX, y: safeY };
   };
 
+  // 🔹 KLUCZOWA ZMIANA: Usunięto socket.emit z tej funkcji, aby uniknąć duplikatów.
+  // Emisja zdarzenia odbywa się teraz tylko w WhiteboardRouter (przez callbacki on...Create).
   const handleCanvasClick = (e) => {
     if (isPanning) return;
     if (e.button !== 0) return;
@@ -856,15 +855,14 @@ const Canvas = ({
       const { x: safeX, y: safeY } = clampCreationPos(x, y, w, h);
       const newNote = { id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: safeX, y: safeY, text: '', width: w, height: h };
       setNotes(prev => prev.some(note => note.id === newNote.id) ? prev : [...prev, newNote]);
-      if (onNoteCreate) onNoteCreate(newNote);
+      if (onNoteCreate) onNoteCreate(newNote); // Router emituje
       if (setTool) setTool('cursor');
     } else if (tool === 'text') {
       const w = 200, h = 100;
       const { x: safeX, y: safeY } = clampCreationPos(x, y, w, h);
       const newTextBox = { id: `text_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: safeX, y: safeY, text: '', width: w, height: h };
-      if (onTextCreate) onTextCreate(newTextBox);
       setTextBoxes(prev => [...prev, newTextBox]);
-      if (socket) socket.emit('text-create', { whiteboardId, textBox: newTextBox });
+      if (onTextCreate) onTextCreate(newTextBox); // Router emituje
       if (setTool) setTool('cursor');
     }
 
@@ -876,7 +874,7 @@ const Canvas = ({
 
       const newEmoji = { id: `emoji_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: safeX, y: safeY, emoji: activeEmoji, size: size };
       setEmojis(prev => [...prev, newEmoji]);
-      if (onEmojiCreate) onEmojiCreate(newEmoji);
+      if (onEmojiCreate) onEmojiCreate(newEmoji); // Router emituje
       if (setTool) setTool('cursor');
       if (setActiveEmoji) setActiveEmoji(null);
     }
@@ -889,7 +887,7 @@ const Canvas = ({
 
       const newGif = { id: `gif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: safeX, y: safeY, url: activeGif, width: w };
       setGifs(prev => [...prev, newGif]);
-      if (onGifCreate) onGifCreate(newGif);
+      if (onGifCreate) onGifCreate(newGif); // Router emituje
       if (setTool) setTool('cursor');
     }
     if (tool === 'shape' && activeShape) {
@@ -903,7 +901,7 @@ const Canvas = ({
       const { x: safeX, y: safeY } = clampCreationPos(startX, startY, defaultWidth, defaultHeight);
       const newShape = { id: `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: safeX, y: safeY, width: defaultWidth, height: defaultHeight, type: activeShape, userId: currentUser.id, color: currentUser.color };
       setShapes(prev => [...prev, newShape]);
-      if (onShapeCreate) onShapeCreate(newShape);
+      if (onShapeCreate) onShapeCreate(newShape); // Router emituje
       if (setTool) setTool('cursor');
     }
   };
@@ -935,8 +933,6 @@ const Canvas = ({
   const removeTextBox = (id) => {
     if (onTextDelete) { onTextDelete(id); setSelectedTextBoxId(null); }
   };
-
-  // W pliku Canvas.jsx
 
   useEffect(() => {
     const handlePaste = (e) => {
