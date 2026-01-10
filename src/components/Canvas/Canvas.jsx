@@ -1354,6 +1354,7 @@ const Canvas = ({
             width={(gif.width || 150) * zoom} // Skalujemy szerokość
             panOffset={panOffset}
             limit={WORLD_LIMIT}
+            zoom={zoom}
             selected={selectedGifId === gif.id}
             onSelect={setSelectedGifId}
             onUpdate={(id, data) => {
