@@ -1405,6 +1405,7 @@ const Canvas = ({
               height={(shape.height || 100) * zoom}
               panOffset={panOffset}
               limit={WORLD_LIMIT}
+              zoom={zoom}
               color={dynamicColor}
               selected={selectedShapeId === shape.id}
               onSelect={setSelectedShapeId}

@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, tool, color, panOffset, limit = 1500 }) => {
-    // Domyślne wymiary
+// 🔹 Dodajemy 'zoom' do propsów (domyślnie 1)
+const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, tool, color, panOffset, limit = 1500, zoom = 1 }) => {
+    
+    // Domyślne wymiary (to są wymiary EKRANOWE, bo przychodzą już przemnożone przez zoom z Canvas)
     const [dims, setDims] = useState({
         w: width || 100,
         h: height || 100
@@ -15,19 +17,17 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, to
     const initialPosRef = useRef({ x: 0, y: 0 });
     const initialDimsRef = useRef({ w: 0, h: 0 });
 
-    // Sprawdzamy czy rysujemy
     const isDrawingTool = ['pencil', 'brush', 'eraser'].includes(tool);
 
-    // Synchronizacja z propsami z serwera
     useEffect(() => {
         if (!isDragging && !isResizing) {
             setPos({ x, y });
-            setDims({ w: width || (type === 'arrow' ? 100 : 100), h: height || (type === 'arrow' ? 0 : 100) });
+            // Arrow ma specyficzne domyślne h=0 w logice, ale tutaj width/height przychodzą z props
+            setDims({ w: width || 100, h: height || (type === 'arrow' ? 0 : 100) });
         }
     }, [x, y, width, height, isDragging, isResizing, type]);
 
     const handleMouseDown = (e) => {
-        // Blokada interakcji jeśli rysujemy
         if (isDrawingTool) return;
 
         e.stopPropagation();
@@ -50,6 +50,7 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, to
 
     useEffect(() => {
         const handleMouseMove = (e) => {
+            // --- PRZESUWANIE (DRAGGING) ---
             if (isDragging) {
                 const dx = e.clientX - dragStartRef.current.x;
                 const dy = e.clientY - dragStartRef.current.y;
@@ -58,52 +59,64 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, to
                 let newScreenY = initialPosRef.current.y + dy;
 
                 if (panOffset) {
-                    const worldX = newScreenX - panOffset.x;
-                    const worldY = newScreenY - panOffset.y;
+                    // 1. Zamiana na współrzędne ŚWIATA (uwzględniając zoom)
+                    // (Pozycja ekranowa - Offset) / Zoom
+                    const worldX = (newScreenX - panOffset.x) / zoom;
+                    const worldY = (newScreenY - panOffset.y) / zoom;
 
-                    const clampedWorldX = Math.max(-limit, Math.min(worldX, limit - dims.w));
-                    const clampedWorldY = Math.max(-limit, Math.min(worldY, limit - dims.h));
+                    // 2. Obliczamy szerokość/wysokość w świecie (dims.w to piksele ekranowe, więc dzielimy przez zoom)
+                    const worldWidth = dims.w / zoom;
+                    const worldHeight = dims.h / zoom;
 
-                    newScreenX = clampedWorldX + panOffset.x;
-                    newScreenY = clampedWorldY + panOffset.y;
+                    // 3. CLAMP (Ograniczenie do granic świata)
+                    // Element nie może wyjść poza -limit (lewo/góra)
+                    // Element nie może wyjść poza limit - jego rozmiar (prawo/dół)
+                    const clampedWorldX = Math.max(-limit, Math.min(worldX, limit - worldWidth));
+                    const clampedWorldY = Math.max(-limit, Math.min(worldY, limit - worldHeight));
+
+                    // 4. Powrót na współrzędne EKRANU
+                    newScreenX = (clampedWorldX * zoom) + panOffset.x;
+                    newScreenY = (clampedWorldY * zoom) + panOffset.y;
                 }
                 setPos({ x: newScreenX, y: newScreenY });
             }
 
-            // --- SKALOWANIE (RESIZING) - POPRAWIONE ---
+            // --- SKALOWANIE (RESIZING) ---
             if (isResizing) {
                 const dx = e.clientX - dragStartRef.current.x;
                 const dy = e.clientY - dragStartRef.current.y;
 
-                // 1. Obliczamy pozycję X i Y w świecie gry (żeby wiedzieć ile mamy miejsca do ściany)
-                const currentWorldX = pos.x - (panOffset ? panOffset.x : 0);
-                const currentWorldY = pos.y - (panOffset ? panOffset.y : 0);
+                // 1. Obliczamy pozycję X i Y w świecie gry
+                const currentWorldX = (pos.x - (panOffset ? panOffset.x : 0)) / zoom;
+                const currentWorldY = (pos.y - (panOffset ? panOffset.y : 0)) / zoom;
 
-                // 2. Obliczamy maksymalną dostępną szerokość/wysokość do granicy świata
-                const maxAvailableWidth = limit - currentWorldX;
-                const maxAvailableHeight = limit - currentWorldY;
+                // 2. Obliczamy maksymalną dostępną szerokość/wysokość do granicy świata (w jednostkach świata)
+                const maxAvailableWidthWorld = limit - currentWorldX;
+                const maxAvailableHeightWorld = limit - currentWorldY;
+
+                // 3. Zamieniamy dostępne miejsce na piksele ekranowe (żeby porównać z dx/dy)
+                const maxAvailableWidthScreen = maxAvailableWidthWorld * zoom;
+                const maxAvailableHeightScreen = maxAvailableHeightWorld * zoom;
 
                 if (type === 'arrow') {
                     let newW = initialDimsRef.current.w + dx;
                     let newH = initialDimsRef.current.h + dy;
 
-                    // Blokada arrow jest trudniejsza bo może iść w minusy, 
-                    // ale dla uproszczenia blokujemy wyjście poza prawą/dolną krawędź dodatnimi wartościami
-                    if (newW > maxAvailableWidth) newW = maxAvailableWidth;
-                    if (newH > maxAvailableHeight) newH = maxAvailableHeight;
+                    if (newW > maxAvailableWidthScreen) newW = maxAvailableWidthScreen;
+                    if (newH > maxAvailableHeightScreen) newH = maxAvailableHeightScreen;
 
                     setDims({ w: newW, h: newH });
                 } else {
-                    let newW = Math.max(20, initialDimsRef.current.w + dx);
-                    let newH = Math.max(20, initialDimsRef.current.h + dy);
+                    let newW = Math.max(20 * zoom, initialDimsRef.current.w + dx); // Min size też skalujemy
+                    let newH = Math.max(20 * zoom, initialDimsRef.current.h + dy);
 
-                    // 🔹 BLOKADA: Jeśli nowa szerokość wychodzi poza limit, ucinamy ją
-                    if (newW > maxAvailableWidth) {
-                        newW = maxAvailableWidth;
+                    // 🔹 BLOKADA: Jeśli nowa szerokość wychodzi poza limit
+                    if (newW > maxAvailableWidthScreen) {
+                        newW = maxAvailableWidthScreen;
                     }
                     // 🔹 BLOKADA: To samo dla wysokości
-                    if (newH > maxAvailableHeight) {
-                        newH = maxAvailableHeight;
+                    if (newH > maxAvailableHeightScreen) {
+                        newH = maxAvailableHeightScreen;
                     }
 
                     setDims({ w: newW, h: newH });
@@ -117,6 +130,7 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, to
                 setIsResizing(false);
 
                 if (onUpdate) {
+                    // Wysyłamy do rodzica wartości ekranowe (Canvas przeliczy je z powrotem na świat)
                     onUpdate(id, {
                         x: pos.x,
                         y: pos.y,
@@ -136,21 +150,20 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, to
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
         };
-    }, [isDragging, isResizing, id, onUpdate, pos, dims, type, panOffset, limit]);
+    }, [isDragging, isResizing, id, onUpdate, pos, dims, type, panOffset, limit, zoom]); // 🔹 Dodano zoom do zależności
 
     // Styl kontenera
     const containerStyle = {
         position: 'absolute',
         left: pos.x,
         top: pos.y,
-        // Arrow ma width/height 0, żeby kontener nie blokował myszki na ukos
         width: type === 'arrow' ? 0 : dims.w,
         height: type === 'arrow' ? 0 : dims.h,
         cursor: isDragging ? 'grabbing' : (isDrawingTool ? 'default' : 'grab'),
         border: selected && type !== 'arrow' ? '2px dashed #3498db' : 'none',
         zIndex: selected ? 20 : 10,
         boxSizing: 'border-box',
-        pointerEvents: 'none', // Kontener zawsze przepuszcza, interakcję łapią dzieci
+        pointerEvents: 'none', 
     };
 
     const renderShapeContent = () => {
@@ -162,7 +175,6 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, to
             style: { display: 'block', pointerEvents: 'none' }
         };
         const shapeColor = color || 'black';
-        // Style sterujące interakcją w zależności od wybranego narzędzia
         const interactableStyle = { pointerEvents: isDrawingTool ? 'none' : 'auto' };
         const strokeStyle = { pointerEvents: isDrawingTool ? 'none' : 'visibleStroke' };
 
@@ -172,17 +184,12 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, to
             case 'rectangle_outline':
                 return (
                     <svg {...commonSvgContainerProps}>
-                        {/* Niewidoczna, gruba ramka do łapania myszką */}
                         <rect
                             x="1" y="1" width="22" height="22"
                             fill="none" stroke={shapeColor} strokeWidth="5"
-                            style={{
-                                pointerEvents: isDrawingTool ? 'none' : 'auto', // Tutaj naprawiamy interakcję
-                                cursor: 'pointer'
-                            }}
+                            style={{ pointerEvents: isDrawingTool ? 'none' : 'auto', cursor: 'pointer' }}
                             vectorEffect="non-scaling-stroke"
                         />
-                        {/* Widoczna ramka */}
                         <rect x="1" y="1" width="22" height="22" fill="none" stroke="black" strokeWidth="2" style={{ pointerEvents: 'none' }} vectorEffect="non-scaling-stroke" />
                     </svg>
                 );
@@ -190,13 +197,15 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, to
             case 'circle':
                 return <div style={{ width: '100%', height: '100%', background: shapeColor, borderRadius: '50%', ...interactableStyle }} />;
             case 'arrow':
-                const strokeWidth = 3;
+                const strokeWidth = 3; 
                 const markerSize = 10;
-
+                
+                // Obliczamy długość linii dla SVG na podstawie dims (w pikselach ekranowych)
+                // Musimy uważać, bo 'dims.w' i 'dims.h' to bounding box.
+                // Strzałka w tym komponencie rysowana jest jako linia od (0,0) do (w, h).
+                
                 return (
                     <svg
-                        // 🟢 PRZYWRACAMY width="1" height="1" + overflow="visible"
-                        // Ponieważ kontener ma wymiary 0x0, ustawienie tu 100% powodowało zniknięcie strzałki.
                         width="1"
                         height="1"
                         style={{
@@ -224,16 +233,10 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, to
                             </marker>
                         </defs>
 
-                        {/* Gruby duch do chwytania - znika dla myszy przy rysowaniu */}
                         <line
                             x1={0} y1={0} x2={dims.w} y2={dims.h}
                             stroke={shapeColor} strokeWidth={strokeWidth}
-                            // 🟢 TUTAJ NAPRAWIAMY RYSOWANIE "PRZEZ" STRZAŁKĘ
-                            // Jeśli isDrawingTool -> pointerEvents: none
-                            style={{
-                                pointerEvents: isDrawingTool ? 'none' : 'auto',
-                                cursor: 'grab'
-                            }}
+                            style={{ pointerEvents: isDrawingTool ? 'none' : 'auto', cursor: 'grab' }}
                         />
                         <line
                             x1={0} y1={0} x2={dims.w} y2={dims.h}
@@ -273,7 +276,6 @@ const Shape = ({ id, x, y, width, height, type, selected, onSelect, onUpdate, to
                             border: '1px solid #3498db',
                             borderRadius: type === 'arrow' ? '50%' : '0',
                             zIndex: 21,
-                            // Uchwyt zmiany rozmiaru też znika dla myszy przy rysowaniu
                             pointerEvents: isDrawingTool ? 'none' : 'auto',
                             ...(type === 'arrow'
                                 ? {
