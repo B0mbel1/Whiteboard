@@ -58,14 +58,16 @@ const Canvas = ({
   backgroundMode,
   onBackgroundChange,
   panOffset,
-  setPanOffset
+  setPanOffset,
+  zoom,    // 🔹 ODBIERAMY Z PROPS
+  setZoom  // 🔹 ODBIERAMY Z PROPS
 }) => {
   const [remoteCursors, setRemoteCursors] = useState(new Map());
   const [isChatVisible, setIsChatVisible] = useState(false);
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
 
   // 🔹 Stan Zoomu
-  const [zoom, setZoom] = useState(1);
+  // const [zoom, setZoom] = useState(1);
 
   const backgroundModeRef = useRef(backgroundMode);
   const currentMousePosRef = useRef({ x: 0, y: 0 });
