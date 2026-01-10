@@ -59,8 +59,8 @@ const Canvas = ({
   onBackgroundChange,
   panOffset,
   setPanOffset,
-  zoom,    
-  setZoom  
+  zoom,
+  setZoom
 }) => {
   const [remoteCursors, setRemoteCursors] = useState(new Map());
   const [isChatVisible, setIsChatVisible] = useState(false);
@@ -278,7 +278,7 @@ const Canvas = ({
     const context = drawingContextRef.current;
     if (!context) return;
 
-    // Reset transformacji do czyszczenia
+    // Reset transformacji do czyszczenia całego ekranu
     context.setTransform(1, 0, 0, 1, 0, 0);
     context.clearRect(0, 0, drawingCanvasRef.current.width, drawingCanvasRef.current.height);
 
@@ -288,23 +288,29 @@ const Canvas = ({
     // 2. Przygotuj listę operacji (Remote + Local)
     let allOperations = [];
 
-    // A. Remote
     if (remoteDrawingsRef.current && remoteDrawingsRef.current.length > 0) {
       allOperations = [...remoteDrawingsRef.current];
     }
 
-    // B. Local
     if (localDrawingsRef.current && localDrawingsRef.current.length > 0) {
       allOperations = [...allOperations, ...localDrawingsRef.current];
     }
 
-    // 3. Sortuj chronologicznie
+    // 3. Sortuj chronologicznie - to jest KLUCZOWE, timestamp musi istnieć
     allOperations.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
 
     // 4. Rysuj
     allOperations.forEach(op => {
+      // 🔹 ZMIANA: Traktujemy "erase-area" jak gumkę (destination-out)
       if (op.type === 'erase-area') {
-        context.clearRect(op.x, op.y, op.width, op.height);
+        context.save();
+        context.globalCompositeOperation = 'destination-out'; // Tryb gumki
+        context.fillStyle = 'rgba(0,0,0,1)'; // Kolor nie ma znaczenia, ważna pełna alfa
+        context.fillRect(op.x, op.y, op.width, op.height);
+        context.restore();
+
+        // Ważne: przywróć ustawienia narzędzia po operacji czyszczenia, 
+        // jeśli pętla tego nie robi (tutaj poniżej drawCompletePath ustawia swoje, więc jest ok)
       } else {
         if (op.points && op.points.length > 1) {
           drawCompletePath(context, op.tool, op.color, op.size, op.points);
@@ -548,8 +554,17 @@ const Canvas = ({
         remoteDrawingsRef.current.push({ ...data, type: 'erase-area' });
         const ctx = drawingContextRef.current;
         if (ctx) {
+          // Używamy setupDrawingContext aby mieć dobry zoom/pan
           setupDrawingContext();
-          ctx.clearRect(data.x, data.y, data.width, data.height);
+
+          ctx.save();
+          ctx.globalCompositeOperation = 'destination-out';
+          ctx.fillStyle = 'rgba(0,0,0,1)';
+          ctx.fillRect(data.x, data.y, data.width, data.height);
+          ctx.restore();
+
+          // Przywróć standardowy tryb rysowania (opcjonalne, ale bezpieczne)
+          ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
         }
       };
       const handleRemoteCursorMove = (data) => {
