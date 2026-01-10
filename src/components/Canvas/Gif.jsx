@@ -2,7 +2,7 @@ import React from 'react';
 import DraggableResizableWrapper from './DraggableResizableWrapper';
 
 // Dodajemy prop 'onUpdate'
-const Gif = ({ id, x, y, url, width = 150, selected, onSelect, onUpdate, tool, panOffset, limit = 1500 }) => {
+const Gif = ({ id, x, y, url, width = 150, selected, onSelect, onUpdate, tool, panOffset, limit = 1500, zoom = 1 }) => {
   const isDrawingTool = ['pencil', 'brush', 'eraser'].includes(tool);
   return (
     <DraggableResizableWrapper
@@ -16,6 +16,7 @@ const Gif = ({ id, x, y, url, width = 150, selected, onSelect, onUpdate, tool, p
       aspectRatioLocked={true} // Ważne dla obrazków
       panOffset={panOffset} // 🔹 Przekazujemy offset
       limit={limit}
+      zoom={zoom}
       style={{ pointerEvents: isDrawingTool ? 'none' : 'auto' }}
     >
       <img

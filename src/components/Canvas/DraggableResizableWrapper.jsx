@@ -13,7 +13,8 @@ const DraggableResizableWrapper = ({
   aspectRatioLocked = true,
   style,
   panOffset,
-  limit = 1500
+  limit = 1500,
+  zoom = 1 // 🔹 Odbieramy zoom (domyślnie 1)
 }) => {
   const [localPos, setLocalPos] = useState({ x, y });
   const [localWidth, setLocalWidth] = useState(width);
@@ -49,7 +50,7 @@ const DraggableResizableWrapper = ({
 
   const handleResizeMouseDown = (e, handleType) => {
     e.stopPropagation();
-    e.preventDefault(); // 🔹 Zapobiega zaznaczaniu tekstu na starcie
+    e.preventDefault();
     setIsResizing(handleType);
 
     const currentHeight = wrapperRef.current ? wrapperRef.current.offsetHeight : 0;
@@ -70,33 +71,34 @@ const DraggableResizableWrapper = ({
     if (!isDragging && !isResizing) return;
 
     const handleMouseMove = (e) => {
-      // 🔹 KLUCZOWA ZMIANA: Blokuje domyślne zaznaczanie tekstu w przeglądarce podczas ruchu
       e.preventDefault();
 
+      // --- PRZESUWANIE (DRAGGING) ---
       if (isDragging) {
         const dx = e.clientX - dragStartRef.current.x;
         const dy = e.clientY - dragStartRef.current.y;
 
-        // Obliczamy nową, potencjalną pozycję na ekranie
         let newX = dragStartRef.current.startX + dx;
         let newY = dragStartRef.current.startY + dy;
+
         if (panOffset) {
-          // Pobieramy aktualną wysokość elementu (do sprawdzenia dolnej granicy)
           const currentHeight = wrapperRef.current ? wrapperRef.current.offsetHeight : 0;
 
-          // 1. Konwersja na koordynaty świata
-          const worldX = newX - panOffset.x;
-          const worldY = newY - panOffset.y;
+          // 1. Konwersja Screen -> World
+          const worldX = (newX - panOffset.x) / zoom;
+          const worldY = (newY - panOffset.y) / zoom;
 
-          // 2. Blokowanie (Clamp)
-          // Element nie może wyjść poza -limit (lewo/góra)
-          // Element nie może wyjść poza limit - jego wymiar (prawo/dół)
-          const clampedWorldX = Math.max(-limit, Math.min(worldX, limit - localWidth));
-          const clampedWorldY = Math.max(-limit, Math.min(worldY, limit - currentHeight));
+          // 2. Wymiary w świecie
+          const worldWidth = localWidth / zoom;
+          const worldHeight = currentHeight / zoom;
 
-          // 3. Konwersja z powrotem na ekran
-          newX = clampedWorldX + panOffset.x;
-          newY = clampedWorldY + panOffset.y;
+          // 3. CLAMP (blokada w świecie)
+          const clampedWorldX = Math.max(-limit, Math.min(worldX, limit - worldWidth));
+          const clampedWorldY = Math.max(-limit, Math.min(worldY, limit - worldHeight));
+
+          // 4. Powrót na ekran
+          newX = (clampedWorldX * zoom) + panOffset.x;
+          newY = (clampedWorldY * zoom) + panOffset.y;
         }
         setLocalPos({ x: newX, y: newY });
 
@@ -105,6 +107,7 @@ const DraggableResizableWrapper = ({
         }
       }
 
+      // --- SKALOWANIE (RESIZING) ---
       if (isResizing) {
         const dx = e.clientX - resizeStartRef.current.x;
         const { startWidth, startLeft, startTop, startHeight, aspectRatio } = resizeStartRef.current;
@@ -113,7 +116,7 @@ const DraggableResizableWrapper = ({
         let newX = startLeft;
         let newY = startTop;
 
-        // 1. Oblicz surowe wartości
+        // 1. Obliczanie szerokości na podstawie ruchu myszy
         if (isResizing.includes('w')) {
           newWidth = startWidth - dx;
           newX = startLeft + dx;
@@ -121,50 +124,70 @@ const DraggableResizableWrapper = ({
           newWidth = startWidth + dx;
         }
 
-        // 2. Minimalna szerokość
-        if (newWidth < minWidth) {
-          if (isResizing.includes('w')) newX = (startLeft + startWidth) - minWidth;
-          newWidth = minWidth;
+        // Minimalna szerokość
+        const minWidthScaled = minWidth * zoom;
+        if (newWidth < minWidthScaled) {
+          if (isResizing.includes('w')) newX = (startLeft + startWidth) - minWidthScaled;
+          newWidth = minWidthScaled;
         }
 
-        // 3. 🔹 CLAMP: Sprawdź granice ŚWIATA 🔹
+        // 2. Ograniczenia poziome (lewo/prawo)
         if (panOffset) {
-          const worldX = newX - panOffset.x;
+          const worldX = (newX - panOffset.x) / zoom;
+          const worldWidth = newWidth / zoom;
 
-          // A. Jeśli rozciągamy w prawo (handles: ne, se) -> Sprawdzamy prawą ścianę
+          // Prawa ściana
           if (!isResizing.includes('w')) {
-            // Prawa krawędź elementu w świecie
-            const rightEdge = worldX + newWidth;
-            if (rightEdge > limit) {
-              newWidth = limit - worldX;
+            if (worldX + worldWidth > limit) {
+              const maxWorldWidth = limit - worldX;
+              newWidth = maxWorldWidth * zoom;
             }
           }
-          // B. Jeśli rozciągamy w lewo (handles: nw, sw) -> Sprawdzamy lewą ścianę
+          // Lewa ściana
           else {
             if (worldX < -limit) {
-              // Nie możemy wyjść poza -limit. 
-              // Musimy cofnąć newX do -limit i zmniejszyć newWidth o tyle samo
-              const overflow = -limit - worldX; // o ile wyszliśmy (wartość dodatnia)
-              newX += overflow; // przesuwamy X w prawo na granicę
-              newWidth -= overflow; // zmniejszamy szerokość
+              const overflowWorld = -limit - worldX;
+              const overflowScreen = overflowWorld * zoom;
+              newX += overflowScreen;
+              newWidth -= overflowScreen;
             }
           }
         }
 
-        // 4. Oblicz wysokość z proporcji (po clampowaniu szerokości!)
+        // 3. Przeliczanie wysokości (Aspect Ratio) i ograniczenia pionowe (góra)
         if (aspectRatioLocked) {
-          const newHeight = newWidth / aspectRatio;
+          let newHeight = newWidth / aspectRatio;
+
+          // Obsługa górnych uchwytów (North)
           if (isResizing.includes('n')) {
             newY = startTop + (startHeight - newHeight);
 
-            // Opcjonalnie: Clampowanie góry (Y)
             if (panOffset) {
-              const worldY = newY - panOffset.y;
-              if (worldY < -limit) {
-                // Jeśli wychodzimy górą, to w trybie aspect ratio ciężko to obsłużyć 
-                // bez psucia proporcji lub szerokości. 
-                // Najprościej: zablokować zmianę, jeśli góra wychodzi.
-                // Ale dla obrazków ważniejsza jest zazwyczaj szerokość.
+              // Sprawdzamy czy wychodzimy poza górną krawędź świata
+              const worldY = (newY - panOffset.y) / zoom;
+              const topLimitWorld = -limit;
+
+              if (worldY < topLimitWorld) {
+                // A. Blokujemy Y na limicie
+                const clampedWorldY = topLimitWorld;
+                newY = (clampedWorldY * zoom) + panOffset.y;
+
+                // B. Przeliczamy wysokość na podstawie zablokowanego Y
+                // Nowa wysokość = Stary dół (ekranowy) - Nowa góra (ekranowa)
+                const currentBottomScreen = startTop + startHeight;
+                newHeight = currentBottomScreen - newY;
+
+                // C. Przeliczamy szerokość z nowej wysokości (żeby zachować proporcje)
+                newWidth = newHeight * aspectRatio;
+
+                // D. KOREKTA X przy uchwycie 'nw' (North-West)
+                // Skoro szerokość zmalała/wzrosła przez blokadę góry, musimy skorygować X,
+                // żeby prawa krawędź została w miejscu.
+                if (isResizing.includes('w')) {
+                  // Prawa krawędź (stała) = startLeft + startWidth
+                  newX = (startLeft + startWidth) - newWidth;
+                }
+                // Dla 'ne' (North-East) newX (lewa krawędź) pozostaje bez zmian, co jest OK.
               }
             }
           }
@@ -193,7 +216,7 @@ const DraggableResizableWrapper = ({
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, isResizing, id, onUpdate, localPos.x, localPos.y, minWidth, aspectRatioLocked]);
+  }, [isDragging, isResizing, id, onUpdate, localPos.x, localPos.y, minWidth, aspectRatioLocked, panOffset, limit, zoom]);
 
   const handles = ['nw', 'ne', 'sw', 'se'];
 
@@ -210,7 +233,7 @@ const DraggableResizableWrapper = ({
         cursor: isDragging ? 'grabbing' : 'grab',
         border: isSelected ? '2px solid #3498db' : '2px solid transparent',
         zIndex: isSelected ? 20 : 10,
-        userSelect: 'none', // 🔹 To już tu było, ale jest ważne
+        userSelect: 'none',
         touchAction: 'none',
         ...style
       }}
