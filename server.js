@@ -403,12 +403,13 @@ io.on("connection", (socket) => {
         y: d.y,
         width: d.width,
         height: d.height,
-        whiteboardId: d.whiteboardId
+        whiteboardId: d.whiteboardId,
+        timestamp: d.timestamp || Date.now()
       };
 
       wb.drawingData.push(eraseAction);
-      if (wb.drawingData.length > 10000) wb.drawingData.shift();
-      broadcast(d.whiteboardId, "erase-area", d);
+      if (wb.drawingData.length > 20000) wb.drawingData.shift();
+      broadcast(d.whiteboardId, "erase-area", eraseAction);
     }
   });
 
