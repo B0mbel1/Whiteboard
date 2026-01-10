@@ -7,7 +7,7 @@ const Text = ({
   y,
   width,
   height,
-  text: initialText,
+  text: incomingText = '', // 🔹 ZMIANA: Odbieramy jako 'incomingText', tak jak w Note.jsx
   onUpdate,
   onRemove,
   selected,
@@ -19,7 +19,8 @@ const Text = ({
   zoom = 1
 }) => {
   const [isEditing, setIsEditing] = useState(false);
-  const [text, setText] = useState(initialText || '');
+  // Inicjalizujemy stan tym co przyszło z góry (lub pustym stringiem)
+  const [text, setText] = useState(incomingText);
   
   // Stan lokalny pozycji i rozmiaru
   const [position, setPosition] = useState({ x: x || 0, y: y || 0 });
@@ -32,7 +33,7 @@ const Text = ({
   const isResizing = useRef(false);
   const dragOffset = useRef({ x: 0, y: 0 });
 
-  // Refy do przechowywania NAJNOWSZYCH wartości stanu
+  // Refy do przechowywania NAJNOWSZYCH wartości stanu (dla event listenerów)
   const latestText = useRef(text);
   const latestSize = useRef(size);
   const latestPosition = useRef(position);
@@ -46,20 +47,24 @@ const Text = ({
     latestPosition.current = position;
   }, [text, size, position]);
 
-  // Synchronizacja tekstu z props
+  // 🔹 KLUCZOWA POPRAWKA: Synchronizacja tekstu z props (Server -> Local)
+  // Działa tak samo jak w Note.jsx - jeśli przyjdą nowe dane (np. po odświeżeniu), aktualizujemy stan.
   useEffect(() => {
-    if (!isEditing && initialText !== undefined && initialText !== text) {
-      setText(initialText);
+    if (!isEditing && incomingText !== undefined && incomingText !== text) {
+      setText(incomingText);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialText, isEditing]);
+  }, [incomingText, isEditing]);
 
-  // Synchronizacja z Socketem
+  // Synchronizacja z Socketem (bezpośrednie eventy, opcjonalne jeśli Canvas zarządza, ale bezpieczne)
   useEffect(() => {
     if (socket) {
       const handleTextUpdate = (data) => {
         if (data.id === id) {
-          if (!isEditing && data.text !== undefined) setText(data.text);
+          // Jeśli ktoś inny edytuje, a my nie, zaktualizuj tekst
+          if (!isEditing && data.text !== undefined) {
+             setText(data.text);
+          }
           
           if (!isDragging.current && !isResizing.current) {
              if (data.size) setSize(data.size);
@@ -129,6 +134,7 @@ const Text = ({
   const handleMouseUp = () => {
     if (isDragging.current) {
       isDragging.current = false;
+      // Zapis pozycji po upuszczeniu
       if (onUpdate) {
         onUpdate(id, { 
           position: latestPosition.current, 
@@ -187,10 +193,11 @@ const Text = ({
   };
 
   const handleBlur = () => {
-    if (onUpdate && text !== initialText) {
+    setIsEditing(false);
+    // Wyślij update tylko jeśli tekst faktycznie różni się od tego z serwera/propsów
+    if (onUpdate && text !== incomingText) {
       onUpdate(id, { position, text, size });
     }
-    setIsEditing(false);
   };
 
   const handleChange = (e) => {
@@ -198,6 +205,7 @@ const Text = ({
   };
 
   const handleKeyDown = (e) => {
+    // Zatwierdź Enterem (bez Shift)
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleBlur();
@@ -210,15 +218,10 @@ const Text = ({
     }
   }, [isEditing]);
 
-  // --- 🔹 NAPRAWA PRZESUWANIA ---
-  // Globalne listenery dla dragowania
+  // Globalne listenery dla przesuwania
   useEffect(() => {
     const onMove = (e) => handleMouseMove(e);
     const onUp = (e) => handleMouseUp(e);
-
-    // USUNIĘTO: if (isDragging.current) { ... }
-    // Teraz listenery są aktywne zawsze, ale logika wewnątrz handleMouseMove
-    // sprawdza isDragging.current, więc nie obciąża to aplikacji.
     
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
@@ -262,6 +265,7 @@ const Text = ({
         />
       ) : (
         <div className="text-display">
+          {/* Jeśli tekst jest pusty, wyświetl zachętę */}
           {text || 'Double click to edit'}
         </div>
       )}
