@@ -275,6 +275,26 @@ const WhiteboardRouter = () => {
       console.error("❌ Connection error:", error);
       setIsLoading(false);
     });
+
+    newSocket.on('note-create', (data) => {
+      setNotes(prev => [...prev, data.note]);
+    });
+    newSocket.on('note-update', (data) => {
+      setNotes(prev => prev.map(n => n.id === data.id ? { ...n, ...data } : n));
+    });
+    newSocket.on('note-delete', (data) => {
+      setNotes(prev => prev.filter(n => n.id !== data.id));
+    });
+
+    newSocket.on('text-create', (data) => {
+      setTextBoxes(prev => [...prev, data.textBox]);
+    });
+    newSocket.on('text-update', (data) => {
+      setTextBoxes(prev => prev.map(t => t.id === data.id ? { ...t, ...data } : t));
+    });
+    newSocket.on('text-delete', (data) => {
+      setTextBoxes(prev => prev.filter(t => t.id !== data.id));
+    });
   };
 
   useEffect(() => {
