@@ -73,7 +73,7 @@ const WhiteboardRouter = () => {
   const userColorDotRef = useRef(null);
   const usersListRef = useRef(null);
   const usersCounterRef = useRef(null);
-
+  const [zoom, setZoom] = useState(1);
 
   const [panOffset, setPanOffset] = useState({
     x: window.innerWidth / 2,
@@ -686,6 +686,7 @@ const WhiteboardRouter = () => {
           setActiveShape={setActiveShape}
           onImageCreate={handleImageCreate} // DODANE
           panOffset={panOffset}
+          zoom={zoom}
         />
 
         <PointerTrail
@@ -738,6 +739,8 @@ const WhiteboardRouter = () => {
           onBackgroundChange={handleBackgroundChange}
           panOffset={panOffset}
           setPanOffset={setPanOffset}
+          zoom={zoom}       // 🔹 PRZEKAZUJEMY WARTOŚĆ
+          setZoom={setZoom} // 🔹 PRZEKAZUJEMY SETTER
         />
 
         <Sidebar

@@ -4,7 +4,7 @@ import MultimediaModal from '../MultimediaModal/MultimediaModal.jsx';
 import PointerTrail from './PointerTrail.jsx';
 import ToolRangeCircle from './ToolRangeCircle.jsx';
 
-const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker, activeEmoji, setActiveEmoji, setActiveGif, setActiveShape, onImageCreate, panOffset }) => {
+const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker, activeEmoji, setActiveEmoji, setActiveGif, setActiveShape, onImageCreate, panOffset, zoom = 1 }) => {
   // DEBUG: Sprawdźmy co Toolbar dostaje
   useEffect(() => {
     console.log("🛠️ Toolbar mounted. Props onImageCreate:", typeof onImageCreate);
@@ -28,24 +28,37 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
   };
 
   const handleLocalImageCreate = (imageObj) => {
-    // A. Pobieramy środek ekranu użytkownika
+    // 1. Pobieramy środek ekranu (viewportu) użytkownika
     const centerX = window.innerWidth / 2;
     const centerY = window.innerHeight / 2;
 
-    // B. Obliczamy pozycję w świecie (World Coordinates)
-    // Wzór: Pozycja_Świata = Pozycja_Ekranu - Przesunięcie
-    // Odejmujemy połowę szerokości obrazka (zakładamy ok. 300px), żeby wycentrować go idealnie
-    const targetX = centerX - (panOffset?.x || 0) - 150;
-    const targetY = centerY - (panOffset?.y || 0) - 100;
+    // 2. Obliczamy pozycję w "świecie gry" (World Coordinates)
+    // Wzór: (Pozycja_Ekranu - Przesunięcie_Pan) / Zoom
 
-    // C. Nadpisujemy x i y w obiekcie zdjęcia
+    // Najpierw odejmujemy przesunięcie (panOffset)
+    const relativeX = centerX - (panOffset?.x || 0);
+    const relativeY = centerY - (panOffset?.y || 0);
+
+    // Następnie dzielimy przez zoom, aby dopasować jednostki do skali świata
+    const worldX = relativeX / zoom;
+    const worldY = relativeY / zoom;
+
+    // 3. Centrujemy sam obrazek
+    // Odejmujemy połowę jego domyślnej szerokości (150) i wysokości (100)
+    // Ważne: Robimy to już na jednostkach świata (po podzieleniu przez zoom)
+    const targetX = worldX - 150;
+    const targetY = worldY - 100;
+
+    // 4. Tworzymy nowy obiekt zdjęcia z poprawnymi współrzędnymi
     const imageWithCorrectPosition = {
       ...imageObj,
       x: targetX,
-      y: targetY
+      y: targetY,
+      // Upewniamy się, że szerokość też jest zgodna z domyślną
+      width: imageObj.width || 300
     };
 
-    // D. Wywołujemy oryginalną funkcję z WhiteboardRouter
+    // 5. Wywołujemy funkcję przekazaną z góry (z WhiteboardRouter)
     if (onImageCreate) {
       onImageCreate(imageWithCorrectPosition);
     }
@@ -386,7 +399,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
           ))}
         </div>
 
-        
+
 
         <div className="toolbar-section">
           <h4>Kolor</h4>

@@ -7,7 +7,7 @@ const Note = ({
   y,
   width,
   height,
-  initialText = '',
+  text: incomingText = '', // 🔹 ZMIANA: Odbieramy 'text' (zgodnie z tym co wysyła serwer), nie 'initialText'
   onUpdate,
   onRemove,
   selectedNoteId,
@@ -15,57 +15,62 @@ const Note = ({
   socket,
   tool,
   panOffset,
-  limit = 1500
+  limit = 1500,
+  zoom = 1
 }) => {
-  const [text, setText] = useState(initialText);
+  // Inicjalizacja stanu tekstem z propsów
+  const [text, setText] = useState(incomingText);
   const [pos, setPos] = useState({ x, y });
   const [size, setSize] = useState({ width: width || 180, height: height || 120 });
+  
   const noteRef = useRef(null);
   const isDragging = useRef(false);
   const dragOffset = useRef({ x: 0, y: 0 });
-  const lastPosition = useRef({ x, y }); // 🔹 DODANE: Śledzenie poprzedniej pozycji
+  const lastPosition = useRef({ x, y });
+  const isEditingRef = useRef(false); // Ref, aby nie nadpisywać tekstu podczas pisania
 
   const isDrawingTool = ['pencil', 'brush', 'eraser'].includes(tool);
 
-  // Synchronizuj zmiany z serwera
-  // Note.jsx - ZASTĄP obecny useEffect obsługujący socket tym:
+  // 🔹 NAPRAWA: Synchronizacja stanu lokalnego, gdy dane przyjdą z serwera (np. po refreshu)
+  useEffect(() => {
+    // Aktualizujemy tylko jeśli nie edytujemy i tekst jest inny
+    if (!isEditingRef.current && incomingText !== undefined && incomingText !== text) {
+      setText(incomingText);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incomingText]);
+
+  // Synchronizuj zmiany z serwera (socket) w czasie rzeczywistym
   useEffect(() => {
     if (socket) {
       const handleNoteUpdate = (data) => {
         if (data.id === id) {
-          console.log("📝 Note update received:", data);
-
-          // ✅ POPRAWKA: Obsłuż zarówno position JAK i bezpośrednio x, y
-          if (data.position) {
-            setPos(data.position);
-          } else if (data.x !== undefined && data.y !== undefined) {
-            // Jeśli serwer wysyła bezpośrednio x, y
-            setPos({ x: data.x, y: data.y });
+          // Jeśli ktoś inny edytuje, a my nie, zaktualizuj tekst
+          if (data.text !== undefined && !isEditingRef.current) {
+            setText(data.text);
           }
-
-          if (data.text !== undefined) setText(data.text);
           if (data.size) setSize(data.size);
         }
       };
-
       socket.on('note-update', handleNoteUpdate);
-      return () => {
-        socket.off('note-update', handleNoteUpdate);
-      };
+      return () => { socket.off('note-update', handleNoteUpdate); };
     }
   }, [socket, id]);
 
-  // ✅ DODAJ: Synchronizuj pozycję z props
+  // Synchronizuj pozycję z props TYLKO jeśli nie przeciągamy
   useEffect(() => {
-    setPos({ x, y });
-  }, [x, y]);
+    if (!isDragging.current) {
+      setPos({ x, y });
+    }
+  }, [x, y, zoom]); 
 
   const handleMouseDown = (e) => {
     if (isDrawingTool) return;
+    
     setSelectedNoteId(id);
-    lastPosition.current = { ...pos }; // 🔹 ZAPISZ pozycję przed rozpoczęciem przesuwania
+    lastPosition.current = { ...pos };
 
-    if (e.target.classList.contains('note-header')) {
+    if (e.target.closest('.note-header')) {
       isDragging.current = true;
       dragOffset.current = { x: e.clientX - pos.x, y: e.clientY - pos.y };
       e.preventDefault();
@@ -75,23 +80,18 @@ const Note = ({
   const handleMouseMove = (e) => {
     if (!isDragging.current) return;
 
-    // Oblicz nową pozycję ekranową
     let newScreenX = e.clientX - dragOffset.current.x;
     let newScreenY = e.clientY - dragOffset.current.y;
 
-    // --- LOGIKA BLOKOWANIA ---
     if (panOffset) {
-      const worldX = newScreenX - panOffset.x;
-      const worldY = newScreenY - panOffset.y;
-
-      // Notatka ma min szerokość 100/80 w resize, ale tu używamy size.width
+      const worldX = (newScreenX - panOffset.x) / zoom;
+      const worldY = (newScreenY - panOffset.y) / zoom;
       const clampedWorldX = Math.max(-limit, Math.min(worldX, limit - size.width));
       const clampedWorldY = Math.max(-limit, Math.min(worldY, limit - size.height));
 
-      newScreenX = clampedWorldX + panOffset.x;
-      newScreenY = clampedWorldY + panOffset.y;
+      newScreenX = (clampedWorldX * zoom) + panOffset.x;
+      newScreenY = (clampedWorldY * zoom) + panOffset.y;
     }
-    // -------------------------
 
     setPos({ x: newScreenX, y: newScreenY });
   };
@@ -99,16 +99,11 @@ const Note = ({
   const handleMouseUp = () => {
     if (isDragging.current) {
       isDragging.current = false;
-
       const positionChanged = pos.x !== lastPosition.current.x || pos.y !== lastPosition.current.y;
 
       if (positionChanged && onUpdate) {
-        console.log("📤 Note: Sending update for note:", id);
-        // ✅ Wysyłaj JEDNOCZEŚNIE position i x,y
         onUpdate(id, {
           position: { x: pos.x, y: pos.y },
-          x: pos.x,
-          y: pos.y,
           text,
           size
         });
@@ -117,17 +112,19 @@ const Note = ({
   };
 
   const handleTextChange = (e) => {
-    const newText = e.target.value;
-    setText(newText);
+    setText(e.target.value);
+  };
+
+  const handleFocus = () => {
+    isEditingRef.current = true;
   };
 
   const handleTextBlur = () => {
-    if (onUpdate && text !== initialText) {
-      console.log("📤 Note: Sending text update for note:", id);
+    isEditingRef.current = false;
+    // Wyślij aktualizację tylko jeśli tekst jest inny niż ten z propsów
+    if (onUpdate && text !== incomingText) {
       onUpdate(id, {
-        position: { x: pos.x, y: pos.y }, // ✅ Zawsze wysyłaj pełne dane
-        x: pos.x,
-        y: pos.y,
+        position: { x: pos.x, y: pos.y },
         text,
         size
       });
@@ -147,13 +144,17 @@ const Note = ({
   };
 
   useEffect(() => {
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    const onMove = (e) => handleMouseMove(e);
+    const onUp = (e) => handleMouseUp(e);
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
     };
-  }, [pos]);
+  }, [pos, zoom, panOffset]);
 
   return (
     <div
@@ -164,7 +165,10 @@ const Note = ({
         top: pos.y,
         width: size.width,
         height: size.height,
-        pointerEvents: isDrawingTool ? 'none' : 'auto'
+        pointerEvents: isDrawingTool ? 'none' : 'auto',
+        transform: `scale(${zoom})`,
+        transformOrigin: 'top left',
+        position: 'absolute' 
       }}
       onMouseDown={handleMouseDown}
       onClick={(e) => e.stopPropagation()}
@@ -181,6 +185,7 @@ const Note = ({
         value={text}
         onChange={handleTextChange}
         onBlur={handleTextBlur}
+        onFocus={handleFocus} // 🔹 Rejestrujemy wejście w tryb edycji
         placeholder="Twoja notatka..."
         onMouseDown={(e) => e.stopPropagation()}
         disabled={isDrawingTool}
@@ -196,8 +201,11 @@ const Note = ({
           const startHeight = size.height;
 
           const handleResizeMove = (moveEvent) => {
-            const newWidth = startWidth + (moveEvent.clientX - startX);
-            const newHeight = startHeight + (moveEvent.clientY - startY);
+            const deltaX = (moveEvent.clientX - startX) / zoom;
+            const deltaY = (moveEvent.clientY - startY) / zoom;
+            
+            const newWidth = startWidth + deltaX;
+            const newHeight = startHeight + deltaY;
             handleResize(newWidth, newHeight);
           };
 

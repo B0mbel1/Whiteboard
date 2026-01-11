@@ -1,30 +1,76 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import './Text.css';
 
-const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, selected, setSelected, socket, tool, panOffset, limit = 1500 }) => {
+const Text = ({
+  id,
+  x,
+  y,
+  width,
+  height,
+  text: incomingText = '', // 🔹 ZMIANA: Odbieramy jako 'incomingText', tak jak w Note.jsx
+  onUpdate,
+  onRemove,
+  selected,
+  setSelected,
+  socket,
+  tool,
+  panOffset,
+  limit = 1500,
+  zoom = 1
+}) => {
   const [isEditing, setIsEditing] = useState(false);
-  const [text, setText] = useState(initialText || '');
+  // Inicjalizujemy stan tym co przyszło z góry (lub pustym stringiem)
+  const [text, setText] = useState(incomingText);
+  
+  // Stan lokalny pozycji i rozmiaru
   const [position, setPosition] = useState({ x: x || 0, y: y || 0 });
   const [size, setSize] = useState({ width: width || 200, height: height || 100 });
+  
   const textareaRef = useRef(null);
+  
+  // Refy stanu interakcji
   const isDragging = useRef(false);
-  const dragOffset = useRef({ x: 0, y: 0 });
   const isResizing = useRef(false);
+  const dragOffset = useRef({ x: 0, y: 0 });
+
+  // Refy do przechowywania NAJNOWSZYCH wartości stanu (dla event listenerów)
+  const latestText = useRef(text);
+  const latestSize = useRef(size);
+  const latestPosition = useRef(position);
 
   const isDrawingTool = ['pencil', 'brush', 'eraser'].includes(tool);
 
+  // Aktualizuj refy przy każdym renderze
+  useLayoutEffect(() => {
+    latestText.current = text;
+    latestSize.current = size;
+    latestPosition.current = position;
+  }, [text, size, position]);
+
+  // 🔹 KLUCZOWA POPRAWKA: Synchronizacja tekstu z props (Server -> Local)
+  // Działa tak samo jak w Note.jsx - jeśli przyjdą nowe dane (np. po odświeżeniu), aktualizujemy stan.
+  useEffect(() => {
+    if (!isEditing && incomingText !== undefined && incomingText !== text) {
+      setText(incomingText);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incomingText, isEditing]);
+
+  // Synchronizacja z Socketem (bezpośrednie eventy, opcjonalne jeśli Canvas zarządza, ale bezpieczne)
   useEffect(() => {
     if (socket) {
       const handleTextUpdate = (data) => {
         if (data.id === id) {
-          console.log("📝 Text update received:", data);
-          if (data.position) {
-            setPosition(data.position);
-          } else if (data.x !== undefined && data.y !== undefined) {
-            setPosition({ x: data.x, y: data.y });
+          // Jeśli ktoś inny edytuje, a my nie, zaktualizuj tekst
+          if (!isEditing && data.text !== undefined) {
+             setText(data.text);
           }
-          if (data.text !== undefined) setText(data.text);
-          if (data.size) setSize(data.size);
+          
+          if (!isDragging.current && !isResizing.current) {
+             if (data.size) setSize(data.size);
+             if (data.position) setPosition(data.position);
+             else if (data.x !== undefined) setPosition({ x: data.x, y: data.y });
+          }
         }
       };
       socket.on('text-update', handleTextUpdate);
@@ -32,44 +78,55 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
         socket.off('text-update', handleTextUpdate);
       };
     }
-  }, [socket, id]);
+  }, [socket, id, isEditing]);
 
+  // Synchronizacja pozycji z props
   useEffect(() => {
-    setPosition({ x, y });
-  }, [x, y]);
+    if (!isDragging.current && !isResizing.current) {
+      setPosition({ x: x || 0, y: y || 0 });
+      setSize({ width: width || 200, height: height || 100 });
+    }
+  }, [x, y, width, height, zoom]); 
 
   const handleMouseDown = (e) => {
     if (isDrawingTool) return;
+    
+    // Ignorujemy kliknięcia w trybie edycji lub na uchwyt resize
     if (isEditing || e.target.classList.contains('resize-handle')) {
       return;
     }
+    
     setSelected(id);
-    if (!e.target.classList.contains('resize-handle')) {
-      isDragging.current = true;
-      dragOffset.current = {
-        x: e.clientX - position.x,
-        y: e.clientY - position.y
-      };
-    }
+    isDragging.current = true;
+    
+    dragOffset.current = {
+      x: e.clientX - position.x,
+      y: e.clientY - position.y
+    };
   };
 
   const handleMouseMove = (e) => {
     if (isDragging.current) {
-      e.preventDefault(); // 🔹 DODANE: Blokuje zaznaczanie podczas przesuwania
+      e.preventDefault();
+      
       let newScreenX = e.clientX - dragOffset.current.x;
       let newScreenY = e.clientY - dragOffset.current.y;
 
-      // --- LOGIKA BLOKOWANIA ---
+      // Obsługa Zoomu i Limitów
       if (panOffset) {
-        const worldX = newScreenX - panOffset.x;
-        const worldY = newScreenY - panOffset.y;
+        // Screen -> World
+        const worldX = (newScreenX - panOffset.x) / zoom;
+        const worldY = (newScreenY - panOffset.y) / zoom;
 
+        // Clamp
         const clampedWorldX = Math.max(-limit, Math.min(worldX, limit - size.width));
         const clampedWorldY = Math.max(-limit, Math.min(worldY, limit - size.height));
 
-        newScreenX = clampedWorldX + panOffset.x;
-        newScreenY = clampedWorldY + panOffset.y;
+        // World -> Screen
+        newScreenX = (clampedWorldX * zoom) + panOffset.x;
+        newScreenY = (clampedWorldY * zoom) + panOffset.y;
       }
+      
       setPosition({ x: newScreenX, y: newScreenY });
     }
   };
@@ -77,14 +134,13 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
   const handleMouseUp = () => {
     if (isDragging.current) {
       isDragging.current = false;
+      // Zapis pozycji po upuszczeniu
       if (onUpdate) {
-        onUpdate(id, { position, text, size });
-      }
-    }
-    if (isResizing.current) {
-      isResizing.current = false;
-      if (onUpdate) {
-        onUpdate(id, { position, text, size });
+        onUpdate(id, { 
+          position: latestPosition.current, 
+          text: latestText.current, 
+          size: latestSize.current 
+        });
       }
     }
   };
@@ -92,7 +148,8 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
   const handleResizeMouseDown = (e) => {
     if (isDrawingTool) return;
     e.stopPropagation();
-    e.preventDefault(); // 🔹 DODANE
+    e.preventDefault();
+    
     isResizing.current = true;
     const startX = e.clientX;
     const startY = e.clientY;
@@ -100,21 +157,29 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
     const startHeight = size.height;
 
     const handleResizeMove = (moveEvent) => {
-      moveEvent.preventDefault(); // 🔹 DODANE: Blokuje zaznaczanie podczas skalowania
-      const newWidth = startWidth + (moveEvent.clientX - startX);
-      const newHeight = startHeight + (moveEvent.clientY - startY);
-      setSize({
-        width: newWidth > 50 ? newWidth : 50,
-        height: newHeight > 30 ? newHeight : 30
-      });
+      moveEvent.preventDefault();
+      
+      // Uwzględniamy ZOOM
+      const deltaX = (moveEvent.clientX - startX) / zoom;
+      const deltaY = (moveEvent.clientY - startY) / zoom;
+      
+      const newWidth = Math.max(50, startWidth + deltaX);
+      const newHeight = Math.max(30, startHeight + deltaY);
+
+      setSize({ width: newWidth, height: newHeight });
     };
 
     const stopResize = () => {
       isResizing.current = false;
       window.removeEventListener('mousemove', handleResizeMove);
       window.removeEventListener('mouseup', stopResize);
+      
       if (onUpdate) {
-        onUpdate(id, { position, text, size });
+        onUpdate(id, { 
+            position: latestPosition.current, 
+            text: latestText.current, 
+            size: latestSize.current 
+        });
       }
     };
 
@@ -129,7 +194,8 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
 
   const handleBlur = () => {
     setIsEditing(false);
-    if (onUpdate) {
+    // Wyślij update tylko jeśli tekst faktycznie różni się od tego z serwera/propsów
+    if (onUpdate && text !== incomingText) {
       onUpdate(id, { position, text, size });
     }
   };
@@ -139,6 +205,7 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
   };
 
   const handleKeyDown = (e) => {
+    // Zatwierdź Enterem (bez Shift)
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleBlur();
@@ -146,19 +213,25 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
   };
 
   useEffect(() => {
-    if (isEditing) {
+    if (isEditing && textareaRef.current) {
       textareaRef.current.focus();
     }
   }, [isEditing]);
 
+  // Globalne listenery dla przesuwania
   useEffect(() => {
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    const onMove = (e) => handleMouseMove(e);
+    const onUp = (e) => handleMouseUp(e);
+    
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
     };
-  }, [position]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [position, zoom, panOffset]);
 
   return (
     <div
@@ -169,7 +242,10 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
         width: size.width,
         height: size.height,
         zIndex: selected ? 20 : 10,
-        pointerEvents: isDrawingTool ? 'none' : 'auto'
+        pointerEvents: isDrawingTool ? 'none' : 'auto',
+        transform: `scale(${zoom})`,
+        transformOrigin: 'top left',
+        position: 'absolute'
       }}
       onMouseDown={handleMouseDown}
       onDoubleClick={handleDoubleClick}
@@ -189,9 +265,11 @@ const Text = ({ id, x, y, width, height, text: initialText, onUpdate, onRemove, 
         />
       ) : (
         <div className="text-display">
+          {/* Jeśli tekst jest pusty, wyświetl zachętę */}
           {text || 'Double click to edit'}
         </div>
       )}
+      
       {selected && (
         <div
           className="resize-handle"
