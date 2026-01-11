@@ -268,6 +268,31 @@ io.on("connection", (socket) => {
     }
   });
 
+
+  socket.on("text-update", (d) => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb && wb.textBoxes) {
+      const t = wb.textBoxes.find(x => x.id === d.id);
+      if (t) {
+        Object.assign(t, d); // Aktualizacja danych na serwerze
+        // Broadcast do wszystkich INNYCH użytkowników w tym pokoju
+        socket.to(d.whiteboardId).emit("text-update", d);
+      }
+    }
+  });
+
+  socket.on("note-update", (d) => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb && wb.notes) {
+      const n = wb.notes.find(x => x.id === d.id);
+      if (n) {
+        Object.assign(n, d); // Aktualizacja danych na serwerze
+        // Broadcast do wszystkich INNYCH użytkowników w tym pokoju
+        socket.to(d.whiteboardId).emit("note-update", d);
+      }
+    }
+  });
+
   // ========== OBSŁUGA EMOJI ==========
   socket.on("emoji-create", (d) => {
     const wb = whiteboards.get(d.whiteboardId);
