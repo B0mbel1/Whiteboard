@@ -1,6 +1,9 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const fs = require('fs');
+const path = require('path');
+const https = require('https');
 
 const app = express();
 const server = http.createServer(app);
@@ -10,87 +13,186 @@ const io = new Server(server, {
     origin: "http://localhost:3000",
     methods: ["GET", "POST"],
     credentials: true
-  }
+  },
+  maxHttpBufferSize: 1e8
 });
 
-// Middleware do parsowania JSON
+// Middleware
 app.use(express.json());
 
-// Middleware CORS dla Express
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', 'http://localhost:3000');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-file-name');
   res.header('Access-Control-Allow-Credentials', 'true');
   next();
 });
 
-// Baza danych w pamięci
+app.use('/uploads', express.static('uploads'));
+
+// Baza danych
 const whiteboards = new Map();
 
-// Prosty route testowy
-app.get('/', (req, res) => {
-  res.json({ message: 'Server OK' });
+// Endpointy
+app.get('/', (req, res) => res.json({ message: 'Server OK' }));
+app.get('/api/create-whiteboard', (req, res) => {
+  const whiteboardId = generateId();
+  whiteboards.set(whiteboardId, {
+    users: new Map(),
+    drawingData: [],
+    textBoxes: [],
+    notes: [],
+    gifs: [],
+    images: [],
+    shapes: [],
+    emojis: [],
+    videos: new Map(),
+    backgroundMode: 'grid',
+    chatMessages: []
+  });
+  res.json({ success: true, whiteboardId });
 });
 
-// Endpoint tworzenia tablicy
-app.get('/api/create-whiteboard', (req, res) => {
-  try {
-    const whiteboardId = generateId();
-    whiteboards.set(whiteboardId, {
-      users: new Map(),
-      drawingData: [],
-      textBoxes: [],
-      notes: [],
-      gifs: [],
-      images: [],
-      shapes: [],
-      emojis: [],
-      videos: [],
-      backgroundMode: 'grid',
-      chatMessages: []
-    });
-    console.log(`📝 Created new whiteboard: ${whiteboardId}`);
+app.get('/api/whiteboard/:id', (req, res) => {
+  res.json({ exists: whiteboards.has(req.params.id) });
+});
+
+// Upload video
+app.post('/api/upload-video', (req, res) => {
+  const fileName = req.headers['x-file-name']
+    ? decodeURIComponent(req.headers['x-file-name'])
+    : `video_${Date.now()}.mp4`;
+  const uploadDir = 'uploads/videos';
+  if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+  const filePath = path.join(uploadDir, fileName);
+  const fileStream = fs.createWriteStream(filePath);
+  
+  req.pipe(fileStream);
+  req.on('aborted', () => {
+    fileStream.destroy();
+    fs.existsSync(filePath) && fs.unlinkSync(filePath);
+  });
+  
+  fileStream.on('finish', () => {
+    const stats = fs.statSync(filePath);
     res.json({
       success: true,
-      whiteboardId: whiteboardId
+      videoUrl: `/uploads/videos/${fileName}`,
+      fileName,
+      size: stats.size
     });
-  } catch (error) {
-    console.error('Error creating whiteboard:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to create whiteboard'
-    });
-  }
+  });
+  
+  fileStream.on('error', err => {
+    console.error("File write error:", err);
+    res.status(500).json({ error: 'Write failed' });
+  });
 });
 
-// Sprawdzanie czy tablica istnieje
-app.get('/api/whiteboard/:id', (req, res) => {
-  const whiteboardId = req.params.id;
-  res.json({ exists: whiteboards.has(whiteboardId) });
+// Process video link
+app.post('/api/process-video-link', express.json(), async (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: 'No URL provided' });
+  
+  if (url.includes('youtube.com') || url.includes('youtu.be')) {
+    const videoId = extractYouTubeId(url);
+    if (videoId) return res.json({
+      success: true,
+      type: 'youtube',
+      videoId,
+      embedUrl: `https://www.youtube.com/embed/${videoId}`,
+      thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+    });
+  }
+  
+  if (url.includes('vimeo.com')) {
+    const videoId = extractVimeoId(url);
+    if (videoId) return res.json({
+      success: true,
+      type: 'vimeo',
+      videoId,
+      embedUrl: `https://player.vimeo.com/video/${videoId}`,
+      thumbnail: await getVimeoThumbnail(videoId)
+    });
+  }
+  
+  if (url.match(/\.(mp4|webm|ogg|mov|avi|wmv|flv|mkv)$/i)) {
+    return res.json({
+      success: true,
+      type: 'direct',
+      url,
+      canEmbed: true
+    });
+  }
+  
+  return res.json({
+    success: true,
+    type: 'generic',
+    url,
+    canEmbed: true
+  });
 });
+
+function extractYouTubeId(url) {
+  const patterns = [
+    /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/,
+    /youtube\.com\/watch\?v=([^"&?\/\s]{11})/,
+    /youtube\.com\/embed\/([^"&?\/\s]{11})/,
+    /youtu\.be\/([^"&?\/\s]{11})/
+  ];
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match && match[1]) return match[1];
+  }
+  return null;
+}
+
+function extractVimeoId(url) {
+  const patterns = [
+    /vimeo\.com\/(\d+)/,
+    /vimeo\.com\/video\/(\d+)/,
+    /player\.vimeo\.com\/video\/(\d+)/
+  ];
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match && match[1]) return match[1];
+  }
+  return null;
+}
+
+async function getVimeoThumbnail(videoId) {
+  return new Promise(resolve => {
+    https.get(`https://vimeo.com/api/v2/video/${videoId}.json`, res => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          resolve(json[0]?.thumbnail_large || null);
+        } catch { resolve(null); }
+      });
+    }).on('error', () => resolve(null));
+  });
+}
 
 io.on("connection", (socket) => {
   console.log("✅ Socket connected:", socket.id);
-
   let currentWhiteboardId = null;
 
   socket.on("join-whiteboard", (data) => {
     const { whiteboardId, user } = data;
-
-    // 1. Safety check - opuść poprzednią tablicę jeśli jesteś w innej
+    
     if (currentWhiteboardId && whiteboards.has(currentWhiteboardId)) {
       const prevWb = whiteboards.get(currentWhiteboardId);
       if (prevWb.users.has(socket.id)) {
         prevWb.users.delete(socket.id);
-        socket.to(currentWhiteboardId).emit("user-left", {
+        io.to(currentWhiteboardId).emit("user-left", {
           userId: socket.id,
           users: Array.from(prevWb.users.values())
         });
       }
     }
-
-    // 2. Utwórz tablicę jeśli nie istnieje
+    
     if (!whiteboards.has(whiteboardId)) {
       whiteboards.set(whiteboardId, {
         users: new Map(),
@@ -100,372 +202,410 @@ io.on("connection", (socket) => {
         gifs: [],
         images: [],
         shapes: [],
-        emojis: [], backgroundMode: 'grid',
+        emojis: [],
+        videos: new Map(),
+        backgroundMode: 'grid',
         chatMessages: []
       });
-      console.log(`📝 Created whiteboard on join: ${whiteboardId}`);
     }
-
+    
     const whiteboard = whiteboards.get(whiteboardId);
-
-    // 3. TWORZENIE POPRAWNEGO UŻYTKOWNIKA
-    const safeUser = { ...user };
-    // if (safeUser.id) delete safeUser.id;
-
     const userData = {
-      ...safeUser,
-      id: safeUser.id || socket.id,
-      // id: socket.id,
+      ...user,
+      id: user.id || socket.id,
       socketId: socket.id,
       position: { x: 0, y: 0 }
     };
-
-    // Dodaj użytkownika do mapy
+    
     whiteboard.users.set(socket.id, userData);
-
-    // Zapisz ID tablicy
     currentWhiteboardId = whiteboardId;
-
-    // Dołącz do pokoju socket.io
     socket.join(whiteboardId);
-
-    console.log(`👤 Joined ${whiteboardId}. Name: ${user.name} -> SOCKET ID: ${socket.id}`);
-    console.log(`👤 Users in ${whiteboardId}: ${Array.from(whiteboard.users.values()).map(u => u.name).join(', ')}`);
-
-    // 4. WYŚLIJ HISTORIĘ CZATU OD RAZU DO NOWEGO UŻYTKOWNIKA
-    console.log(`💬 Chat: Sending ${whiteboard.chatMessages.length} chat messages to new user`);
+    
+    socket.emit("whiteboard-data", {
+      users: Array.from(whiteboard.users.values()),
+      drawingData: whiteboard.drawingData,
+      textBoxes: whiteboard.textBoxes,
+      notes: whiteboard.notes,
+      gifs: whiteboard.gifs,
+      images: whiteboard.images,
+      videos: Array.from(whiteboard.videos.values()),
+      shapes: whiteboard.shapes,
+      emojis: whiteboard.emojis,
+      backgroundMode: whiteboard.backgroundMode
+    });
+    
     socket.emit("chat-history", {
       whiteboardId,
-      messages: whiteboard.chatMessages || []
+      messages: whiteboard.chatMessages
     });
-
-    // 5. Wyślij pełne dane tablicy do nowego użytkownika
-    const allData = {
-      users: Array.from(whiteboard.users.values()),
-      drawingData: whiteboard.drawingData || [],
-      textBoxes: whiteboard.textBoxes || [],
-      notes: whiteboard.notes || [],
-      gifs: whiteboard.gifs || [],
-      images: whiteboard.images || [],
-      videos: whiteboard.videos || [],
-      shapes: whiteboard.shapes || [],
-      emojis: whiteboard.emojis || [],
-      backgroundMode: whiteboard.backgroundMode || 'grid'
-    };
-
-    socket.emit("whiteboard-data", allData);
-
-    // 6. Aktualizuj listę użytkowników
+    
+    whiteboard.videos.forEach((video, videoId) => {
+      socket.emit("video-sync", {
+        whiteboardId,
+        videoId,
+        state: {
+          playing: video.playing,
+          currentTime: video.currentTime,
+          volume: video.volume || 0.5,
+          muted: video.muted || false
+        }
+      });
+    });
+    
     io.to(whiteboardId).emit("users-updated", {
       users: Array.from(whiteboard.users.values())
     });
-
-    // 7. Poinformuj innych o nowym użytkowniku
+    
     socket.to(whiteboardId).emit("user-joined", {
       user: userData,
       users: Array.from(whiteboard.users.values())
     });
   });
 
-  // ========== AKTUALIZACJA UŻYTKOWNIKA ==========
-  socket.on("user-update", (d) => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (wb && wb.users.has(socket.id)) {
-      // 1. Aktualizuj dane w liście użytkowników (istniejąca logika)
-      const user = wb.users.get(socket.id);
-      Object.assign(user, d.updates);
-
-      // 2. NOWOŚĆ: Aktualizuj dane autora w historii czatu
-      if (wb.chatMessages && wb.chatMessages.length > 0) {
-        let historyUpdated = false;
-        wb.chatMessages.forEach((msg) => {
-          // Jeśli wiadomość należy do użytkownika, który właśnie zmienił dane
-          if (msg.user && msg.user.id === socket.id) {
-            // Nadpisz nazwę i kolor w historycznej wiadomości
-            Object.assign(msg.user, d.updates);
-            historyUpdated = true;
-          }
-        });
-
-        // 3. Jeśli zaktualizowano historię, wyślij ją ponownie do wszystkich w pokoju
-        // Dzięki temu frontend (Chat.jsx) przerysuje stare wiadomości z nową nazwą
-        if (historyUpdated) {
-          io.to(d.whiteboardId).emit("chat-history", {
-            whiteboardId: d.whiteboardId,
-            messages: wb.chatMessages
-          });
-        }
-      }
-
-      // Standardowe powiadomienia o zmianie użytkownika (listy online, kursory itp.)
-      io.to(d.whiteboardId).emit("users-updated", {
-        users: Array.from(wb.users.values())
-      });
-
-      io.to(d.whiteboardId).emit("user-updated", {
-        userId: socket.id,
-        updates: d.updates
-      });
-    }
-  });
-
-  // ========== HANDLERY ==========
-  const broadcast = (room, event, data) => socket.to(room).emit(event, data);
-
-  // ========== OBSŁUGA TEKSTU ==========
-  socket.on("text-create", (d) => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (wb) {
-      if (!wb.textBoxes) wb.textBoxes = [];
-      wb.textBoxes.push(d.textBox);
-      broadcast(d.whiteboardId, "text-create", d);
-    }
-  });
-
-  socket.on("text-update", (d) => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (wb && wb.textBoxes) {
-      const t = wb.textBoxes.find(x => x.id === d.id);
-      if (t) {
-        Object.assign(t, d);
-        broadcast(d.whiteboardId, "text-update", d);
-      }
-    }
-  });
-
-  socket.on("text-delete", (d) => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (wb && wb.textBoxes) {
-      wb.textBoxes = wb.textBoxes.filter(x => x.id !== d.id);
-      broadcast(d.whiteboardId, "text-delete", d);
-    }
-  });
-
-  // ========== OBSŁUGA NOTATEK ==========
-  socket.on("note-create", (d) => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (wb) {
-      if (!wb.notes) wb.notes = [];
-      wb.notes.push(d.note);
-      broadcast(d.whiteboardId, "note-create", d);
-    }
-  });
-
-  socket.on("note-update", (d) => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (wb && wb.notes) {
-      const n = wb.notes.find(x => x.id === d.id);
-      if (n) {
-        Object.assign(n, d);
-        broadcast(d.whiteboardId, "note-update", d);
-      }
-    }
-  });
-
-  socket.on("note-delete", (d) => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (wb && wb.notes) {
-      wb.notes = wb.notes.filter(x => x.id !== d.id);
-      broadcast(d.whiteboardId, "note-delete", d);
-    }
-  });
-
-  // ========== OBSŁUGA EMOJI ==========
-  socket.on("emoji-create", (d) => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (wb) {
-      if (!wb.emojis) wb.emojis = [];
-      wb.emojis.push(d.emoji);
-      broadcast(d.whiteboardId, "emoji-create", d);
-    }
-  });
-
-  socket.on("emoji-update", (d) => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (wb && wb.emojis) {
-      const e = wb.emojis.find(x => x.id === d.id);
-      if (e) {
-        Object.assign(e, d);
-        broadcast(d.whiteboardId, "emoji-update", d);
-      }
-    }
-  });
-
-  socket.on("emoji-delete", (d) => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (wb && wb.emojis) {
-      wb.emojis = wb.emojis.filter(x => x.id !== d.id);
-      broadcast(d.whiteboardId, "emoji-delete", d);
-    }
-  });
-
-  // ========== OBSŁUGA GIFÓW ==========
-  socket.on("gif-create", (d) => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (wb) {
-      if (!wb.gifs) wb.gifs = [];
-      wb.gifs.push(d.gif);
-      broadcast(d.whiteboardId, "gif-create", d);
-    }
-  });
-
-  socket.on("gif-update", (d) => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (wb && wb.gifs) {
-      const g = wb.gifs.find(x => x.id === d.id);
-      if (g) {
-        Object.assign(g, d);
-        broadcast(d.whiteboardId, "gif-update", d);
-      }
-    }
-  });
-
-  socket.on("gif-delete", (d) => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (wb && wb.gifs) {
-      wb.gifs = wb.gifs.filter(x => x.id !== d.id);
-      broadcast(d.whiteboardId, "gif-delete", d);
-    }
-  });
-
-  // ========== OBSŁUGA ZDJĘĆ ==========
-  socket.on("image-create", (d) => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (wb) {
-      if (!wb.images) wb.images = [];
-      wb.images.push(d.image);
-      broadcast(d.whiteboardId, "image-create", d);
-    }
-  });
-
-  socket.on("image-update", (d) => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (wb && wb.images) {
-      const img = wb.images.find(x => x.id === d.id);
-      if (img) {
-        Object.assign(img, d);
-        broadcast(d.whiteboardId, "image-update", d);
-      }
-    }
-  });
-
-  socket.on("image-delete", (d) => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (wb && wb.images) {
-      wb.images = wb.images.filter(x => x.id !== d.id);
-      broadcast(d.whiteboardId, "image-delete", d);
-    }
-  });
-
-// ================= OBSŁUGA VIDEO =================
+  // ========== VIDEO HANDLERS ==========
   socket.on("video-create", d => {
     const wb = whiteboards.get(d.whiteboardId);
-    if (!wb) return;
-
+    if (!wb || wb.videos.has(d.video.id)) return;
+    
     const video = {
       ...d.video,
+      id: d.video.id || `video_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       playing: false,
-      currentTime: 0
+      currentTime: 0,
+      volume: 0.5,
+      muted: false,
+      lastUpdated: Date.now(),
+      lastUpdatedBy: socket.id
     };
-
-    wb.videos.push(video);
-
-    broadcast(d.whiteboardId, "video-create", {
-      whiteboardId: d.whiteboardId,
-      video
-    });
+    
+    wb.videos.set(video.id, video);
+    io.to(d.whiteboardId).emit("video-create", { whiteboardId: d.whiteboardId, video });
   });
 
   socket.on("video-update", d => {
     const wb = whiteboards.get(d.whiteboardId);
     if (!wb) return;
-
-    const video = wb.videos.find(v => v.id === d.id);
+    const video = wb.videos.get(d.id);
     if (!video) return;
-
-    Object.assign(video, d.updates);
-
+    
+    const updates = d.updates || {};
+    if (updates.x !== undefined) video.x = updates.x;
+    if (updates.y !== undefined) video.y = updates.y;
+    if (updates.width !== undefined) video.width = updates.width;
+    if (updates.height !== undefined) video.height = updates.height;
+    
+    video.lastUpdated = Date.now();
+    video.lastUpdatedBy = socket.id;
+    
     socket.to(d.whiteboardId).emit("video-update", {
       id: d.id,
-      updates: d.updates
+      updates,
+      fromUserId: socket.id
+    });
+  });
+
+  socket.on("video-volume", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (!wb) return;
+    const video = wb.videos.get(d.id);
+    if (!video) return;
+    
+    if (d.volume !== undefined) video.volume = d.volume;
+    if (d.muted !== undefined) video.muted = d.muted;
+    video.lastUpdated = Date.now();
+    video.lastUpdatedBy = socket.id;
+    
+    socket.to(d.whiteboardId).emit("video-volume", {
+      id: d.id,
+      volume: d.volume,
+      muted: d.muted,
+      fromUserId: socket.id,
+      timestamp: Date.now()
     });
   });
 
   socket.on("video-delete", d => {
     const wb = whiteboards.get(d.whiteboardId);
     if (!wb) return;
-
-    wb.videos = wb.videos.filter(v => v.id !== d.id);
-
-    socket.to(d.whiteboardId).emit("video-delete", {
-      id: d.id
+    wb.videos.delete(d.id);
+    io.to(d.whiteboardId).emit("video-delete", {
+      id: d.id,
+      fromUserId: socket.id
     });
   });
 
-
-  // ================= VIDEO SYNC =================
-  socket.on("video-sync", d => {
+  // Playback events
+  socket.on("video-play", d => {
     const wb = whiteboards.get(d.whiteboardId);
     if (!wb) return;
-
-    const video = wb.videos.find(v => v.id === d.id);
+    const video = wb.videos.get(d.id);
     if (!video) return;
-
-    if (typeof d.time === 'number') {
-      video.currentTime = d.time;
-    }
-
-    if (d.action === 'play') video.playing = true;
-    if (d.action === 'pause') video.playing = false;
-
-    socket.to(d.whiteboardId).emit("video-sync", d);
+    
+    video.playing = true;
+    video.currentTime = d.currentTime || 0;
+    video.lastUpdated = Date.now();
+    video.lastUpdatedBy = socket.id;
+    
+    io.to(d.whiteboardId).emit("video-play", {
+      id: d.id,
+      currentTime: video.currentTime,
+      volume: video.volume,
+      muted: video.muted,
+      fromUserId: socket.id,
+      timestamp: Date.now()
+    });
   });
 
+  socket.on("video-pause", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (!wb) return;
+    const video = wb.videos.get(d.id);
+    if (!video) return;
+    
+    video.playing = false;
+    video.currentTime = d.currentTime || 0;
+    video.lastUpdated = Date.now();
+    video.lastUpdatedBy = socket.id;
+    
+    io.to(d.whiteboardId).emit("video-pause", {
+      id: d.id,
+      currentTime: video.currentTime,
+      volume: video.volume,
+      muted: video.muted,
+      fromUserId: socket.id,
+      timestamp: Date.now()
+    });
+  });
 
-  // ========== OBSŁUGA KSZTAŁTÓW ==========
-  socket.on("shape-create", (d) => {
+  socket.on("video-seek", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (!wb) return;
+    const video = wb.videos.get(d.id);
+    if (!video) return;
+    
+    if (typeof d.currentTime === 'number') {
+      video.currentTime = d.currentTime;
+      video.lastUpdated = Date.now();
+      video.lastUpdatedBy = socket.id;
+      
+      io.to(d.whiteboardId).emit("video-seek", {
+        id: d.id,
+        currentTime: video.currentTime,
+        volume: video.volume,
+        muted: video.muted,
+        fromUserId: socket.id,
+        timestamp: Date.now()
+      });
+    }
+  });
+
+  socket.on("video-sync-request", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (!wb) return;
+    const video = wb.videos.get(d.videoId);
+    if (!video) return;
+    
+    socket.emit("video-sync", {
+      videoId: d.videoId,
+      whiteboardId: d.whiteboardId,
+      state: {
+        playing: video.playing,
+        currentTime: video.currentTime,
+        volume: video.volume || 0.5,
+        muted: video.muted || false
+      }
+    });
+  });
+
+  // Other handlers (skrócone)
+  socket.on("user-update", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb && wb.users.has(socket.id)) {
+      Object.assign(wb.users.get(socket.id), d.updates);
+      io.to(d.whiteboardId).emit("users-updated", {
+        users: Array.from(wb.users.values())
+      });
+    }
+  });
+
+  // Tekst
+  socket.on("text-create", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb) {
+      if (!wb.textBoxes) wb.textBoxes = [];
+      wb.textBoxes.push(d.textBox);
+      socket.to(d.whiteboardId).emit("text-create", d);
+    }
+  });
+
+  socket.on("text-update", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb && wb.textBoxes) {
+      const t = wb.textBoxes.find(x => x.id === d.id);
+      if (t) Object.assign(t, d);
+      socket.to(d.whiteboardId).emit("text-update", d);
+    }
+  });
+
+  socket.on("text-delete", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb && wb.textBoxes) {
+      wb.textBoxes = wb.textBoxes.filter(x => x.id !== d.id);
+      socket.to(d.whiteboardId).emit("text-delete", d);
+    }
+  });
+
+  // Notatki
+  socket.on("note-create", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb) {
+      if (!wb.notes) wb.notes = [];
+      wb.notes.push(d.note);
+      socket.to(d.whiteboardId).emit("note-create", d);
+    }
+  });
+
+  socket.on("note-update", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb && wb.notes) {
+      const n = wb.notes.find(x => x.id === d.id);
+      if (n) Object.assign(n, d);
+      socket.to(d.whiteboardId).emit("note-update", d);
+    }
+  });
+
+  socket.on("note-delete", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb && wb.notes) {
+      wb.notes = wb.notes.filter(x => x.id !== d.id);
+      socket.to(d.whiteboardId).emit("note-delete", d);
+    }
+  });
+
+  // Emoji
+  socket.on("emoji-create", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb) {
+      if (!wb.emojis) wb.emojis = [];
+      wb.emojis.push(d.emoji);
+      socket.to(d.whiteboardId).emit("emoji-create", d);
+    }
+  });
+
+  socket.on("emoji-update", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb && wb.emojis) {
+      const e = wb.emojis.find(x => x.id === d.id);
+      if (e) Object.assign(e, d);
+      socket.to(d.whiteboardId).emit("emoji-update", d);
+    }
+  });
+
+  socket.on("emoji-delete", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb && wb.emojis) {
+      wb.emojis = wb.emojis.filter(x => x.id !== d.id);
+      socket.to(d.whiteboardId).emit("emoji-delete", d);
+    }
+  });
+
+  // GIFy
+  socket.on("gif-create", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb) {
+      if (!wb.gifs) wb.gifs = [];
+      wb.gifs.push(d.gif);
+      socket.to(d.whiteboardId).emit("gif-create", d);
+    }
+  });
+
+  socket.on("gif-update", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb && wb.gifs) {
+      const g = wb.gifs.find(x => x.id === d.id);
+      if (g) Object.assign(g, d);
+      socket.to(d.whiteboardId).emit("gif-update", d);
+    }
+  });
+
+  socket.on("gif-delete", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb && wb.gifs) {
+      wb.gifs = wb.gifs.filter(x => x.id !== d.id);
+      socket.to(d.whiteboardId).emit("gif-delete", d);
+    }
+  });
+
+  // Obrazy
+  socket.on("image-create", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb) {
+      if (!wb.images) wb.images = [];
+      wb.images.push(d.image);
+      socket.to(d.whiteboardId).emit("image-create", d);
+    }
+  });
+
+  socket.on("image-update", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb && wb.images) {
+      const img = wb.images.find(x => x.id === d.id);
+      if (img) Object.assign(img, d);
+      socket.to(d.whiteboardId).emit("image-update", d);
+    }
+  });
+
+  socket.on("image-delete", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (wb && wb.images) {
+      wb.images = wb.images.filter(x => x.id !== d.id);
+      socket.to(d.whiteboardId).emit("image-delete", d);
+    }
+  });
+
+  // Kształty
+  socket.on("shape-create", d => {
     const wb = whiteboards.get(d.whiteboardId);
     if (wb) {
       if (!wb.shapes) wb.shapes = [];
       wb.shapes.push(d.shape);
-      broadcast(d.whiteboardId, "shape-create", d);
+      socket.to(d.whiteboardId).emit("shape-create", d);
     }
   });
 
-  socket.on("shape-update", (d) => {
+  socket.on("shape-update", d => {
     const wb = whiteboards.get(d.whiteboardId);
     if (wb && wb.shapes) {
       const s = wb.shapes.find(x => x.id === d.id);
-      if (s) {
-        Object.assign(s, d);
-        broadcast(d.whiteboardId, "shape-update", d);
-      }
+      if (s) Object.assign(s, d);
+      socket.to(d.whiteboardId).emit("shape-update", d);
     }
   });
 
-  socket.on("shape-delete", (d) => {
+  socket.on("shape-delete", d => {
     const wb = whiteboards.get(d.whiteboardId);
     if (wb && wb.shapes) {
       wb.shapes = wb.shapes.filter(x => x.id !== d.id);
-      broadcast(d.whiteboardId, "shape-delete", d);
+      socket.to(d.whiteboardId).emit("shape-delete", d);
     }
   });
 
-  // ========== OBSŁUGA RYSOWANIA ==========
-  socket.on("drawing", (d) => {
+  // Rysowanie
+  socket.on("drawing", d => {
     const wb = whiteboards.get(d.whiteboardId);
     if (wb) {
       wb.drawingData.push(d);
       if (wb.drawingData.length > 1000) wb.drawingData.shift();
-      broadcast(d.whiteboardId, "drawing", d);
+      socket.to(d.whiteboardId).emit("drawing", d);
     }
   });
 
-  socket.on("erase-area", (d) => {
+  socket.on("erase-area", d => {
     const wb = whiteboards.get(d.whiteboardId);
     if (wb) {
-      const eraseAction = {
+      wb.drawingData.push({
         type: 'erase-area',
+<<<<<<< Updated upstream
         x: d.x,
         y: d.y,
         width: d.width,
@@ -477,127 +617,75 @@ io.on("connection", (socket) => {
       wb.drawingData.push(eraseAction);
       if (wb.drawingData.length > 20000) wb.drawingData.shift();
       broadcast(d.whiteboardId, "erase-area", eraseAction);
+=======
+        ...d
+      });
+      socket.to(d.whiteboardId).emit("erase-area", d);
+>>>>>>> Stashed changes
     }
   });
 
-  // ========== KURSOR I WSKAŹNIK ==========
-  socket.on("cursor-move", (d) => {
+  // Kursor
+  socket.on("cursor-move", d => {
     const wb = whiteboards.get(d.whiteboardId);
     if (wb) {
-      // 1. Pobierz pełne dane użytkownika z pamięci serwera (tam jest nazwa i kolor)
       const user = wb.users.get(socket.id);
-
-      // 2. Jeśli użytkownik istnieje, wyślij jego pozycję ORAZ dane do innych
       if (user) {
-        // Aktualizujemy pozycję w pamięci serwera (opcjonalne, ale dobre dla nowych userów)
         user.position = d.position;
-
         socket.to(d.whiteboardId).emit("cursor-move", {
           userId: socket.id,
           position: d.position,
-          user: user // <--- TO JEST KLUCZOWE: Wysyłamy obiekt user (name, color)
+          user
         });
       }
     }
   });
-  socket.on("pointer-move", (d) => broadcast(d.whiteboardId, "pointer-move", d));
-  socket.on("pointer-click", (d) => broadcast(d.whiteboardId, "pointer-click", d));
 
-  // ========== CZAT ==========
-  socket.on("chat-message", (data) => {
+  socket.on("pointer-move", d => socket.to(d.whiteboardId).emit("pointer-move", d));
+  socket.on("pointer-click", d => socket.to(d.whiteboardId).emit("pointer-click", d));
+
+  // Czat
+  socket.on("chat-message", data => {
     const { whiteboardId, message } = data;
-
-    console.log(`💬 Chat: Message from ${socket.id} in whiteboard ${whiteboardId}: "${message.text}"`);
-    console.log(`💬 Chat: Message user: ${JSON.stringify(message.user)}`);
-
-    if (!message || !message.text || !whiteboardId) {
-      console.error("💬 Chat: Invalid message data");
-      return;
-    }
-
     const wb = whiteboards.get(whiteboardId);
-    if (!wb) {
-      console.error(`💬 Chat: Whiteboard ${whiteboardId} not found`);
-      return;
-    }
-
-    // Upewnij się, że user ma poprawne dane
-    const messageUser = {
-      id: message.user?.id || socket.id,
-      name: message.user?.name || 'Unknown',
-      color: message.user?.color || '#666'
-    };
-
+    if (!wb) return;
+    
+    if (!wb.chatMessages) wb.chatMessages = [];
     const completeMessage = {
       id: message.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      user: messageUser,
+      user: {
+        id: message.user?.id || socket.id,
+        name: message.user?.name || 'Unknown',
+        color: message.user?.color || '#666'
+      },
       text: message.text,
       timestamp: message.timestamp || new Date().toISOString(),
       whiteboardId
     };
-
-    // Zapisz wiadomość w historii TEJ TABLICY
-    if (!wb.chatMessages) wb.chatMessages = [];
+    
     wb.chatMessages.push(completeMessage);
-
-    // Ogranicz historię do 200 wiadomości
-    if (wb.chatMessages.length > 200) {
-      wb.chatMessages.shift();
-    }
-
-    console.log(`💬 Chat: Broadcasting to whiteboard room: ${whiteboardId}`);
-    console.log(`💬 Chat: Room has ${wb.chatMessages.length} messages`);
-    console.log(`💬 Chat: Users in room: ${Array.from(wb.users.values()).map(u => u.name)}`);
-
-    // Wysyłamy do WSZYSTKICH w tym samym pokoju (włącznie z nadawcą)
-    io.to(whiteboardId).emit("chat-message", {
-      whiteboardId,
-      message: completeMessage
-    });
+    if (wb.chatMessages.length > 200) wb.chatMessages.shift();
+    
+    io.to(whiteboardId).emit("chat-message", { whiteboardId, message: completeMessage });
   });
 
-  // Pobieranie historii czatu
-  socket.on("get-chat-history", (data) => {
-    const { whiteboardId } = data;
-    const wb = whiteboards.get(whiteboardId);
-
+  socket.on("get-chat-history", data => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb) {
-      console.log(`💬 Chat: History requested for whiteboard: ${whiteboardId} by ${socket.id}`);
-      console.log(`💬 Chat: Sending ${wb.chatMessages?.length || 0} messages`);
-
       socket.emit("chat-history", {
-        whiteboardId,
+        whiteboardId: data.whiteboardId,
         messages: wb.chatMessages || []
       });
-    } else {
-      console.error(`💬 Chat: Whiteboard ${whiteboardId} not found for history request`);
     }
   });
 
-  // ========== WEBRTC SIGNALING ==========
-  socket.on("call-user", (d) => {
-    socket.to(d.to).emit("call-made", {
-      offer: d.offer,
-      socket: socket.id
-    });
-  });
+  // WebRTC
+  socket.on("call-user", d => socket.to(d.to).emit("call-made", { offer: d.offer, socket: socket.id }));
+  socket.on("make-answer", d => socket.to(d.to).emit("answer-made", { answer: d.answer, socket: socket.id }));
+  socket.on("ice-candidate", d => socket.to(d.to).emit("ice-candidate", { candidate: d.candidate, socket: socket.id }));
 
-  socket.on("make-answer", (d) => {
-    socket.to(d.to).emit("answer-made", {
-      answer: d.answer,
-      socket: socket.id
-    });
-  });
-
-  socket.on("ice-candidate", (d) => {
-    socket.to(d.to).emit("ice-candidate", {
-      candidate: d.candidate,
-      socket: socket.id
-    });
-  });
-
-  // ========== TŁO ==========
-  socket.on("background-update", (data) => {
+  // Tło
+  socket.on("background-update", data => {
     const wb = whiteboards.get(data.whiteboardId);
     if (wb) {
       wb.backgroundMode = data.mode;
@@ -605,61 +693,40 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ========== ODTWORZENIE DANYCH ==========
-  socket.on("refresh-whiteboard-data", (data) => {
-    const { whiteboardId } = data;
-    const wb = whiteboards.get(whiteboardId);
-
+  // Odświeżanie
+  socket.on("refresh-whiteboard-data", data => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb) {
-      console.log(`🔄 Refreshing whiteboard data for: ${whiteboardId}, user: ${socket.id}`);
-
-      const allData = {
+      socket.emit("whiteboard-data", {
         users: Array.from(wb.users.values()),
-        drawingData: wb.drawingData || [],
-        textBoxes: wb.textBoxes || [],
-        notes: wb.notes || [],
-        gifs: wb.gifs || [],
-        images: wb.images || [],
-        shapes: wb.shapes || [],
-        emojis: wb.emojis || [],
-        backgroundMode: wb.backgroundMode || 'grid'
-      };
-
-      socket.emit("whiteboard-data", allData);
-
-      // Wyślij również historię czatu
+        drawingData: wb.drawingData,
+        textBoxes: wb.textBoxes,
+        notes: wb.notes,
+        gifs: wb.gifs,
+        images: wb.images,
+        videos: Array.from(wb.videos.values()),
+        shapes: wb.shapes,
+        emojis: wb.emojis,
+        backgroundMode: wb.backgroundMode
+      });
+      
       socket.emit("chat-history", {
-        whiteboardId,
+        whiteboardId: data.whiteboardId,
         messages: wb.chatMessages || []
       });
     }
   });
 
-  // ========== ROZŁĄCZENIE ==========
+  // Rozłączenie
   socket.on("disconnect", () => {
     console.log("❌ User disconnected:", socket.id);
-
     if (currentWhiteboardId && whiteboards.has(currentWhiteboardId)) {
       const whiteboard = whiteboards.get(currentWhiteboardId);
-
-      // Usuń użytkownika z mapy
       whiteboard.users.delete(socket.id);
-
-      // Wyślij aktualizację
-      socket.to(currentWhiteboardId).emit("user-left", {
+      io.to(currentWhiteboardId).emit("user-left", {
         userId: socket.id,
         users: Array.from(whiteboard.users.values())
       });
-
-      // Sprzątanie pustych pokoi po godzinie
-      if (whiteboard.users.size === 0) {
-        setTimeout(() => {
-          if (whiteboards.has(currentWhiteboardId) && whiteboards.get(currentWhiteboardId).users.size === 0) {
-            whiteboards.delete(currentWhiteboardId);
-            console.log(`🧹 Cleaned up empty whiteboard: ${currentWhiteboardId}`);
-          }
-        }, 3600000);
-      }
     }
   });
 });
@@ -670,7 +737,12 @@ function generateId() {
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
-  console.log(`\n🚀 SERWER CZATU DZIAŁA! Running on: http://localhost:${PORT}\n`);
-  console.log(`💬 Chat system: ACTIVE`);
-  console.log(`📋 Whiteboards in memory: ${whiteboards.size}`);
+  console.log(`\n🚀 SERVER RUNNING: http://localhost:${PORT}`);
+  console.log(`🎬 Video synchronization: FIXED`);
+  
+  const uploadDir = 'uploads/videos';
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+    console.log(`📁 Created upload directory: ${uploadDir}`);
+  }
 });

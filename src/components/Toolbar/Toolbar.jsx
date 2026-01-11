@@ -4,7 +4,7 @@ import MultimediaModal from '../MultimediaModal/MultimediaModal.jsx';
 import PointerTrail from './PointerTrail.jsx';
 import ToolRangeCircle from './ToolRangeCircle.jsx';
 
-const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker, activeEmoji, setActiveEmoji, setActiveGif, setActiveShape, onImageCreate, panOffset, zoom = 1 }) => {
+const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setShowColorPicker, activeEmoji, setActiveEmoji, setActiveGif, setActiveShape, onImageCreate, onVideoCreate, panOffset, zoom = 1 }) => {
   // DEBUG: Sprawdźmy co Toolbar dostaje
   useEffect(() => {
     console.log("🛠️ Toolbar mounted. Props onImageCreate:", typeof onImageCreate);
@@ -61,8 +61,33 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
     // 5. Wywołujemy funkcję przekazaną z góry (z WhiteboardRouter)
     if (onImageCreate) {
       onImageCreate(imageWithCorrectPosition);
+    };
+  };
+
+  const handleLocalVideoCreate = (videoObj) => {
+    // A. Pobieramy środek ekranu użytkownika
+    const centerX = window.innerWidth / 2;
+    const centerY = window.innerHeight / 2;
+
+    // B. Obliczamy pozycję w świecie (World Coordinates)
+    // Wzór: Pozycja_Świata = Pozycja_Ekranu - Przesunięcie
+    // Odejmujemy połowę szerokości wideo (zakładamy ok. 480x270px), żeby wycentrować
+    const targetX = centerX - (panOffset?.x || 0) - (videoObj.width || 240);
+    const targetY = centerY - (panOffset?.y || 0) - (videoObj.height || 135);
+
+    // C. Nadpisujemy x i y w obiekcie wideo
+    const videoWithCorrectPosition = {
+      ...videoObj,
+      x: targetX,
+      y: targetY
+    };
+
+    // D. Wywołujemy funkcję z WhiteboardRouter/Whiteboard
+    if (onVideoCreate) {
+      onVideoCreate(videoWithCorrectPosition);
     }
   };
+
 
   // Inicjalizacja stanów koloru z localStorage
   const [selectedColor, setSelectedColor] = useState(getSavedActiveColor);
@@ -566,6 +591,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
         <MultimediaModal
           onClose={() => { setShowMultimedia(false); setTool('cursor'); }}
           onImageCreate={handleLocalImageCreate} // <-- ZMIANA TUTAJ
+          onVideoCreate={handleLocalVideoCreate}
         />
       )}
 

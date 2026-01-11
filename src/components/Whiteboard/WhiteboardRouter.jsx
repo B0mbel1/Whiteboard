@@ -34,6 +34,9 @@ const WhiteboardRouter = () => {
   // Images
   const [images, setImages] = useState([]); // DODANE
 
+  // Videos
+  const [videos, setVideos] = useState([]);
+
   // Shapes
   const [shapes, setShapes] = useState([]);
   const [activeShape, setActiveShape] = useState(null);
@@ -211,6 +214,9 @@ const WhiteboardRouter = () => {
       if (data.images) { // DODANE
         setImages(data.images);
       }
+      if (data.videos) {
+        setVideos(data.videos);
+      }
       if (data.shapes) {
         setShapes(data.shapes);
       }
@@ -274,6 +280,19 @@ const WhiteboardRouter = () => {
     newSocket.on('connect_error', (error) => {
       console.error("❌ Connection error:", error);
       setIsLoading(false);
+    });
+
+    // Videos listeners
+    newSocket.on('video-create', (data) => {
+      setVideos(prev => [...prev, data.video]);
+    });
+
+    newSocket.on('video-delete', (data) => {
+      setVideos(prev => prev.filter(vid => vid.id !== data.id));
+    });
+
+    newSocket.on('video-update', (data) => {
+      setVideos(prev => prev.map(vid => vid.id === data.id ? { ...vid, ...data } : vid));
     });
   };
 
@@ -357,6 +376,28 @@ const WhiteboardRouter = () => {
 
     if (socketRef.current && whiteboardId) {
       socketRef.current.emit('image-update', { whiteboardId, id, ...updates });
+    }
+  };
+
+// Videos Handlers
+  const handleVideoCreate = (video) => {
+    setVideos(prev => [...prev, video]);
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('video-create', { whiteboardId, video });
+    }
+  };
+
+  const handleVideoUpdate = (id, updates) => {
+    setVideos(prev => prev.map(vid => vid.id === id ? { ...vid, ...updates } : vid));
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('video-update', { whiteboardId, id, ...updates });
+    }
+  };
+
+  const handleVideoDelete = (id) => {
+    setVideos(prev => prev.filter(vid => vid.id !== id));
+    if (socketRef.current && whiteboardId) {
+      socketRef.current.emit('video-delete', { whiteboardId, id });
     }
   };
 
@@ -685,6 +726,7 @@ const WhiteboardRouter = () => {
           setActiveGif={setActiveGif}
           setActiveShape={setActiveShape}
           onImageCreate={handleImageCreate} // DODANE
+          onVideoCreate={handleVideoCreate}
           panOffset={panOffset}
           zoom={zoom}
         />
@@ -730,6 +772,10 @@ const WhiteboardRouter = () => {
           onImageCreate={handleImageCreate} // DODANE
           onImageUpdate={handleImageUpdate} // DODANE
           onImageDelete={handleImageDelete} // DODANE
+          videos={videos}
+          onVideoCreate={handleVideoCreate}
+          onVideoUpdate={handleVideoUpdate}
+          onVideoDelete={handleVideoDelete}
           shapes={shapes}
           activeShape={activeShape}
           onShapeCreate={handleShapeCreate}

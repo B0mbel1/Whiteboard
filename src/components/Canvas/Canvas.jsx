@@ -7,6 +7,7 @@ import Text from './Text';
 import Emoji from './Emoji';
 import Gif from './Gif';
 import ImageItem from './ImageItem';
+import Video from './Video'; // 🔹 DODANO IMPORT VIDEO
 import Shape from './Shape';
 import Chat from './Chat';
 
@@ -50,6 +51,10 @@ const Canvas = ({
   onImageCreate,
   onImageUpdate,
   onImageDelete,
+  videos: initialVideos, // 🔹 DODANO VIDEO PROPS
+  onVideoCreate,
+  onVideoUpdate,
+  onVideoDelete,
   shapes: initialShapes,
   activeShape,
   onShapeCreate,
@@ -109,6 +114,10 @@ const Canvas = ({
   // Images
   const [images, setImages] = useState(initialImages || []);
   const [selectedImageId, setSelectedImageId] = useState(null);
+
+  // Videos
+  const [videos, setVideos] = useState(initialVideos || []);
+  const [selectedVideoId, setSelectedVideoId] = useState(null);
 
   // Shapes
   const [shapes, setShapes] = useState(initialShapes || []);
@@ -347,6 +356,16 @@ const Canvas = ({
     }
   };
 
+  const removeVideo = (id) => {
+    const videoToDelete = videos.find(v => v.id === id);
+    if (videoToDelete) {
+      setVideos(prev => prev.filter(v => v.id !== id));
+      if (selectedVideoId === id) setSelectedVideoId(null);
+      if (onVideoDelete) onVideoDelete(id);
+      if (socket) socket.emit("videos:delete", { id });
+    }
+  };
+
   const removeEmoji = (id) => {
     const emojiToDelete = emojis.find(e => e.id === id);
     if (emojiToDelete) {
@@ -358,6 +377,7 @@ const Canvas = ({
 
   useEffect(() => { setGifs(initialGifs || []); }, [initialGifs]);
   useEffect(() => { setImages(initialImages || []); }, [initialImages]);
+  useEffect(() => { setVideos(initialVideos || []); }, [initialVideos]);
   useEffect(() => { setEmojis(initialEmojis || []); }, [initialEmojis]);
   useEffect(() => { setTextBoxes(initialTextBoxes || []); }, [initialTextBoxes]);
   useEffect(() => { setNotes(initialNotes || []); }, [initialNotes]);
@@ -683,6 +703,37 @@ const Canvas = ({
     if (onImageUpdate) onImageUpdate(id, updates);
   };
 
+  // 🔹 DODANO FUNKCJE VIDEO Z PIERWSZEJ WERSJI
+  const handleVideoCreate = (video) => { 
+    const newVideo = {
+      ...video,
+      id: video.id || `video_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      type: video.type || "direct"
+    };
+    setVideos(prev => [...prev, newVideo]);
+    
+    if (socket) socket.emit('video-create', { whiteboardId, video: newVideo });
+    if (onVideoCreate) onVideoCreate(newVideo);
+  };
+  
+  const addVideo = (video) => {
+    setVideos(prev => [...prev, video]);
+    if (socket) socket.emit('video-create', { whiteboardId, video: video });
+    if (onVideoCreate) onVideoCreate(video);
+  };
+
+  const updateVideo = (id, data) => {
+    setVideos(prev => prev.map(v => v.id === id ? { ...v, ...data } : v));
+    if (onVideoUpdate) onVideoUpdate(id, data);
+  };
+
+  const handleVideoUpdate = (id, updates) => {
+    updateVideo(id, updates);
+    if (socket) socket.emit('video-update', { whiteboardId, id, ...updates });
+  };
+
+  const handleVideoDelete = (id) => { setVideos(prev => prev.filter(video => video.id !== id));};
+
   const getToolSize = () => {
     const base = (typeof size === "object" && size?.[tool]) ? size[tool] : (typeof size === "number" ? size : 3);
     return getDisplaySize(tool, base);
@@ -768,19 +819,6 @@ const Canvas = ({
         if (width > 5 && height > 5) {
           if (!selectionSnapshot) {
             const ctx = drawingContextRef.current;
-            // Przeliczenie współrzędnych bitmapy dla getImageData jest skomplikowane przy zoomie.
-            // getImageData pobiera piksele ekranowe (jeśli canvas nie jest skalowany przez CSS).
-            // Używamy tutaj transformacji canvasa, więc współrzędne x, y są w świecie.
-            // Niestety getImageData ignoruje transformacje kontekstu.
-            // Aby to działało idealnie z zoomem, należy przeliczyć x/y na ekranowe.
-
-            // Tymczasowe uproszczenie: Pobieramy obszar "świata", ale uwzględniając offsety
-            // UWAGA: To narzędzie w trybie Zoom może wymagać głębszej refaktoryzacji "Select tool".
-            // Dla prostego "wytnij/wklej" przy zoom=1 działa, przy zoom!=1 może być przesunięcie.
-
-            // Próba naprawy dla Zoom:
-            // Musimy wiedzieć gdzie fizycznie na canvasie (piksele) jest ten obszar.
-            // ScreenX = WorldX * Zoom + PanX
             const screenX = x * zoom + panOffset.x;
             const screenY = y * zoom + panOffset.y;
             const screenW = width * zoom;
@@ -860,7 +898,7 @@ const Canvas = ({
     if (isPanning) return;
     if (e.button !== 0) return;
     if (e.target.closest('.shape-item') || e.target.closest('.emoji-item')) return;
-    setSelectedNoteId(null); setSelectedTextBoxId(null); setSelectedEmojiId(null); setSelectedGifId(null); setSelectedShapeId(null); setSelectedImageId(null);
+    setSelectedNoteId(null); setSelectedTextBoxId(null); setSelectedEmojiId(null); setSelectedGifId(null); setSelectedShapeId(null); setSelectedImageId(null); setSelectedVideoId(null);
 
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
     if (!isWithinBounds(x, y)) return;
@@ -1025,6 +1063,7 @@ const Canvas = ({
         else if (selectedEmojiId) { itemToCopy = emojis.find(em => em.id === selectedEmojiId); type = 'emoji'; }
         else if (selectedGifId) { itemToCopy = gifs.find(g => g.id === selectedGifId); type = 'gif'; }
         else if (selectedImageId) { itemToCopy = images.find(img => img.id === selectedImageId); type = 'image'; }
+        else if (selectedVideoId) { itemToCopy = videos.find(v => v.id === selectedVideoId); type = 'video'; }
         else if (selectedShapeId) { itemToCopy = shapes.find(s => s.id === selectedShapeId); type = 'shape'; }
 
         if (itemToCopy) {
@@ -1046,6 +1085,7 @@ const Canvas = ({
           case 'emoji': setEmojis(prev => [...prev, newItem]); if (onEmojiCreate) onEmojiCreate(newItem); setSelectedEmojiId(newId); break;
           case 'gif': setGifs(prev => [...prev, newItem]); if (onGifCreate) onGifCreate(newItem); setSelectedGifId(newId); break;
           case 'image': setImages(prev => [...prev, newItem]); if (onImageCreate) onImageCreate(newItem); setSelectedImageId(newId); break;
+          case 'video': setVideos(prev => [...prev, newItem]); if (onVideoCreate) onVideoCreate(newItem); setSelectedVideoId(newId); break;
           case 'shape': setShapes(prev => [...prev, newItem]); if (onShapeCreate) onShapeCreate(newItem); setSelectedShapeId(newId); break;
           default: break;
         }
@@ -1069,6 +1109,7 @@ const Canvas = ({
           const emojisToDelete = emojis.filter(e => isInsideSelection(e.x, e.y, e.size || 48, e.size || 48));
           const gifsToDelete = gifs.filter(g => isInsideSelection(g.x, g.y, g.width || 150, g.width || 150));
           const imagesToDelete = images.filter(img => isInsideSelection(img.x, img.y, img.width || 200, 100));
+          const videosToDelete = videos.filter(v => isInsideSelection(v.x, v.y, v.width || 200, 100));
           const shapesToDelete = shapes.filter(s => isInsideSelection(s.x, s.y, s.width || 100, Math.max(s.height || 100, 10)));
 
           if (selectionSnapshot && originalCaptureRect) {
@@ -1097,6 +1138,7 @@ const Canvas = ({
           if (emojisToDelete.length) { setEmojis(prev => prev.filter(e => !emojisToDelete.some(del => del.id === e.id))); emojisToDelete.forEach(e => socket && socket.emit('emoji-delete', { whiteboardId, id: e.id })); }
           if (gifsToDelete.length) { setGifs(prev => prev.filter(g => !gifsToDelete.some(del => del.id === g.id))); gifsToDelete.forEach(g => socket && socket.emit('gif-delete', { whiteboardId, id: g.id })); }
           if (imagesToDelete.length) { setImages(prev => prev.filter(img => !imagesToDelete.some(del => del.id === img.id))); imagesToDelete.forEach(img => socket && socket.emit('image-delete', { whiteboardId, id: img.id })); }
+          if (videosToDelete.length) { setVideos(prev => prev.filter(v => !videosToDelete.some(del => del.id === v.id))); videosToDelete.forEach(v => socket && socket.emit('video-delete', { whiteboardId, id: v.id })); }
           if (shapesToDelete.length) { setShapes(prev => prev.filter(s => !shapesToDelete.some(del => del.id === s.id))); shapesToDelete.forEach(s => socket && socket.emit('shape-delete', { whiteboardId, id: s.id })); }
 
           setSelectionSnapshot(null);
@@ -1112,6 +1154,7 @@ const Canvas = ({
         if (selectedEmojiId) removeEmoji(selectedEmojiId);
         if (selectedGifId) removeGif(selectedGifId);
         if (selectedImageId) removeImage(selectedImageId);
+        if (selectedVideoId) removeVideo(selectedVideoId);
         if (selectedShapeId) removeShape(selectedShapeId);
       }
     };
@@ -1119,8 +1162,8 @@ const Canvas = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
-    notes, textBoxes, emojis, gifs, shapes, images,
-    selectedNoteId, selectedTextBoxId, selectedEmojiId, selectedGifId, selectedShapeId, selectedImageId, // ✅ Dodano selectedImageId
+    notes, textBoxes, emojis, gifs, shapes, images, videos,
+    selectedNoteId, selectedTextBoxId, selectedEmojiId, selectedGifId, selectedShapeId, selectedImageId, selectedVideoId,
     selectionBox, selectionSnapshot,
     clipboard
   ]);
@@ -1144,6 +1187,9 @@ const Canvas = ({
       const handleEmojiUpdate = (data) => setEmojis(prev => prev.map(e => e.id === data.id ? { ...e, ...data } : e));
       const handleGifUpdate = (data) => setGifs(prev => prev.map(g => g.id === data.id ? { ...g, ...data } : g));
       const handleImageUpdateSocket = (data) => setImages(prev => prev.map(img => img.id === data.id ? { ...img, ...data } : img));
+      const handleVideoUpdateSocket = (data) => {setVideos(prev => prev.map(v => v.id === data.id ? { ...v, ...data } : v));};
+      const handleVideoCreateSocket = (data) => { setVideos(prev => prev.some(v => v.id === data.video.id) ? prev : [...prev, data.video]);};
+      const handleVideoDeleteSocket = (data) => {setVideos(prev => prev.filter(v => v.id !== data.id));};
       const handleShapeUpdate = (data) => setShapes(prev => prev.map(s => s.id === data.id ? { ...s, ...data } : s));
 
       const handleEmojiCreateSocket = (data) => setEmojis(prev => prev.some(e => e.id === data.emoji.id) ? prev : [...prev, data.emoji]);
@@ -1161,6 +1207,9 @@ const Canvas = ({
       socket.on('emoji-update', handleEmojiUpdate);
       socket.on('gif-update', handleGifUpdate);
       socket.on('image-update', handleImageUpdateSocket);
+      socket.on('video-update', handleVideoUpdateSocket);
+      socket.on('video-create', handleVideoCreateSocket);
+      socket.on('video-delete', handleVideoDeleteSocket);
       socket.on('shape-update', handleShapeUpdate);
       socket.on('emoji-create', handleEmojiCreateSocket);
       socket.on('emoji-delete', handleEmojiDeleteSocket);
@@ -1178,6 +1227,9 @@ const Canvas = ({
         socket.off('emoji-update', handleEmojiUpdate);
         socket.off('gif-update', handleGifUpdate);
         socket.off('image-update', handleImageUpdateSocket);
+        socket.off('video-update', handleVideoUpdateSocket);
+        socket.off('video-create', handleVideoCreateSocket);
+        socket.off('video-delete', handleVideoDeleteSocket);
         socket.off('shape-update', handleShapeUpdate);
         socket.off('emoji-create', handleEmojiCreateSocket);
         socket.off('emoji-delete', handleEmojiDeleteSocket);
@@ -1466,6 +1518,30 @@ const Canvas = ({
           />
         ))}
 
+        {/* 🔹 DODANO RENDEROWANIE VIDEO Z PIERWSZEJ WERSJI */}
+        {videos.map(video => (
+          <Video
+            key={video.id}
+            {...video}
+            x={(video.x * zoom) + panOffset.x}
+            y={(video.y * zoom) + panOffset.y}
+            panOffset={panOffset}
+            limit={WORLD_LIMIT}
+            zoom={zoom}
+            selected={selectedVideoId === video.id}
+            onSelect={setSelectedVideoId}
+            onUpdate={(id, data) => {
+              const cleanData = { ...data };
+              if (cleanData.x !== undefined) cleanData.x = (cleanData.x - panOffset.x) / zoom;
+              if (cleanData.y !== undefined) cleanData.y = (cleanData.y - panOffset.y) / zoom;
+              if (cleanData.width !== undefined) cleanData.width = cleanData.width / zoom;
+              handleVideoUpdate(id, cleanData);
+            }}
+            onRemove={removeVideo}
+            tool={tool}
+          />
+        ))}
+
         {/* 🔹 POPRAWKA: Kształty skalowane przez mnożenie x, y, width, height przez zoom */}
         {shapes.map(shape => {
           const creator = users ? users.find(u => u.id === shape.userId) : null;
@@ -1500,63 +1576,55 @@ const Canvas = ({
         })}
 
         {/* 🔹 POPRAWKA: Kursory skalowane przez mnożenie pozycji przez zoom */}
-        {remoteCursorsArray.map((cursor, index) => {
+      {remoteCursorsArray.map((cursor, index) => {
           const userName = cursor.user?.name || 'Unknown';
           const userColor = cursor.user?.color || '#ff4444';
+          
+          if (!cursor.position) return null;
+
+          // 🧮 PRZELICZANIE: (Świat * Zoom) + Przesunięcie
+          const screenX = (cursor.position.x * zoom) + panOffset.x;
+          const screenY = (cursor.position.y * zoom) + panOffset.y;
 
           return (
-            cursor.position && (
-              <div
-                key={cursor.userId || `cursor_${index}`}
-                className="remote-cursor"
+            <div
+              key={cursor.userId || `cursor_${index}`}
+              className="remote-cursor"
+              style={{
+                position: 'absolute',
+                left: screenX,
+                top: screenY,
+                pointerEvents: 'none',
+                zIndex: 1000,
+                transition: 'left 0.1s linear, top 0.1s linear'
+              }}
+            >
+              <svg
+                width="24" height="24" viewBox="0 0 24 24"
                 style={{
-                  position: 'absolute',
-                  left: (cursor.position.x * zoom) + panOffset.x,
-                  top: (cursor.position.y * zoom) + panOffset.y,
-                  pointerEvents: 'none',
-                  zIndex: 1000,
-                  transition: 'left 0.1s linear, top 0.1s linear'
+                  position: 'absolute', top: 0, left: 0,
+                  transform: 'translate(-2px, -2px)', // Centrowanie czubka strzałki
+                  fill: userColor,
+                  stroke: 'white', strokeWidth: 2,
+                  filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))'
                 }}
               >
-                <svg
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    transform: 'translate(-2px, -2px)',
-                    fill: userColor,
-                    stroke: 'white',
-                    strokeWidth: 2,
-                    filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))'
-                  }}
-                >
-                  <path d="M5.5 3.21l10.08 5.31c1.26.66 1.13 2.51-.2 2.98l-3.32 1.17a1 1 0 0 1-.65.25l-3.46.74a1 1 0 0 0-.71.56l-1.24 3.06c-.52 1.28-2.35 1.18-2.7-.15L2.1 4.38c-.2-.77.58-1.5 1.32-1.17H5.5z" />
-                </svg>
+                <path d="M5.5 3.21l10.08 5.31c1.26.66 1.13 2.51-.2 2.98l-3.32 1.17a1 1 0 0 1-.65.25l-3.46.74a1 1 0 0 0-.71.56l-1.24 3.06c-.52 1.28-2.35 1.18-2.7-.15L2.1 4.38c-.2-.77.58-1.5 1.32-1.17H5.5z" />
+              </svg>
 
-                <div style={{
-                  position: 'absolute',
-                  left: '16px',
-                  top: '12px',
-                  backgroundColor: userColor,
-                  color: 'white',
-                  padding: '4px 8px',
-                  borderRadius: '12px',
-                  fontSize: '12px',
-                  fontWeight: 'bold',
-                  whiteSpace: 'nowrap',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                  border: '2px solid white',
-                  pointerEvents: 'none'
-                }}>
-                  {userName}
-                </div>
+              <div style={{
+                position: 'absolute', left: '16px', top: '12px',
+                backgroundColor: userColor, color: 'white',
+                padding: '4px 8px', borderRadius: '12px',
+                fontSize: '12px', fontWeight: 'bold', whiteSpace: 'nowrap',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                border: '2px solid white', pointerEvents: 'none'
+              }}>
+                {userName}
               </div>
-            )
+            </div>
           );
-        })}
+        })} 
 
         <button
           className="background-toggle"
