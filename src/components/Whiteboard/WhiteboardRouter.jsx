@@ -275,6 +275,39 @@ const WhiteboardRouter = () => {
       console.error("❌ Connection error:", error);
       setIsLoading(false);
     });
+
+    newSocket.on('note-create', (data) => {
+      setNotes(prev => [...prev, data.note]);
+    });
+    newSocket.on('note-update', (data) => {
+      setNotes(prev => prev.map(n => {
+        // Sprawdzamy czy to ta notatka, której id przyszło z serwera
+        if (n.id === data.id) {
+          // Scalamy stary stan notatki z nowymi danymi (np. nowym tekstem)
+          return { ...n, ...data };
+        }
+        return n;
+      }));
+    });
+    newSocket.on('note-delete', (data) => {
+      setNotes(prev => prev.filter(n => n.id !== data.id));
+    });
+
+    newSocket.on('text-create', (data) => {
+      setTextBoxes(prev => [...prev, data.textBox]);
+    });
+    newSocket.on('text-update', (data) => {
+      setTextBoxes(prev => prev.map(t => {
+        if (t.id === data.id) {
+          // Scalamy stary stan z nowymi danymi (np. nowym tekstem)
+          return { ...t, ...data };
+        }
+        return t;
+      }));
+    });
+    newSocket.on('text-delete', (data) => {
+      setTextBoxes(prev => prev.filter(t => t.id !== data.id));
+    });
   };
 
   useEffect(() => {
@@ -693,6 +726,8 @@ const WhiteboardRouter = () => {
           active={tool === 'pointer'}
           socket={socketRef.current}
           whiteboardId={whiteboardId}
+          zoom={zoom}             // 🔹 Dodaj toS
+          panOffset={panOffset}
         />
 
         <Canvas

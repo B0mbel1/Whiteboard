@@ -7,7 +7,7 @@ const Text = ({
   y,
   width,
   height,
-  text: incomingText = '', // 🔹 ZMIANA: Odbieramy jako 'incomingText', tak jak w Note.jsx
+  text: incomingText = '',
   onUpdate,
   onRemove,
   selected,
@@ -19,7 +19,6 @@ const Text = ({
   zoom = 1
 }) => {
   const [isEditing, setIsEditing] = useState(false);
-  // Inicjalizujemy stan tym co przyszło z góry (lub pustym stringiem)
   const [text, setText] = useState(incomingText);
   
   // Stan lokalny pozycji i rozmiaru
@@ -33,39 +32,38 @@ const Text = ({
   const isResizing = useRef(false);
   const dragOffset = useRef({ x: 0, y: 0 });
 
-  // Refy do przechowywania NAJNOWSZYCH wartości stanu (dla event listenerów)
+  // Refy do przechowywania NAJNOWSZYCH wartości stanu
   const latestText = useRef(text);
   const latestSize = useRef(size);
   const latestPosition = useRef(position);
+  
+  // Stabilizacja referencji funkcji onUpdate
+  const onUpdateRef = useRef(onUpdate);
+  useEffect(() => {
+    onUpdateRef.current = onUpdate;
+  }, [onUpdate]);
 
   const isDrawingTool = ['pencil', 'brush', 'eraser'].includes(tool);
 
-  // Aktualizuj refy przy każdym renderze
+  // Aktualizuj refy
   useLayoutEffect(() => {
     latestText.current = text;
     latestSize.current = size;
     latestPosition.current = position;
   }, [text, size, position]);
 
-  // 🔹 KLUCZOWA POPRAWKA: Synchronizacja tekstu z props (Server -> Local)
-  // Działa tak samo jak w Note.jsx - jeśli przyjdą nowe dane (np. po odświeżeniu), aktualizujemy stan.
+  // 1. Odbieranie tekstu z serwera (tylko gdy NIE edytujemy)
   useEffect(() => {
-    if (!isEditing && incomingText !== undefined && incomingText !== text) {
+    if (!isEditing && incomingText !== undefined) {
       setText(incomingText);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [incomingText, isEditing]);
 
-  // Synchronizacja z Socketem (bezpośrednie eventy, opcjonalne jeśli Canvas zarządza, ale bezpieczne)
+  // 2. Odbieranie pozycji/rozmiaru z Socketu (Live updates)
   useEffect(() => {
     if (socket) {
-      const handleTextUpdate = (data) => {
+      const handleSocketUpdate = (data) => {
         if (data.id === id) {
-          // Jeśli ktoś inny edytuje, a my nie, zaktualizuj tekst
-          if (!isEditing && data.text !== undefined) {
-             setText(data.text);
-          }
-          
           if (!isDragging.current && !isResizing.current) {
              if (data.size) setSize(data.size);
              if (data.position) setPosition(data.position);
@@ -73,14 +71,31 @@ const Text = ({
           }
         }
       };
-      socket.on('text-update', handleTextUpdate);
+      socket.on('text-update', handleSocketUpdate);
       return () => {
-        socket.off('text-update', handleTextUpdate);
+        socket.off('text-update', handleSocketUpdate);
       };
     }
-  }, [socket, id, isEditing]);
+  }, [socket, id]);
 
-  // Synchronizacja pozycji z props
+  // 3. Debounce wysyłania tekstu w trakcie pisania
+  useEffect(() => {
+    if (!isEditing) return;
+
+    const timer = setTimeout(() => {
+      if (text !== incomingText && onUpdateRef.current) {
+        onUpdateRef.current(id, { 
+          text: text, 
+          position: latestPosition.current,
+          size: latestSize.current
+        });
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [text, isEditing, incomingText, id]); 
+
+  // Synchronizacja pozycji początkowej i przy zmianie zooma
   useEffect(() => {
     if (!isDragging.current && !isResizing.current) {
       setPosition({ x: x || 0, y: y || 0 });
@@ -90,15 +105,10 @@ const Text = ({
 
   const handleMouseDown = (e) => {
     if (isDrawingTool) return;
-    
-    // Ignorujemy kliknięcia w trybie edycji lub na uchwyt resize
-    if (isEditing || e.target.classList.contains('resize-handle')) {
-      return;
-    }
+    if (isEditing || e.target.classList.contains('resize-handle')) return;
     
     setSelected(id);
     isDragging.current = true;
-    
     dragOffset.current = {
       x: e.clientX - position.x,
       y: e.clientY - position.y
@@ -108,25 +118,17 @@ const Text = ({
   const handleMouseMove = (e) => {
     if (isDragging.current) {
       e.preventDefault();
-      
       let newScreenX = e.clientX - dragOffset.current.x;
       let newScreenY = e.clientY - dragOffset.current.y;
 
-      // Obsługa Zoomu i Limitów
       if (panOffset) {
-        // Screen -> World
         const worldX = (newScreenX - panOffset.x) / zoom;
         const worldY = (newScreenY - panOffset.y) / zoom;
-
-        // Clamp
         const clampedWorldX = Math.max(-limit, Math.min(worldX, limit - size.width));
         const clampedWorldY = Math.max(-limit, Math.min(worldY, limit - size.height));
-
-        // World -> Screen
         newScreenX = (clampedWorldX * zoom) + panOffset.x;
         newScreenY = (clampedWorldY * zoom) + panOffset.y;
       }
-      
       setPosition({ x: newScreenX, y: newScreenY });
     }
   };
@@ -134,7 +136,6 @@ const Text = ({
   const handleMouseUp = () => {
     if (isDragging.current) {
       isDragging.current = false;
-      // Zapis pozycji po upuszczeniu
       if (onUpdate) {
         onUpdate(id, { 
           position: latestPosition.current, 
@@ -149,8 +150,8 @@ const Text = ({
     if (isDrawingTool) return;
     e.stopPropagation();
     e.preventDefault();
-    
     isResizing.current = true;
+    
     const startX = e.clientX;
     const startY = e.clientY;
     const startWidth = size.width;
@@ -158,14 +159,10 @@ const Text = ({
 
     const handleResizeMove = (moveEvent) => {
       moveEvent.preventDefault();
-      
-      // Uwzględniamy ZOOM
       const deltaX = (moveEvent.clientX - startX) / zoom;
       const deltaY = (moveEvent.clientY - startY) / zoom;
-      
       const newWidth = Math.max(50, startWidth + deltaX);
       const newHeight = Math.max(30, startHeight + deltaY);
-
       setSize({ width: newWidth, height: newHeight });
     };
 
@@ -173,7 +170,6 @@ const Text = ({
       isResizing.current = false;
       window.removeEventListener('mousemove', handleResizeMove);
       window.removeEventListener('mouseup', stopResize);
-      
       if (onUpdate) {
         onUpdate(id, { 
             position: latestPosition.current, 
@@ -188,15 +184,31 @@ const Text = ({
   };
 
   const handleDoubleClick = () => {
+    if (incomingText !== undefined) {
+      setText(incomingText);
+    }
     setIsEditing(true);
     setSelected(id);
   };
 
+  // 🔹 ZMODYFIKOWANA FUNKCJA HANDLE BLUR
   const handleBlur = () => {
     setIsEditing(false);
-    // Wyślij update tylko jeśli tekst faktycznie różni się od tego z serwera/propsów
-    if (onUpdate && text !== incomingText) {
-      onUpdate(id, { position, text, size });
+    
+    // Obliczamy nową pozycję (o 1px wyżej)
+    const newY = position.y - 1;
+    const newPosition = { ...position, y: newY };
+    
+    // 1. Aktualizujemy stan lokalny (żeby użytkownik od razu widział przesunięcie)
+    setPosition(newPosition);
+
+    // 2. Wysyłamy update do serwera (zawsze, bo pozycja się zmieniła)
+    if (onUpdate) {
+      onUpdate(id, { 
+        position: newPosition, // wysyłamy zaktualizowaną pozycję
+        text: text, 
+        size: size 
+      });
     }
   };
 
@@ -205,11 +217,13 @@ const Text = ({
   };
 
   const handleKeyDown = (e) => {
-    // Zatwierdź Enterem (bez Shift)
+    // Jeśli chcesz, by Enter też kończył edycję (i przesuwał o 1px), odkomentuj:
+    /*
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleBlur();
     }
+    */
   };
 
   useEffect(() => {
@@ -218,14 +232,11 @@ const Text = ({
     }
   }, [isEditing]);
 
-  // Globalne listenery dla przesuwania
   useEffect(() => {
     const onMove = (e) => handleMouseMove(e);
     const onUp = (e) => handleMouseUp(e);
-    
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-    
     return () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
@@ -265,7 +276,6 @@ const Text = ({
         />
       ) : (
         <div className="text-display">
-          {/* Jeśli tekst jest pusty, wyświetl zachętę */}
           {text || 'Double click to edit'}
         </div>
       )}

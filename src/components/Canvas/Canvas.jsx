@@ -1500,63 +1500,55 @@ const Canvas = ({
         })}
 
         {/* 🔹 POPRAWKA: Kursory skalowane przez mnożenie pozycji przez zoom */}
-        {remoteCursorsArray.map((cursor, index) => {
+      {remoteCursorsArray.map((cursor, index) => {
           const userName = cursor.user?.name || 'Unknown';
           const userColor = cursor.user?.color || '#ff4444';
+          
+          if (!cursor.position) return null;
+
+          // 🧮 PRZELICZANIE: (Świat * Zoom) + Przesunięcie
+          const screenX = (cursor.position.x * zoom) + panOffset.x;
+          const screenY = (cursor.position.y * zoom) + panOffset.y;
 
           return (
-            cursor.position && (
-              <div
-                key={cursor.userId || `cursor_${index}`}
-                className="remote-cursor"
+            <div
+              key={cursor.userId || `cursor_${index}`}
+              className="remote-cursor"
+              style={{
+                position: 'absolute',
+                left: screenX,
+                top: screenY,
+                pointerEvents: 'none',
+                zIndex: 1000,
+                transition: 'left 0.1s linear, top 0.1s linear'
+              }}
+            >
+              <svg
+                width="24" height="24" viewBox="0 0 24 24"
                 style={{
-                  position: 'absolute',
-                  left: (cursor.position.x * zoom) + panOffset.x,
-                  top: (cursor.position.y * zoom) + panOffset.y,
-                  pointerEvents: 'none',
-                  zIndex: 1000,
-                  transition: 'left 0.1s linear, top 0.1s linear'
+                  position: 'absolute', top: 0, left: 0,
+                  transform: 'translate(-2px, -2px)', // Centrowanie czubka strzałki
+                  fill: userColor,
+                  stroke: 'white', strokeWidth: 2,
+                  filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))'
                 }}
               >
-                <svg
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    transform: 'translate(-2px, -2px)',
-                    fill: userColor,
-                    stroke: 'white',
-                    strokeWidth: 2,
-                    filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))'
-                  }}
-                >
-                  <path d="M5.5 3.21l10.08 5.31c1.26.66 1.13 2.51-.2 2.98l-3.32 1.17a1 1 0 0 1-.65.25l-3.46.74a1 1 0 0 0-.71.56l-1.24 3.06c-.52 1.28-2.35 1.18-2.7-.15L2.1 4.38c-.2-.77.58-1.5 1.32-1.17H5.5z" />
-                </svg>
+                <path d="M5.5 3.21l10.08 5.31c1.26.66 1.13 2.51-.2 2.98l-3.32 1.17a1 1 0 0 1-.65.25l-3.46.74a1 1 0 0 0-.71.56l-1.24 3.06c-.52 1.28-2.35 1.18-2.7-.15L2.1 4.38c-.2-.77.58-1.5 1.32-1.17H5.5z" />
+              </svg>
 
-                <div style={{
-                  position: 'absolute',
-                  left: '16px',
-                  top: '12px',
-                  backgroundColor: userColor,
-                  color: 'white',
-                  padding: '4px 8px',
-                  borderRadius: '12px',
-                  fontSize: '12px',
-                  fontWeight: 'bold',
-                  whiteSpace: 'nowrap',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                  border: '2px solid white',
-                  pointerEvents: 'none'
-                }}>
-                  {userName}
-                </div>
+              <div style={{
+                position: 'absolute', left: '16px', top: '12px',
+                backgroundColor: userColor, color: 'white',
+                padding: '4px 8px', borderRadius: '12px',
+                fontSize: '12px', fontWeight: 'bold', whiteSpace: 'nowrap',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                border: '2px solid white', pointerEvents: 'none'
+              }}>
+                {userName}
               </div>
-            )
+            </div>
           );
-        })}
+        })} 
 
         <button
           className="background-toggle"
