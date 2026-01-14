@@ -410,7 +410,7 @@ const WhiteboardRouter = () => {
   const handleVideoUpdate = (id, updates) => {
     setVideos(prev => prev.map(vid => vid.id === id ? { ...vid, ...updates } : vid));
     if (socketRef.current && whiteboardId) {
-      socketRef.current.emit('video-update', { whiteboardId, id, ...updates });
+      socketRef.current.emit('video-update', { whiteboardId, id, updates });
     }
   };
 
