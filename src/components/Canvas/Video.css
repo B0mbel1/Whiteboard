@@ -1,0 +1,35 @@
+.video-container {
+  position: absolute;
+  background-color: transparent;
+  transition: box-shadow 0.2s;
+}
+
+.video-container.selected {
+  box-shadow: 0 0 0 2px #3498db;
+}
+
+.video-container.selected .selection-border {
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  border: 2px dashed #3498db;
+  pointer-events: none;
+  border-radius: 6px;
+}
+
+.video-container video {
+  display: block;
+  background-color: #000;
+}
+
+.resize-handle {
+  position: absolute;
+  z-index: 101;
+}
+
+.resize-handle:hover {
+  background-color: #2980b9 !important;
+  transform: scale(1.2);
+}

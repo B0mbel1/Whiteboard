@@ -22,7 +22,8 @@ const Whiteboard = () => {
   // Dane tablicy
   const [textBoxes, setTextBoxes] = useState([]);
   const [notes, setNotes] = useState([]); 
-  const [images, setImages] = useState([]); 
+  const [images, setImages] = useState([]);
+  const [videos, setVideos] = useState([]); 
   
   // 🔹 NOWE: Dodano stany wymagane przez Canvas, aby uniknąć błędu crashowania
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
@@ -129,6 +130,7 @@ const Whiteboard = () => {
           setTextBoxes(data.textBoxes || []);
           setNotes(data.notes || []); 
           setImages(data.images || []);
+          setVideos(data.videos || []);
           if (data.backgroundMode) setBackgroundMode(data.backgroundMode);
       });
 
@@ -181,6 +183,27 @@ const Whiteboard = () => {
       socketRef.current.emit('image-delete', { whiteboardId, id });
     }
   };
+
+  const handleVideoCreate = (video) => {
+  setVideos(prev => [...prev, video]);
+  if (socketRef.current && whiteboardId) {
+    socketRef.current.emit('video-create', { whiteboardId, video });
+  }
+};
+
+const handleVideoUpdate = (id, updates) => {
+  setVideos(prev => prev.map(vid => vid.id === id ? { ...vid, ...updates } : vid));
+  if (socketRef.current && whiteboardId) {
+    socketRef.current.emit('video-update', { whiteboardId, id, ...updates });
+  }
+};
+
+const handleVideoDelete = (id) => {
+  setVideos(prev => prev.filter(vid => vid.id !== id));
+  if (socketRef.current && whiteboardId) {
+    socketRef.current.emit('video-delete', { whiteboardId, id });
+  }
+};
 
   const handleDrawing = (drawingData) => {
     if (socketRef.current && whiteboardId) {
@@ -281,6 +304,7 @@ const Whiteboard = () => {
           showColorPicker={showColorPicker}
           setShowColorPicker={setShowColorPicker}
           onImageCreate={handleImageCreate}
+          onVideoCreate={handleVideoCreate}
           // 🔹 PRZEKAZUJEMY panOffset (Toolbar tego potrzebuje do wyliczania pozycji wklejania)
           panOffset={panOffset}
         />
@@ -307,6 +331,10 @@ const Whiteboard = () => {
           onImageCreate={handleImageCreate}
           onImageUpdate={handleImageUpdate}
           onImageDelete={handleImageDelete}
+          videos={videos}
+          onVideoCreate={handleVideoCreate}
+          onVideoUpdate={handleVideoUpdate}
+          onVideoDelete={handleVideoDelete}
           // 🔹 PRZEKAZUJEMY brakujące propsy
           panOffset={panOffset}
           setPanOffset={setPanOffset}
