@@ -7,7 +7,7 @@ import Text from './Text';
 import Emoji from './Emoji';
 import Gif from './Gif';
 import ImageItem from './ImageItem';
-import Video from './Video';
+import Video from './Video'; 
 import Shape from './Shape';
 import Chat from './Chat';
 
@@ -51,7 +51,7 @@ const Canvas = ({
   onImageCreate,
   onImageUpdate,
   onImageDelete,
-  videos: initialVideos,
+  videos: initialVideos, 
   onVideoCreate,
   onVideoUpdate,
   onVideoDelete,
@@ -95,7 +95,6 @@ const Canvas = ({
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const lastMousePosRef = useRef({ x: 0, y: 0 });
 
-
   // Helpers
   const isWithinBounds = (x, y) => {
     return x >= -WORLD_LIMIT && x <= WORLD_LIMIT && y >= -WORLD_LIMIT && y <= WORLD_LIMIT;
@@ -119,7 +118,6 @@ const Canvas = ({
   // Videos - uproszczone zarządzanie
   const [videos, setVideos] = useState(initialVideos || []);
   const [selectedVideoId, setSelectedVideoId] = useState(null);
-
 
   // Shapes
   const [shapes, setShapes] = useState(initialShapes || []);
@@ -263,10 +261,10 @@ const Canvas = ({
           const reader = new FileReader();
           reader.onload = (event) => {
             const url = event.target.result;
-
+            
             const defaultWidth = 320;
             const defaultHeight = 180;
-
+            
             let finalX = x - (defaultWidth / 2);
             let finalY = y - (defaultHeight / 2);
 
@@ -390,6 +388,7 @@ const Canvas = ({
     setVideos(prev => prev.filter(v => v.id !== id));
     if (selectedVideoId === id) setSelectedVideoId(null);
     if (onVideoDelete) onVideoDelete(id);
+    if (socket) socket.emit("video-delete", { whiteboardId, id });
   };
 
   const removeEmoji = (id) => {
@@ -728,12 +727,13 @@ const Canvas = ({
   // UPROSZCZONE FUNKCJE VIDEO
   const handleVideoUpdate = (id, updates) => {
     setVideos(prev => prev.map(v => v.id === id ? { ...v, ...updates } : v));
-
     if (onVideoUpdate) onVideoUpdate(id, updates);
+    if (socket) socket.emit("video-update", { whiteboardId, id, updates });
   };
 
   const addVideo = (video) => {
     setVideos(prev => [...prev, video]);
+    if (socket) socket.emit('video-create', { whiteboardId, video });
     if (onVideoCreate) onVideoCreate(video);
   };
 
@@ -1177,9 +1177,9 @@ const Canvas = ({
       const handleEmojiUpdate = (data) => setEmojis(prev => prev.map(e => e.id === data.id ? { ...e, ...data } : e));
       const handleGifUpdate = (data) => setGifs(prev => prev.map(g => g.id === data.id ? { ...g, ...data } : g));
       const handleImageUpdateSocket = (data) => setImages(prev => prev.map(img => img.id === data.id ? { ...img, ...data } : img));
-      const handleVideoUpdateSocket = (data) => { setVideos(prev => prev.map(v => v.id === data.id ? { ...v, ...data } : v)); };
-      const handleVideoCreateSocket = (data) => { setVideos(prev => prev.some(v => v.id === data.video.id) ? prev : [...prev, data.video]); };
-      const handleVideoDeleteSocket = (data) => { setVideos(prev => prev.filter(v => v.id !== data.id)); };
+      const handleVideoUpdateSocket = (data) => {setVideos(prev => prev.map(v => v.id === data.id ? { ...v, ...data } : v));};
+      const handleVideoCreateSocket = (data) => { setVideos(prev => prev.some(v => v.id === data.video.id) ? prev : [...prev, data.video]);};
+      const handleVideoDeleteSocket = (data) => {setVideos(prev => prev.filter(v => v.id !== data.id));};
       const handleShapeUpdate = (data) => setShapes(prev => prev.map(s => s.id === data.id ? { ...s, ...data } : s));
 
       const handleEmojiCreateSocket = (data) => setEmojis(prev => prev.some(e => e.id === data.emoji.id) ? prev : [...prev, data.emoji]);
@@ -1563,10 +1563,10 @@ const Canvas = ({
         })}
 
         {/* 🔹 POPRAWKA: Kursory skalowane przez mnożenie pozycji przez zoom */}
-        {remoteCursorsArray.map((cursor, index) => {
+      {remoteCursorsArray.map((cursor, index) => {
           const userName = cursor.user?.name || 'Unknown';
           const userColor = cursor.user?.color || '#ff4444';
-
+          
           if (!cursor.position) return null;
 
           // 🧮 PRZELICZANIE: (Świat * Zoom) + Przesunięcie
@@ -1611,7 +1611,7 @@ const Canvas = ({
               </div>
             </div>
           );
-        })}
+        })} 
 
         <button
           className="background-toggle"
