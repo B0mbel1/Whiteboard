@@ -1,19 +1,20 @@
-import React from 'react';
-import DraggableResizableWrapper from './DraggableResizableWrapper';
+import React from "react";
+import DraggableResizableWrapper from "./DraggableResizableWrapper";
 
-// 🔹 Dodajemy 'zoom' do destrukturyzacji propsów (domyślnie 1)
-const ImageItem = ({ 
-  id, 
-  x, 
-  y, 
-  url, 
-  width = 200, 
-  selected, 
-  onSelect, 
-  onUpdate, 
-  panOffset, 
-  limit = 1500,
-  zoom = 1 // 🔹 Odbieramy zoom
+const ImageItem = ({
+  id,
+  x,
+  y,
+  width,
+  height,
+  url,
+  selected,
+  onSelect,
+  onUpdate,
+  panOffset,
+  limit,
+  zoom,
+  aspectRatio
 }) => {
   return (
     <DraggableResizableWrapper
@@ -21,23 +22,29 @@ const ImageItem = ({
       x={x}
       y={y}
       width={width}
+      // Jeśli height nie jest podane, wrapper wyliczy je z aspectRatio
+      height={height} 
       isSelected={selected}
       onSelect={onSelect}
       onUpdate={onUpdate}
-      aspectRatioLocked={true}
       panOffset={panOffset}
       limit={limit}
-      zoom={zoom} // 🔹 Przekazujemy zoom do wrappera
+      zoom={zoom}
+      aspectRatioLocked={true} // Zdjęcia zazwyczaj mają zablokowane proporcje
+      aspectRatio={aspectRatio}
+      style={{ pointerEvents: "auto" }}
     >
       <img
         src={url}
-        alt="uploaded"
+        alt="whiteboard item"
+        draggable={false}
         style={{
-          width: '100%',
-          height: 'auto',
-          display: 'block',
-          pointerEvents: 'none',
-          userSelect: 'none'
+          width: "100%",
+          height: "100%",
+          objectFit: "contain", // Lub "cover" jeśli wolisz
+          pointerEvents: "none",
+          display: "block", // 🔹 DODANO: Zapobiega dziwnym odstępom na dole
+          userSelect: "none"
         }}
       />
     </DraggableResizableWrapper>

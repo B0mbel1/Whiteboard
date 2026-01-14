@@ -5,45 +5,72 @@ const DraggableResizableWrapper = ({
   x,
   y,
   width,
+  height,
   isSelected,
   onSelect,
   onUpdate,
   children,
   minWidth = 50,
-  aspectRatioLocked = true,
+  minHeight = 50,
+  aspectRatioLocked = false,
+  aspectRatio = 1,
   style,
   panOffset,
-  limit = 1500,
-  zoom = 1 // 🔹 Odbieramy zoom (domyślnie 1)
+  limit = 2500,
+  zoom = 1
 }) => {
+  // Stan do renderowania (wizualny)
   const [localPos, setLocalPos] = useState({ x, y });
-  const [localWidth, setLocalWidth] = useState(width);
+  const [localSize, setLocalSize] = useState({
+    width,
+    height: height || (aspectRatioLocked ? width / aspectRatio : width)
+  });
+
+  // REFS: Trzymają aktualne dane bez czekania na re-render (TO NAPRAWIA SNAP-BACK)
+  const posRef = useRef({ x, y });
+  const sizeRef = useRef({ width, height });
+
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
 
   const dragStartRef = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
-  const resizeStartRef = useRef({ x: 0, y: 0, startWidth: 0, startLeft: 0, startTop: 0, startHeight: 0, aspectRatio: 1 });
+  const resizeStartRef = useRef({
+    x: 0, y: 0,
+    startWidth: 0, startHeight: 0,
+    startLeft: 0, startTop: 0
+  });
   const wrapperRef = useRef(null);
 
+  // Synchronizacja z propsami (gdy przychodzą zmiany z zewnątrz/zooma)
   useEffect(() => {
+    // Aktualizujemy tylko jeśli NIE przeciągamy (żeby nie walczyć z użytkownikiem)
     if (!isDragging && !isResizing) {
       setLocalPos({ x, y });
-      setLocalWidth(width);
+      const newHeight = height !== undefined
+        ? height
+        : (aspectRatioLocked ? width / aspectRatio : width);
+
+      setLocalSize({ width, height: newHeight });
+
+      // Aktualizujemy też refy!
+      posRef.current = { x, y };
+      sizeRef.current = { width, height: newHeight };
     }
-  }, [x, y, width, isDragging, isResizing]);
+  }, [x, y, width, height, aspectRatioLocked, aspectRatio, zoom, isDragging, isResizing]);
 
   const handleMouseDown = (e) => {
     if (e.target.classList.contains('resize-handle')) return;
     e.stopPropagation();
-    onSelect(id);
+    if (onSelect) onSelect(id);
 
     if (e.button === 0) {
       setIsDragging(true);
+      // Zapisujemy punkt startowy
       dragStartRef.current = {
         x: e.clientX,
         y: e.clientY,
-        startX: localPos.x,
-        startY: localPos.y
+        startX: posRef.current.x, // Bierzemy z Ref, nie ze State
+        startY: posRef.current.y
       };
     }
   };
@@ -51,19 +78,16 @@ const DraggableResizableWrapper = ({
   const handleResizeMouseDown = (e, handleType) => {
     e.stopPropagation();
     e.preventDefault();
+    if (onSelect) onSelect(id);
     setIsResizing(handleType);
-
-    const currentHeight = wrapperRef.current ? wrapperRef.current.offsetHeight : 0;
-    const ratio = localWidth / (currentHeight || 1);
 
     resizeStartRef.current = {
       x: e.clientX,
       y: e.clientY,
-      startWidth: localWidth,
-      startLeft: localPos.x,
-      startTop: localPos.y,
-      startHeight: currentHeight,
-      aspectRatio: ratio
+      startWidth: sizeRef.current.width,
+      startHeight: sizeRef.current.height,
+      startLeft: posRef.current.x,
+      startTop: posRef.current.y
     };
   };
 
@@ -73,7 +97,7 @@ const DraggableResizableWrapper = ({
     const handleMouseMove = (e) => {
       e.preventDefault();
 
-      // --- PRZESUWANIE (DRAGGING) ---
+      // --- DRAGGING ---
       if (isDragging) {
         const dx = e.clientX - dragStartRef.current.x;
         const dy = e.clientY - dragStartRef.current.y;
@@ -82,162 +106,128 @@ const DraggableResizableWrapper = ({
         let newY = dragStartRef.current.startY + dy;
 
         if (panOffset) {
-          const currentHeight = wrapperRef.current ? wrapperRef.current.offsetHeight : 0;
-
-          // 1. Konwersja Screen -> World
+          // Przeliczenie na współrzędne świata dla limitów
           const worldX = (newX - panOffset.x) / zoom;
           const worldY = (newY - panOffset.y) / zoom;
+          const worldWidth = sizeRef.current.width / zoom;
+          const worldHeight = sizeRef.current.height / zoom;
 
-          // 2. Wymiary w świecie
-          const worldWidth = localWidth / zoom;
-          const worldHeight = currentHeight / zoom;
-
-          // 3. CLAMP (blokada w świecie)
           const clampedWorldX = Math.max(-limit, Math.min(worldX, limit - worldWidth));
           const clampedWorldY = Math.max(-limit, Math.min(worldY, limit - worldHeight));
 
-          // 4. Powrót na ekran
           newX = (clampedWorldX * zoom) + panOffset.x;
           newY = (clampedWorldY * zoom) + panOffset.y;
         }
+
+        // Aktualizacja Refa (natychmiastowa)
+        posRef.current = { x: newX, y: newY };
+        // Aktualizacja State (wizualna)
         setLocalPos({ x: newX, y: newY });
 
-        if (onUpdate) {
-          onUpdate(id, { x: newX, y: newY });
-        }
+        if (onUpdate) onUpdate(id, { x: newX, y: newY });
       }
 
-      // --- SKALOWANIE (RESIZING) ---
+      // --- RESIZING ---
       if (isResizing) {
         const dx = e.clientX - resizeStartRef.current.x;
-        const { startWidth, startLeft, startTop, startHeight, aspectRatio } = resizeStartRef.current;
+        const dy = e.clientY - resizeStartRef.current.y;
+
+        const { startWidth, startHeight, startLeft, startTop } = resizeStartRef.current;
 
         let newWidth = startWidth;
+        let newHeight = startHeight;
         let newX = startLeft;
         let newY = startTop;
 
-        // 1. Obliczanie szerokości na podstawie ruchu myszy
-        if (isResizing.includes('w')) {
-          newWidth = startWidth - dx;
-          newX = startLeft + dx;
-        } else {
-          newWidth = startWidth + dx;
-        }
+        if (isResizing.includes('e')) newWidth = startWidth + dx;
+        if (isResizing.includes('w')) { newWidth = startWidth - dx; newX = startLeft + dx; }
+        if (isResizing.includes('s')) newHeight = startHeight + dy;
+        if (isResizing.includes('n')) { newHeight = startHeight - dy; newY = startTop + dy; }
 
-        // Minimalna szerokość
-        const minWidthScaled = minWidth * zoom;
-        if (newWidth < minWidthScaled) {
-          if (isResizing.includes('w')) newX = (startLeft + startWidth) - minWidthScaled;
-          newWidth = minWidthScaled;
-        }
-
-        // 2. Ograniczenia poziome (lewo/prawo)
-        if (panOffset) {
-          const worldX = (newX - panOffset.x) / zoom;
-          const worldWidth = newWidth / zoom;
-
-          // Prawa ściana
-          if (!isResizing.includes('w')) {
-            if (worldX + worldWidth > limit) {
-              const maxWorldWidth = limit - worldX;
-              newWidth = maxWorldWidth * zoom;
-            }
-          }
-          // Lewa ściana
-          else {
-            if (worldX < -limit) {
-              const overflowWorld = -limit - worldX;
-              const overflowScreen = overflowWorld * zoom;
-              newX += overflowScreen;
-              newWidth -= overflowScreen;
-            }
-          }
-        }
-
-        // 3. Przeliczanie wysokości (Aspect Ratio) i ograniczenia pionowe (góra)
         if (aspectRatioLocked) {
-          let newHeight = newWidth / aspectRatio;
-
-          // Obsługa górnych uchwytów (North)
-          if (isResizing.includes('n')) {
-            newY = startTop + (startHeight - newHeight);
-
-            if (panOffset) {
-              // Sprawdzamy czy wychodzimy poza górną krawędź świata
-              const worldY = (newY - panOffset.y) / zoom;
-              const topLimitWorld = -limit;
-
-              if (worldY < topLimitWorld) {
-                // A. Blokujemy Y na limicie
-                const clampedWorldY = topLimitWorld;
-                newY = (clampedWorldY * zoom) + panOffset.y;
-
-                // B. Przeliczamy wysokość na podstawie zablokowanego Y
-                // Nowa wysokość = Stary dół (ekranowy) - Nowa góra (ekranowa)
-                const currentBottomScreen = startTop + startHeight;
-                newHeight = currentBottomScreen - newY;
-
-                // C. Przeliczamy szerokość z nowej wysokości (żeby zachować proporcje)
-                newWidth = newHeight * aspectRatio;
-
-                // D. KOREKTA X przy uchwycie 'nw' (North-West)
-                // Skoro szerokość zmalała/wzrosła przez blokadę góry, musimy skorygować X,
-                // żeby prawa krawędź została w miejscu.
-                if (isResizing.includes('w')) {
-                  // Prawa krawędź (stała) = startLeft + startWidth
-                  newX = (startLeft + startWidth) - newWidth;
-                }
-                // Dla 'ne' (North-East) newX (lewa krawędź) pozostaje bez zmian, co jest OK.
-              }
-            }
+          if (isResizing.includes('e') || isResizing.includes('w')) {
+            newHeight = newWidth / aspectRatio;
+            if (isResizing.includes('n')) newY = startTop + (startHeight - newHeight);
           }
         }
 
-        setLocalWidth(newWidth);
+        const minWScaled = minWidth * zoom;
+        const minHScaled = minHeight * zoom;
+
+        if (newWidth < minWScaled) { if (isResizing.includes('w')) newX = startLeft + startWidth - minWScaled; newWidth = minWScaled; }
+        if (newHeight < minHScaled) { if (isResizing.includes('n')) newY = startTop + startHeight - minHScaled; newHeight = minHScaled; }
+
+        // Aktualizacja Refów
+        sizeRef.current = { width: newWidth, height: newHeight };
+        posRef.current = { x: newX, y: newY };
+
+        // Aktualizacja State
+        setLocalSize({ width: newWidth, height: newHeight });
         setLocalPos({ x: newX, y: newY });
 
-        if (onUpdate) {
-          onUpdate(id, { x: newX, y: newY, width: newWidth });
-        }
+        if (onUpdate) onUpdate(id, { x: newX, y: newY, width: newWidth, height: newHeight });
       }
     };
 
     const handleMouseUp = () => {
-      if (isDragging || isResizing) {
-        setIsDragging(false);
-        setIsResizing(false);
+      // 🔹 FIX: Używamy danych z posRef.current i sizeRef.current.
+      // Są one zawsze aktualne, nawet jeśli React jeszcze nie przerysował komponentu.
+      if (onUpdate && (isDragging || isResizing)) {
+        onUpdate(id, {
+          x: posRef.current.x,
+          y: posRef.current.y,
+          width: sizeRef.current.width,
+          height: sizeRef.current.height
+        });
       }
+
+      setIsDragging(false);
+      setIsResizing(false);
     };
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, isResizing, id, onUpdate, localPos.x, localPos.y, minWidth, aspectRatioLocked, panOffset, limit, zoom]);
+  }, [isDragging, isResizing, id, onUpdate, minWidth, minHeight, panOffset, limit, zoom, aspectRatioLocked, aspectRatio]);
 
-  const handles = ['nw', 'ne', 'sw', 'se'];
+  const handles = ['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w'];
 
   return (
     <div
       ref={wrapperRef}
-      onClick={(e) => { e.stopPropagation(); onSelect(id); }}
       onMouseDown={handleMouseDown}
+      onClick={(e) => { e.stopPropagation(); if (onSelect) onSelect(id); }}
       style={{
         position: 'absolute',
         left: localPos.x,
         top: localPos.y,
-        width: `${localWidth}px`,
+        width: `${localSize.width}px`,
+        height: `${localSize.height}px`,
         cursor: isDragging ? 'grabbing' : 'grab',
+        boxSizing: 'border-box',
         border: isSelected ? '2px solid #3498db' : '2px solid transparent',
+        // overflow: 'hidden',
         zIndex: isSelected ? 20 : 10,
         userSelect: 'none',
         touchAction: 'none',
         ...style
       }}
     >
+
+      {(isDragging || isResizing) && (
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          zIndex: 9999, // Musi być na samym wierzchu
+          cursor: isDragging ? 'grabbing' : 'nwse-resize'
+        }} />
+      )}
       {children}
 
       {isSelected && handles.map(handle => (
@@ -252,10 +242,13 @@ const DraggableResizableWrapper = ({
             background: 'white',
             border: '1px solid #3498db',
             zIndex: 21,
+            boxSizing: 'content-box',
             ...getHandleStyle(handle)
           }}
         />
       ))}
+
+
     </div>
   );
 };
@@ -266,11 +259,10 @@ const getHandleStyle = (handle) => {
   if (handle.includes('s')) style.bottom = '-6px';
   if (handle.includes('w')) style.left = '-6px';
   if (handle.includes('e')) style.right = '-6px';
-
-  let cursor = 'nwse-resize';
-  if (handle === 'ne' || handle === 'sw') cursor = 'nesw-resize';
-  style.cursor = cursor;
-
+  if (handle === 'n' || handle === 's') { style.left = '50%'; style.transform = 'translateX(-50%)'; style.cursor = 'ns-resize'; }
+  if (handle === 'e' || handle === 'w') { style.top = '50%'; style.transform = 'translateY(-50%)'; style.cursor = 'ew-resize'; }
+  if (handle === 'nw' || handle === 'se') style.cursor = 'nwse-resize';
+  if (handle === 'ne' || handle === 'sw') style.cursor = 'nesw-resize';
   return style;
 };
 
