@@ -1,205 +1,35 @@
 .video-container {
-  border: 2px solid transparent;
-  border-radius: 6px;
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  transition: all 0.2s ease;
-  background: #000;
-  position: relative;
-  min-height: 50px;
+  position: absolute;
+  background-color: transparent;
+  transition: box-shadow 0.2s;
 }
 
 .video-container.selected {
-  border-color: #3498db;
-  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.3);
+  box-shadow: 0 0 0 2px #3498db;
 }
 
-/* Stylowanie natywnych kontrolek przeglądarki */
-video {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-video::-webkit-media-controls-panel {
-  background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,0.7));
-}
-
-video::-webkit-media-controls-timeline {
-  background-color: rgba(255,255,255,0.2);
-  border-radius: 2px;
-}
-
-video::-webkit-media-controls-current-time-display,
-video::-webkit-media-controls-time-remaining-display {
-  color: white;
-  text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
-}
-
-/* Przycisk usuwania */
-.video-remove-button {
+.video-container.selected .selection-border {
   position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 25px;
-  height: 25px;
-  background: #e74c3c;
-  color: white;
-  border: 2px solid white;
-  border-radius: 50%;
-  font-size: 15px;
-  font-weight: bold;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  pointer-events: all;
-  transition: all 0.2s ease;
-  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4);
-}
-
-.video-remove-button:hover {
-  background: #c0392b;
-  transform: scale(1.15);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
-}
-
-.video-remove-button:active {
-  transform: scale(0.95);
-}
-
-/* Loading indicator */
-.video-loading {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.8);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-size: 14px;
-  gap: 10px;
-  z-index: 15;
-}
-
-.loading-spinner {
-  width: 40px;
-  height: 40px;
-  border: 4px solid rgba(255, 255, 255, 0.3);
-  border-top: 4px solid #3498db;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-/* Fullscreen styles */
-:fullscreen .video-container {
-  width: 100vw;
-  height: 100vh;
-  border: none;
-  border-radius: 0;
-}
-
-:fullscreen video {
-  object-fit: contain;
-}
-
-:fullscreen .video-remove-button {
-  top: 20px;
-  right: 20px;
-  width: 44px;
-  height: 44px;
-  font-size: 24px;
-}
-
-/* Firefox fullscreen */
-:-moz-full-screen .video-container {
-  width: 100vw;
-  height: 100vh;
-  border: none;
-  border-radius: 0;
-}
-
-/* Chrome, Safari fullscreen */
-:-webkit-full-screen .video-container {
-  width: 100vw;
-  height: 100vh;
-  border: none;
-  border-radius: 0;
-}
-
-/* Styl dla iframe */
-.video-container iframe {
-  border: none;
-  display: block;
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-}
-
-/* Responsywność */
-@media (max-width: 768px) {
-  .video-remove-button {
-    top: 8px;
-    right: 8px;
-    width: 32px;
-    height: 32px;
-    font-size: 16px;
-  }
-}
-
-/* Styl dla małych wideo */
-.video-container.small .video-remove-button {
-  width: 22px;
-  height: 22px;
-  font-size: 12px;
-  top: 6px;
-  right: 6px;
-}
-
-/* Klasy pomocnicze dla różnych rozmiarów */
-.video-container.medium {
-  min-height: 150px;
-}
-
-.video-container.large {
-  min-height: 300px;
-}
-
-/* Wskaźnik synchronizacji */
-.video-sync-indicator {
-  position: absolute;
-  top: 8px;
-  right: 45px;
-  background: rgba(52, 152, 219, 0.8);
-  color: white;
-  padding: 2px 6px;
-  border-radius: 10px;
-  font-size: 10px;
-  font-weight: bold;
-  z-index: 15;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  border: 2px dashed #3498db;
   pointer-events: none;
+  border-radius: 6px;
 }
 
-.video-sync-indicator.syncing {
-  background: rgba(231, 76, 60, 0.8);
-  animation: pulse 1.5s infinite;
+.video-container video {
+  display: block;
+  background-color: #000;
 }
 
-@keyframes pulse {
-  0% { opacity: 1; }
-  50% { opacity: 0.5; }
-  100% { opacity: 1; }
+.resize-handle {
+  position: absolute;
+  z-index: 101;
+}
+
+.resize-handle:hover {
+  background-color: #2980b9 !important;
+  transform: scale(1.2);
 }

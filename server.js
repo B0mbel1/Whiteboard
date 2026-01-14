@@ -28,7 +28,19 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use('/uploads', express.static('uploads'));
+app.use(
+  '/uploads',
+  express.static(path.join(__dirname, 'uploads'), {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.mp4')) {
+        res.setHeader('Content-Type', 'video/mp4');
+      }
+      if (filePath.endsWith('.webm')) {
+        res.setHeader('Content-Type', 'video/webm');
+      }
+    }
+  })
+);
 
 // Baza danych
 const whiteboards = new Map();
@@ -46,7 +58,7 @@ app.get('/api/create-whiteboard', (req, res) => {
     images: [],
     shapes: [],
     emojis: [],
-    videos: new Map(),
+    videos: [], // Tablica, nie Map
     backgroundMode: 'grid',
     chatMessages: []
   });
@@ -89,92 +101,6 @@ app.post('/api/upload-video', (req, res) => {
   });
 });
 
-// Process video link
-app.post('/api/process-video-link', express.json(), async (req, res) => {
-  const { url } = req.body;
-  if (!url) return res.status(400).json({ error: 'No URL provided' });
-  
-  if (url.includes('youtube.com') || url.includes('youtu.be')) {
-    const videoId = extractYouTubeId(url);
-    if (videoId) return res.json({
-      success: true,
-      type: 'youtube',
-      videoId,
-      embedUrl: `https://www.youtube.com/embed/${videoId}`,
-      thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
-    });
-  }
-  
-  if (url.includes('vimeo.com')) {
-    const videoId = extractVimeoId(url);
-    if (videoId) return res.json({
-      success: true,
-      type: 'vimeo',
-      videoId,
-      embedUrl: `https://player.vimeo.com/video/${videoId}`,
-      thumbnail: await getVimeoThumbnail(videoId)
-    });
-  }
-  
-  if (url.match(/\.(mp4|webm|ogg|mov|avi|wmv|flv|mkv)$/i)) {
-    return res.json({
-      success: true,
-      type: 'direct',
-      url,
-      canEmbed: true
-    });
-  }
-  
-  return res.json({
-    success: true,
-    type: 'generic',
-    url,
-    canEmbed: true
-  });
-});
-
-function extractYouTubeId(url) {
-  const patterns = [
-    /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/,
-    /youtube\.com\/watch\?v=([^"&?\/\s]{11})/,
-    /youtube\.com\/embed\/([^"&?\/\s]{11})/,
-    /youtu\.be\/([^"&?\/\s]{11})/
-  ];
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match && match[1]) return match[1];
-  }
-  return null;
-}
-
-function extractVimeoId(url) {
-  const patterns = [
-    /vimeo\.com\/(\d+)/,
-    /vimeo\.com\/video\/(\d+)/,
-    /player\.vimeo\.com\/video\/(\d+)/
-  ];
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match && match[1]) return match[1];
-  }
-  return null;
-}
-
-async function getVimeoThumbnail(videoId) {
-  return new Promise(resolve => {
-    https.get(`https://vimeo.com/api/v2/video/${videoId}.json`, res => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          resolve(json[0]?.thumbnail_large || null);
-        } catch { resolve(null); }
-      });
-    }).on('error', () => resolve(null));
-  });
-}
-
 io.on("connection", (socket) => {
   console.log("✅ Socket connected:", socket.id);
   let currentWhiteboardId = null;
@@ -203,7 +129,7 @@ io.on("connection", (socket) => {
         images: [],
         shapes: [],
         emojis: [],
-        videos: new Map(),
+        videos: [], // Tablica, nie Map
         backgroundMode: 'grid',
         chatMessages: []
       });
@@ -228,7 +154,7 @@ io.on("connection", (socket) => {
       notes: whiteboard.notes,
       gifs: whiteboard.gifs,
       images: whiteboard.images,
-      videos: Array.from(whiteboard.videos.values()),
+      videos: whiteboard.videos, // Bez Array.from - to już tablica
       shapes: whiteboard.shapes,
       emojis: whiteboard.emojis,
       backgroundMode: whiteboard.backgroundMode
@@ -239,15 +165,14 @@ io.on("connection", (socket) => {
       messages: whiteboard.chatMessages
     });
     
-    whiteboard.videos.forEach((video, videoId) => {
+    // Synchronizuj video dla nowego użytkownika
+    whiteboard.videos.forEach(video => {
       socket.emit("video-sync", {
         whiteboardId,
-        videoId,
+        videoId: video.id,
         state: {
-          playing: video.playing,
-          currentTime: video.currentTime,
-          volume: video.volume || 0.5,
-          muted: video.muted || false
+          playing: video.playing || false,
+          currentTime: video.currentTime || 0
         }
       });
     });
@@ -263,156 +188,118 @@ io.on("connection", (socket) => {
   });
 
   // ========== VIDEO HANDLERS ==========
+  
   socket.on("video-create", d => {
     const wb = whiteboards.get(d.whiteboardId);
-    if (!wb || wb.videos.has(d.video.id)) return;
-    
+    if (!wb) return;
+
+    // Sprawdź czy video już istnieje (zapobieganie duplikatom)
+    if (wb.videos.some(v => v.id === d.video.id)) return;
+
     const video = {
       ...d.video,
-      id: d.video.id || `video_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       playing: false,
-      currentTime: 0,
-      volume: 0.5,
-      muted: false,
-      lastUpdated: Date.now(),
-      lastUpdatedBy: socket.id
+      currentTime: 0
     };
-    
-    wb.videos.set(video.id, video);
-    io.to(d.whiteboardId).emit("video-create", { whiteboardId: d.whiteboardId, video });
+
+    wb.videos.push(video); // Dodaj do tablicy
+    io.to(d.whiteboardId).emit("video-create", {
+      whiteboardId: d.whiteboardId,
+      video
+    });
   });
 
   socket.on("video-update", d => {
     const wb = whiteboards.get(d.whiteboardId);
     if (!wb) return;
-    const video = wb.videos.get(d.id);
-    if (!video) return;
     
-    const updates = d.updates || {};
-    if (updates.x !== undefined) video.x = updates.x;
-    if (updates.y !== undefined) video.y = updates.y;
-    if (updates.width !== undefined) video.width = updates.width;
-    if (updates.height !== undefined) video.height = updates.height;
+    const videoIndex = wb.videos.findIndex(v => v.id === d.id);
+    if (videoIndex === -1) return;
     
-    video.lastUpdated = Date.now();
-    video.lastUpdatedBy = socket.id;
+    const video = wb.videos[videoIndex];
+    
+    // Aktualizuj tylko przekazane właściwości
+    if (d.updates) {
+      Object.assign(video, d.updates);
+    }
     
     socket.to(d.whiteboardId).emit("video-update", {
       id: d.id,
-      updates,
-      fromUserId: socket.id
+      updates: d.updates
     });
   });
 
-  socket.on("video-volume", d => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (!wb) return;
-    const video = wb.videos.get(d.id);
-    if (!video) return;
-    
-    if (d.volume !== undefined) video.volume = d.volume;
-    if (d.muted !== undefined) video.muted = d.muted;
-    video.lastUpdated = Date.now();
-    video.lastUpdatedBy = socket.id;
-    
-    socket.to(d.whiteboardId).emit("video-volume", {
-      id: d.id,
-      volume: d.volume,
-      muted: d.muted,
-      fromUserId: socket.id,
-      timestamp: Date.now()
-    });
-  });
-
-  socket.on("video-delete", d => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (!wb) return;
-    wb.videos.delete(d.id);
-    io.to(d.whiteboardId).emit("video-delete", {
-      id: d.id,
-      fromUserId: socket.id
-    });
-  });
-
-  // Playback events
   socket.on("video-play", d => {
     const wb = whiteboards.get(d.whiteboardId);
     if (!wb) return;
-    const video = wb.videos.get(d.id);
-    if (!video) return;
     
+    const video = wb.videos.find(v => v.id === d.id);
+    if (!video) return;
+
     video.playing = true;
     video.currentTime = d.currentTime || 0;
-    video.lastUpdated = Date.now();
-    video.lastUpdatedBy = socket.id;
-    
+
     io.to(d.whiteboardId).emit("video-play", {
       id: d.id,
-      currentTime: video.currentTime,
-      volume: video.volume,
-      muted: video.muted,
-      fromUserId: socket.id,
-      timestamp: Date.now()
+      currentTime: video.currentTime
     });
   });
 
   socket.on("video-pause", d => {
     const wb = whiteboards.get(d.whiteboardId);
     if (!wb) return;
-    const video = wb.videos.get(d.id);
-    if (!video) return;
     
+    const video = wb.videos.find(v => v.id === d.id);
+    if (!video) return;
+
     video.playing = false;
     video.currentTime = d.currentTime || 0;
-    video.lastUpdated = Date.now();
-    video.lastUpdatedBy = socket.id;
-    
+
     io.to(d.whiteboardId).emit("video-pause", {
       id: d.id,
-      currentTime: video.currentTime,
-      volume: video.volume,
-      muted: video.muted,
-      fromUserId: socket.id,
-      timestamp: Date.now()
+      currentTime: video.currentTime
     });
   });
 
   socket.on("video-seek", d => {
     const wb = whiteboards.get(d.whiteboardId);
     if (!wb) return;
-    const video = wb.videos.get(d.id);
-    if (!video) return;
     
-    if (typeof d.currentTime === 'number') {
-      video.currentTime = d.currentTime;
-      video.lastUpdated = Date.now();
-      video.lastUpdatedBy = socket.id;
-      
-      io.to(d.whiteboardId).emit("video-seek", {
-        id: d.id,
-        currentTime: video.currentTime,
-        volume: video.volume,
-        muted: video.muted,
-        fromUserId: socket.id,
-        timestamp: Date.now()
-      });
-    }
+    const video = wb.videos.find(v => v.id === d.id);
+    if (!video) return;
+
+    video.currentTime = d.currentTime || 0;
+
+    io.to(d.whiteboardId).emit("video-seek", {
+      id: d.id,
+      currentTime: video.currentTime
+    });
+  });
+
+  socket.on("video-delete", d => {
+    const wb = whiteboards.get(d.whiteboardId);
+    if (!wb) return;
+
+    // Usuń z tablicy
+    wb.videos = wb.videos.filter(v => v.id !== d.id);
+    io.to(d.whiteboardId).emit("video-delete", {
+      id: d.id
+    });
   });
 
   socket.on("video-sync-request", d => {
     const wb = whiteboards.get(d.whiteboardId);
     if (!wb) return;
-    const video = wb.videos.get(d.videoId);
+    
+    const video = wb.videos.find(v => v.id === d.videoId);
     if (!video) return;
     
     socket.emit("video-sync", {
       videoId: d.videoId,
       whiteboardId: d.whiteboardId,
       state: {
-        playing: video.playing,
-        currentTime: video.currentTime,
-        volume: video.volume || 0.5,
-        muted: video.muted || false
+        playing: video.playing || false,
+        currentTime: video.currentTime || 0
       }
     });
   });
@@ -442,7 +329,7 @@ io.on("connection", (socket) => {
     const wb = whiteboards.get(d.whiteboardId);
     if (wb && wb.textBoxes) {
       const t = wb.textBoxes.find(x => x.id === d.id);
-      if (t) Object.assign(t, d);
+      if (t) Object.assign(t, d.updates || d);
       socket.to(d.whiteboardId).emit("text-update", d);
     }
   });
@@ -469,7 +356,7 @@ io.on("connection", (socket) => {
     const wb = whiteboards.get(d.whiteboardId);
     if (wb && wb.notes) {
       const n = wb.notes.find(x => x.id === d.id);
-      if (n) Object.assign(n, d);
+      if (n) Object.assign(n, d.updates || d);
       socket.to(d.whiteboardId).emit("note-update", d);
     }
   });
@@ -496,7 +383,7 @@ io.on("connection", (socket) => {
     const wb = whiteboards.get(d.whiteboardId);
     if (wb && wb.emojis) {
       const e = wb.emojis.find(x => x.id === d.id);
-      if (e) Object.assign(e, d);
+      if (e) Object.assign(e, d.updates || d);
       socket.to(d.whiteboardId).emit("emoji-update", d);
     }
   });
@@ -523,7 +410,7 @@ io.on("connection", (socket) => {
     const wb = whiteboards.get(d.whiteboardId);
     if (wb && wb.gifs) {
       const g = wb.gifs.find(x => x.id === d.id);
-      if (g) Object.assign(g, d);
+      if (g) Object.assign(g, d.updates || d);
       socket.to(d.whiteboardId).emit("gif-update", d);
     }
   });
@@ -550,7 +437,9 @@ io.on("connection", (socket) => {
     const wb = whiteboards.get(d.whiteboardId);
     if (wb && wb.images) {
       const img = wb.images.find(x => x.id === d.id);
-      if (img) Object.assign(img, d);
+      if (img) {
+        Object.assign(img, d.updates || d);
+      }
       socket.to(d.whiteboardId).emit("image-update", d);
     }
   });
@@ -577,7 +466,7 @@ io.on("connection", (socket) => {
     const wb = whiteboards.get(d.whiteboardId);
     if (wb && wb.shapes) {
       const s = wb.shapes.find(x => x.id === d.id);
-      if (s) Object.assign(s, d);
+      if (s) Object.assign(s, d.updates || d);
       socket.to(d.whiteboardId).emit("shape-update", d);
     }
   });
@@ -603,9 +492,8 @@ io.on("connection", (socket) => {
   socket.on("erase-area", d => {
     const wb = whiteboards.get(d.whiteboardId);
     if (wb) {
-      wb.drawingData.push({
+      const eraseAction = {
         type: 'erase-area',
-<<<<<<< Updated upstream
         x: d.x,
         y: d.y,
         width: d.width,
@@ -616,12 +504,7 @@ io.on("connection", (socket) => {
 
       wb.drawingData.push(eraseAction);
       if (wb.drawingData.length > 20000) wb.drawingData.shift();
-      broadcast(d.whiteboardId, "erase-area", eraseAction);
-=======
-        ...d
-      });
-      socket.to(d.whiteboardId).emit("erase-area", d);
->>>>>>> Stashed changes
+      socket.to(d.whiteboardId).emit("erase-area", eraseAction);
     }
   });
 
@@ -704,7 +587,7 @@ io.on("connection", (socket) => {
         notes: wb.notes,
         gifs: wb.gifs,
         images: wb.images,
-        videos: Array.from(wb.videos.values()),
+        videos: wb.videos, // Bez Array.from
         shapes: wb.shapes,
         emojis: wb.emojis,
         backgroundMode: wb.backgroundMode

@@ -7,7 +7,7 @@ import Text from './Text';
 import Emoji from './Emoji';
 import Gif from './Gif';
 import ImageItem from './ImageItem';
-import Video from './Video'; // 🔹 DODANO IMPORT VIDEO
+import Video from './Video'; 
 import Shape from './Shape';
 import Chat from './Chat';
 
@@ -51,7 +51,7 @@ const Canvas = ({
   onImageCreate,
   onImageUpdate,
   onImageDelete,
-  videos: initialVideos, // 🔹 DODANO VIDEO PROPS
+  videos: initialVideos, 
   onVideoCreate,
   onVideoUpdate,
   onVideoDelete,
@@ -115,7 +115,7 @@ const Canvas = ({
   const [images, setImages] = useState(initialImages || []);
   const [selectedImageId, setSelectedImageId] = useState(null);
 
-  // Videos
+  // Videos - uproszczone zarządzanie
   const [videos, setVideos] = useState(initialVideos || []);
   const [selectedVideoId, setSelectedVideoId] = useState(null);
 
@@ -256,6 +256,42 @@ const Canvas = ({
             if (onImageCreate) onImageCreate(newImage);
           };
           reader.readAsDataURL(file);
+        } else if (file.type.startsWith('video/')) {
+          // UPROSZCZONE DODAWANIE VIDEO
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const url = event.target.result;
+            
+            const defaultWidth = 320;
+            const defaultHeight = 180;
+            
+            let finalX = x - (defaultWidth / 2);
+            let finalY = y - (defaultHeight / 2);
+
+            finalX = Math.max(-WORLD_LIMIT, finalX);
+            finalY = Math.max(-WORLD_LIMIT, finalY);
+
+            if (finalX + defaultWidth > WORLD_LIMIT) {
+              finalX = WORLD_LIMIT - defaultWidth;
+            }
+            if (finalY + defaultHeight > WORLD_LIMIT) {
+              finalY = WORLD_LIMIT - defaultHeight;
+            }
+
+            const newVideo = {
+              id: `video_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              x: finalX,
+              y: finalY,
+              url: url,
+              width: defaultWidth,
+              height: defaultHeight,
+              type: "direct"
+            };
+
+            // Użyj uproszczonej funkcji
+            addVideo(newVideo);
+          };
+          reader.readAsDataURL(file);
         }
       }
     }
@@ -328,51 +364,37 @@ const Canvas = ({
     });
   };
 
-  // Funkcje usuwania
+  // UPROSZCZONE FUNKCJE USUWANIA
   const removeShape = (id) => {
-    const shapeToDelete = shapes.find(s => s.id === id);
-    if (shapeToDelete) {
-      setShapes(prev => prev.filter(s => s.id !== id));
-      if (selectedShapeId === id) setSelectedShapeId(null);
-      if (onShapeDelete) onShapeDelete(id);
-    }
+    setShapes(prev => prev.filter(s => s.id !== id));
+    if (selectedShapeId === id) setSelectedShapeId(null);
+    if (onShapeDelete) onShapeDelete(id);
   };
 
   const removeGif = (id) => {
-    const gifToDelete = gifs.find(g => g.id === id);
-    if (gifToDelete) {
-      setGifs(prev => prev.filter(g => g.id !== id));
-      if (selectedGifId === id) setSelectedGifId(null);
-      if (onGifDelete) onGifDelete(id);
-    }
+    setGifs(prev => prev.filter(g => g.id !== id));
+    if (selectedGifId === id) setSelectedGifId(null);
+    if (onGifDelete) onGifDelete(id);
   };
 
   const removeImage = (id) => {
-    const imageToDelete = images.find(img => img.id === id);
-    if (imageToDelete) {
-      setImages(prev => prev.filter(img => img.id !== id));
-      if (selectedImageId === id) setSelectedImageId(null);
-      if (onImageDelete) onImageDelete(id);
-    }
+    setImages(prev => prev.filter(img => img.id !== id));
+    if (selectedImageId === id) setSelectedImageId(null);
+    if (onImageDelete) onImageDelete(id);
   };
 
+  // UPROSZCZONE USUWANIE VIDEO
   const removeVideo = (id) => {
-    const videoToDelete = videos.find(v => v.id === id);
-    if (videoToDelete) {
-      setVideos(prev => prev.filter(v => v.id !== id));
-      if (selectedVideoId === id) setSelectedVideoId(null);
-      if (onVideoDelete) onVideoDelete(id);
-      if (socket) socket.emit("videos:delete", { id });
-    }
+    setVideos(prev => prev.filter(v => v.id !== id));
+    if (selectedVideoId === id) setSelectedVideoId(null);
+    if (onVideoDelete) onVideoDelete(id);
+    if (socket) socket.emit("video-delete", { whiteboardId, id });
   };
 
   const removeEmoji = (id) => {
-    const emojiToDelete = emojis.find(e => e.id === id);
-    if (emojiToDelete) {
-      setEmojis(prev => prev.filter(e => e.id !== id));
-      if (selectedEmojiId === id) setSelectedEmojiId(null);
-      if (onEmojiDelete) onEmojiDelete(id);
-    }
+    setEmojis(prev => prev.filter(e => e.id !== id));
+    if (selectedEmojiId === id) setSelectedEmojiId(null);
+    if (onEmojiDelete) onEmojiDelete(id);
   };
 
   useEffect(() => { setGifs(initialGifs || []); }, [initialGifs]);
@@ -650,7 +672,6 @@ const Canvas = ({
     }
   }, [socket, currentUser]);
 
-
   const clearDrawingCanvas = () => {
     const context = drawingContextRef.current;
     const canvas = drawingCanvasRef.current;
@@ -703,36 +724,18 @@ const Canvas = ({
     if (onImageUpdate) onImageUpdate(id, updates);
   };
 
-  // 🔹 DODANO FUNKCJE VIDEO Z PIERWSZEJ WERSJI
-  const handleVideoCreate = (video) => { 
-    const newVideo = {
-      ...video,
-      id: video.id || `video_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      type: video.type || "direct"
-    };
-    setVideos(prev => [...prev, newVideo]);
-    
-    if (socket) socket.emit('video-create', { whiteboardId, video: newVideo });
-    if (onVideoCreate) onVideoCreate(newVideo);
+  // UPROSZCZONE FUNKCJE VIDEO
+  const handleVideoUpdate = (id, updates) => {
+    setVideos(prev => prev.map(v => v.id === id ? { ...v, ...updates } : v));
+    if (onVideoUpdate) onVideoUpdate(id, updates);
+    if (socket) socket.emit("video-update", { whiteboardId, id, updates });
   };
-  
+
   const addVideo = (video) => {
     setVideos(prev => [...prev, video]);
-    if (socket) socket.emit('video-create', { whiteboardId, video: video });
+    if (socket) socket.emit('video-create', { whiteboardId, video });
     if (onVideoCreate) onVideoCreate(video);
   };
-
-  const updateVideo = (id, data) => {
-    setVideos(prev => prev.map(v => v.id === id ? { ...v, ...data } : v));
-    if (onVideoUpdate) onVideoUpdate(id, data);
-  };
-
-  const handleVideoUpdate = (id, updates) => {
-    updateVideo(id, updates);
-    if (socket) socket.emit('video-update', { whiteboardId, id, ...updates });
-  };
-
-  const handleVideoDelete = (id) => { setVideos(prev => prev.filter(video => video.id !== id));};
 
   const getToolSize = () => {
     const base = (typeof size === "object" && size?.[tool]) ? size[tool] : (typeof size === "number" ? size : 3);
@@ -892,8 +895,6 @@ const Canvas = ({
     return { x: safeX, y: safeY };
   };
 
-  // 🔹 KLUCZOWA ZMIANA: Usunięto socket.emit z tej funkcji, aby uniknąć duplikatów.
-  // Emisja zdarzenia odbywa się teraz tylko w WhiteboardRouter (przez callbacki on...Create).
   const handleCanvasClick = (e) => {
     if (isPanning) return;
     if (e.button !== 0) return;
@@ -908,14 +909,14 @@ const Canvas = ({
       const { x: safeX, y: safeY } = clampCreationPos(x, y, w, h);
       const newNote = { id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: safeX, y: safeY, text: '', width: w, height: h };
       setNotes(prev => prev.some(note => note.id === newNote.id) ? prev : [...prev, newNote]);
-      if (onNoteCreate) onNoteCreate(newNote); // Router emituje
+      if (onNoteCreate) onNoteCreate(newNote);
       if (setTool) setTool('cursor');
     } else if (tool === 'text') {
       const w = 200, h = 100;
       const { x: safeX, y: safeY } = clampCreationPos(x, y, w, h);
       const newTextBox = { id: `text_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: safeX, y: safeY, text: '', width: w, height: h };
       setTextBoxes(prev => [...prev, newTextBox]);
-      if (onTextCreate) onTextCreate(newTextBox); // Router emituje
+      if (onTextCreate) onTextCreate(newTextBox);
       if (setTool) setTool('cursor');
     }
 
@@ -927,7 +928,7 @@ const Canvas = ({
 
       const newEmoji = { id: `emoji_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: safeX, y: safeY, emoji: activeEmoji, size: size };
       setEmojis(prev => [...prev, newEmoji]);
-      if (onEmojiCreate) onEmojiCreate(newEmoji); // Router emituje
+      if (onEmojiCreate) onEmojiCreate(newEmoji);
       if (setTool) setTool('cursor');
       if (setActiveEmoji) setActiveEmoji(null);
     }
@@ -940,7 +941,7 @@ const Canvas = ({
 
       const newGif = { id: `gif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: safeX, y: safeY, url: activeGif, width: w };
       setGifs(prev => [...prev, newGif]);
-      if (onGifCreate) onGifCreate(newGif); // Router emituje
+      if (onGifCreate) onGifCreate(newGif);
       if (setTool) setTool('cursor');
     }
     if (tool === 'shape' && activeShape) {
@@ -954,18 +955,15 @@ const Canvas = ({
       const { x: safeX, y: safeY } = clampCreationPos(startX, startY, defaultWidth, defaultHeight);
       const newShape = { id: `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, x: safeX, y: safeY, width: defaultWidth, height: defaultHeight, type: activeShape, userId: currentUser.id, color: currentUser.color };
       setShapes(prev => [...prev, newShape]);
-      if (onShapeCreate) onShapeCreate(newShape); // Router emituje
+      if (onShapeCreate) onShapeCreate(newShape);
       if (setTool) setTool('cursor');
     }
   };
 
   const removeNote = (id) => {
-    const noteToDelete = notes.find(note => note.id === id);
-    if (noteToDelete) {
-      setNotes(prev => prev.filter(n => n.id !== id));
-      if (selectedNoteId === id) setSelectedNoteId(null);
-      if (onNoteDelete) onNoteDelete(id);
-    }
+    setNotes(prev => prev.filter(n => n.id !== id));
+    if (selectedNoteId === id) setSelectedNoteId(null);
+    if (onNoteDelete) onNoteDelete(id);
   };
 
   const handleEmojiUpdate = (id, updates) => {
@@ -1031,7 +1029,7 @@ const Canvas = ({
             // 4. Tworzymy obiekt z bezpiecznymi współrzędnymi
             const newImage = {
               id: `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-              x: worldX, // Zapisujemy współrzędne ŚWIATA
+              x: worldX,
               y: worldY,
               url: url,
               width: estimatedWidth
@@ -1047,7 +1045,7 @@ const Canvas = ({
 
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
-  }, [onImageCreate, panOffset, zoom]); // Dodano zależności panOffset i zoom
+  }, [onImageCreate, panOffset, zoom]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -1085,7 +1083,7 @@ const Canvas = ({
           case 'emoji': setEmojis(prev => [...prev, newItem]); if (onEmojiCreate) onEmojiCreate(newItem); setSelectedEmojiId(newId); break;
           case 'gif': setGifs(prev => [...prev, newItem]); if (onGifCreate) onGifCreate(newItem); setSelectedGifId(newId); break;
           case 'image': setImages(prev => [...prev, newItem]); if (onImageCreate) onImageCreate(newItem); setSelectedImageId(newId); break;
-          case 'video': setVideos(prev => [...prev, newItem]); if (onVideoCreate) onVideoCreate(newItem); setSelectedVideoId(newId); break;
+          case 'video': setVideos(prev => [...prev, newItem]); addVideo(newItem); setSelectedVideoId(newId); break;
           case 'shape': setShapes(prev => [...prev, newItem]); if (onShapeCreate) onShapeCreate(newItem); setSelectedShapeId(newId); break;
           default: break;
         }
@@ -1109,7 +1107,7 @@ const Canvas = ({
           const emojisToDelete = emojis.filter(e => isInsideSelection(e.x, e.y, e.size || 48, e.size || 48));
           const gifsToDelete = gifs.filter(g => isInsideSelection(g.x, g.y, g.width || 150, g.width || 150));
           const imagesToDelete = images.filter(img => isInsideSelection(img.x, img.y, img.width || 200, 100));
-          const videosToDelete = videos.filter(v => isInsideSelection(v.x, v.y, v.width || 200, 100));
+          const videosToDelete = videos.filter(v => isInsideSelection(v.x, v.y, v.width || 320, v.height || 180));
           const shapesToDelete = shapes.filter(s => isInsideSelection(s.x, s.y, s.width || 100, Math.max(s.height || 100, 10)));
 
           if (selectionSnapshot && originalCaptureRect) {
@@ -1168,20 +1166,12 @@ const Canvas = ({
     clipboard
   ]);
 
+  // UPROSZCZONE OBSŁUGI SOCKETÓW
   useEffect(() => {
     if (socket) {
       const handleNoteCreate = (data) => setNotes(prev => [...prev, data.note]);
       const handleNoteUpdate = (data) => {
-        setNotes(prev => {
-          const noteIndex = prev.findIndex(note => note.id === data.id);
-          if (noteIndex === -1) return prev;
-          const updates = { ...data };
-          if (data.position) { updates.x = data.position.x; updates.y = data.position.y; delete updates.position; }
-          const updatedNote = { ...prev[noteIndex], ...updates };
-          const newNotes = [...prev];
-          newNotes[noteIndex] = updatedNote;
-          return newNotes;
-        });
+        setNotes(prev => prev.map(note => note.id === data.id ? { ...note, ...data } : note));
       };
       const handleNoteDelete = (data) => setNotes(prev => prev.filter(note => note.id !== data.id));
       const handleEmojiUpdate = (data) => setEmojis(prev => prev.map(e => e.id === data.id ? { ...e, ...data } : e));
@@ -1450,34 +1440,31 @@ const Canvas = ({
             {...emojiData}
             x={(emojiData.x * zoom) + panOffset.x}
             y={(emojiData.y * zoom) + panOffset.y}
-            size={(emojiData.size || 48) * zoom} // Rozmiar wysyłamy przeskalowany
+            size={(emojiData.size || 48) * zoom}
             panOffset={panOffset}
             limit={WORLD_LIMIT}
-            zoom={zoom} // 🔹 DODAJEMY ZOOM
+            zoom={zoom}
             tool={tool}
             selected={selectedEmojiId === emojiData.id}
             onSelect={setSelectedEmojiId}
             onRemove={removeEmoji}
             onUpdate={(id, data) => {
               const cleanData = { ...data };
-              // Odwracamy zoom dla pozycji
               if (cleanData.x !== undefined) cleanData.x = (cleanData.x - panOffset.x) / zoom;
               if (cleanData.y !== undefined) cleanData.y = (cleanData.y - panOffset.y) / zoom;
-              // 🔹 Odwracamy zoom dla rozmiaru (bo Emoji.jsx oblicza nowy rozmiar w pikselach ekranu)
               if (cleanData.size !== undefined) cleanData.size = cleanData.size / zoom;
               handleEmojiUpdate(id, cleanData);
             }}
           />
         ))}
 
-        {/* 🔹 POPRAWKA: Gify skalowane przez mnożenie x, y, width przez zoom */}
         {gifs.map(gif => (
           <Gif
             key={gif.id}
             {...gif}
             x={(gif.x * zoom) + panOffset.x}
             y={(gif.y * zoom) + panOffset.y}
-            width={(gif.width || 150) * zoom} // Skalujemy szerokość
+            width={(gif.width || 150) * zoom}
             panOffset={panOffset}
             limit={WORLD_LIMIT}
             zoom={zoom}
@@ -1485,7 +1472,6 @@ const Canvas = ({
             onSelect={setSelectedGifId}
             onUpdate={(id, data) => {
               const cleanData = { ...data };
-              // Odwracamy zoom przy zapisie
               if (cleanData.x !== undefined) cleanData.x = (cleanData.x - panOffset.x) / zoom;
               if (cleanData.y !== undefined) cleanData.y = (cleanData.y - panOffset.y) / zoom;
               if (cleanData.width !== undefined) cleanData.width = cleanData.width / zoom;
@@ -1495,7 +1481,6 @@ const Canvas = ({
           />
         ))}
 
-        {/* 🔹 POPRAWKA: Obrazy skalowane przez mnożenie x, y, width przez zoom */}
         {images.map(image => (
           <ImageItem
             key={image.id}
@@ -1505,7 +1490,7 @@ const Canvas = ({
             width={(image.width || 200) * zoom}
             panOffset={panOffset}
             limit={WORLD_LIMIT}
-            zoom={zoom} // 🔹 <--- DODAJ TĘ LINIJKĘ
+            zoom={zoom}
             selected={selectedImageId === image.id}
             onSelect={setSelectedImageId}
             onUpdate={(id, data) => {
@@ -1518,16 +1503,18 @@ const Canvas = ({
           />
         ))}
 
-        {/* 🔹 DODANO RENDEROWANIE VIDEO Z PIERWSZEJ WERSJI */}
         {videos.map(video => (
           <Video
             key={video.id}
             {...video}
             x={(video.x * zoom) + panOffset.x}
             y={(video.y * zoom) + panOffset.y}
+            width={(video.width || 320) * zoom}
+            height={(video.height || 180) * zoom}
             panOffset={panOffset}
             limit={WORLD_LIMIT}
             zoom={zoom}
+            socket={socket}
             selected={selectedVideoId === video.id}
             onSelect={setSelectedVideoId}
             onUpdate={(id, data) => {
@@ -1535,14 +1522,14 @@ const Canvas = ({
               if (cleanData.x !== undefined) cleanData.x = (cleanData.x - panOffset.x) / zoom;
               if (cleanData.y !== undefined) cleanData.y = (cleanData.y - panOffset.y) / zoom;
               if (cleanData.width !== undefined) cleanData.width = cleanData.width / zoom;
+              if (cleanData.height !== undefined) cleanData.height = cleanData.height / zoom;
               handleVideoUpdate(id, cleanData);
             }}
             onRemove={removeVideo}
-            tool={tool}
+            tool={tool} // Dodano tool
           />
         ))}
 
-        {/* 🔹 POPRAWKA: Kształty skalowane przez mnożenie x, y, width, height przez zoom */}
         {shapes.map(shape => {
           const creator = users ? users.find(u => u.id === shape.userId) : null;
           const dynamicColor = creator ? creator.color : (shape.color || '#000000');
@@ -1575,14 +1562,12 @@ const Canvas = ({
           );
         })}
 
-        {/* 🔹 POPRAWKA: Kursory skalowane przez mnożenie pozycji przez zoom */}
-      {remoteCursorsArray.map((cursor, index) => {
+        {remoteCursorsArray.map((cursor, index) => {
           const userName = cursor.user?.name || 'Unknown';
           const userColor = cursor.user?.color || '#ff4444';
           
           if (!cursor.position) return null;
 
-          // 🧮 PRZELICZANIE: (Świat * Zoom) + Przesunięcie
           const screenX = (cursor.position.x * zoom) + panOffset.x;
           const screenY = (cursor.position.y * zoom) + panOffset.y;
 
@@ -1603,7 +1588,7 @@ const Canvas = ({
                 width="24" height="24" viewBox="0 0 24 24"
                 style={{
                   position: 'absolute', top: 0, left: 0,
-                  transform: 'translate(-2px, -2px)', // Centrowanie czubka strzałki
+                  transform: 'translate(-2px, -2px)',
                   fill: userColor,
                   stroke: 'white', strokeWidth: 2,
                   filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))'
@@ -1656,7 +1641,7 @@ const Canvas = ({
           />
         )}
       </div>
-    </div >
+    </div>
   );
 };
 

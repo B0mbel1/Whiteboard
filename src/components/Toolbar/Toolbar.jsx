@@ -61,7 +61,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
     // 5. Wywołujemy funkcję przekazaną z góry (z WhiteboardRouter)
     if (onImageCreate) {
       onImageCreate(imageWithCorrectPosition);
-    };
+    }
   };
 
   const handleLocalVideoCreate = (videoObj) => {
