@@ -1562,12 +1562,14 @@ const Canvas = ({
           );
         })}
 
-        {remoteCursorsArray.map((cursor, index) => {
+        {/* 🔹 POPRAWKA: Kursory skalowane przez mnożenie pozycji przez zoom */}
+      {remoteCursorsArray.map((cursor, index) => {
           const userName = cursor.user?.name || 'Unknown';
           const userColor = cursor.user?.color || '#ff4444';
           
           if (!cursor.position) return null;
 
+          // 🧮 PRZELICZANIE: (Świat * Zoom) + Przesunięcie
           const screenX = (cursor.position.x * zoom) + panOffset.x;
           const screenY = (cursor.position.y * zoom) + panOffset.y;
 
@@ -1588,7 +1590,7 @@ const Canvas = ({
                 width="24" height="24" viewBox="0 0 24 24"
                 style={{
                   position: 'absolute', top: 0, left: 0,
-                  transform: 'translate(-2px, -2px)',
+                  transform: 'translate(-2px, -2px)', // Centrowanie czubka strzałki
                   fill: userColor,
                   stroke: 'white', strokeWidth: 2,
                   filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))'

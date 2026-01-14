@@ -595,7 +595,7 @@ const Toolbar = ({ position, tool, setTool, color, setColor, size, setSize, setS
         />
       )}
 
-      <ToolRangeCircle tool={tool} size={size} />
+      <ToolRangeCircle tool={tool} size={size} zoom={zoom} />
     </>
   );
 };
