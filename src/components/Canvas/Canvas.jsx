@@ -1,18 +1,19 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import './Canvas.css';
-import { getStandardizedSize, getDisplaySize, getToolEffects } from '../../utils/toolSizes';
+import { getStandardizedSize, getDisplaySize } from '../../utils/toolSizes';
 import { drawCompletePath, drawPathSegment } from '../../utils/drawingUtils';
 import Note from './Note';
 import Text from './Text';
 import Emoji from './Emoji';
 import Gif from './Gif';
 import ImageItem from './ImageItem';
-import Video from './Video'; 
+import Video from './Video';
 import Shape from './Shape';
 import Chat from './Chat';
+import { useVideoSocketManager } from './VideoSocketManager';
 
 // --- STAŁE GRANICZNE ---
-const WORLD_LIMIT = 2500; //wczesniej 1500
+const WORLD_LIMIT = 2500;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 3.5;
 
@@ -51,7 +52,7 @@ const Canvas = ({
   onImageCreate,
   onImageUpdate,
   onImageDelete,
-  videos: initialVideos, 
+  videos: initialVideos,
   onVideoCreate,
   onVideoUpdate,
   onVideoDelete,
@@ -74,7 +75,6 @@ const Canvas = ({
   const backgroundModeRef = useRef(backgroundMode);
   const currentMousePosRef = useRef({ x: 0, y: 0 });
 
-  // Dwa canvasy: tło i rysunek
   const backgroundCanvasRef = useRef(null);
   const drawingCanvasRef = useRef(null);
 
@@ -86,66 +86,66 @@ const Canvas = ({
   const currentDrawingRef = useRef(null);
   const [notes, setNotes] = useState(initialNotes || []);
   const [textBoxes, setTextBoxes] = useState(initialTextBoxes || []);
+  const [emojis, setEmojis] = useState(initialEmojis || []);
+  const [gifs, setGifs] = useState(initialGifs || []);
+  const [images, setImages] = useState(initialImages || []);
+  const [videos, setVideos] = useState(initialVideos || []);
+  const [shapes, setShapes] = useState(initialShapes || []);
 
   const localDrawingsRef = useRef([]);
 
-  // --- STANY DO PANNINGU (PRZESUWANIA) ---
   const panOffsetRef = useRef(panOffset);
   const [isPanning, setIsPanning] = useState(false);
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const lastMousePosRef = useRef({ x: 0, y: 0 });
 
-  // Helpers
   const isWithinBounds = (x, y) => {
     return x >= -WORLD_LIMIT && x <= WORLD_LIMIT && y >= -WORLD_LIMIT && y <= WORLD_LIMIT;
   };
 
   const [selectedTextBoxId, setSelectedTextBoxId] = useState(null);
   const [selectedNoteId, setSelectedNoteId] = useState(null);
-
-  // Emojis
-  const [emojis, setEmojis] = useState(initialEmojis || []);
   const [selectedEmojiId, setSelectedEmojiId] = useState(null);
-
-  // Gif
-  const [gifs, setGifs] = useState(initialGifs || []);
   const [selectedGifId, setSelectedGifId] = useState(null);
-
-  // Images
-  const [images, setImages] = useState(initialImages || []);
   const [selectedImageId, setSelectedImageId] = useState(null);
-
-  // Videos - uproszczone zarządzanie
-  const [videos, setVideos] = useState(initialVideos || []);
   const [selectedVideoId, setSelectedVideoId] = useState(null);
-
-  // Shapes
-  const [shapes, setShapes] = useState(initialShapes || []);
   const [selectedShapeId, setSelectedShapeId] = useState(null);
 
-  // Zaznaczenie
   const [selectionBox, setSelectionBox] = useState(null);
   const [selectionStart, setSelectionStart] = useState(null);
-
   const [selectionSnapshot, setSelectionSnapshot] = useState(null);
   const [isDraggingSelection, setIsDraggingSelection] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [originalCaptureRect, setOriginalCaptureRect] = useState(null);
-
   const [clipboard, setClipboard] = useState(null);
 
   const isWorkingTool = ['select', 'pencil', 'brush', 'eraser'].includes(tool);
-
   const remoteDrawingsRef = useRef([]);
 
-  useEffect(() => { setShapes(initialShapes || []); }, [initialShapes]);
+  // Użyj VideoSocketManager
+  const { 
+    emitVideoTransform, 
+    emitVideoStateUpdate, 
+    emitVideoCreate, 
+    emitVideoDelete,
+    registerVideoRef,
+    unregisterVideoRef
+  } = useVideoSocketManager({
+    socket,
+    whiteboardId,
+    videos,
+    setVideos,
+    panOffset,
+    zoom,
+    onVideoUpdate
+  });
 
   // --- Synchronizacja panOffsetRef ---
   useEffect(() => {
     panOffsetRef.current = panOffset;
   }, [panOffset]);
 
-  // --- 🔹 DODANO OBSŁUGĘ ZOOMOWANIA (Wheel) ---
+  // --- Zoom (Wheel) ---
   const handleWheel = (e) => {
     e.preventDefault();
 
@@ -156,16 +156,13 @@ const Canvas = ({
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    // Oblicz punkt w świecie przed zoomem
     const worldX = (mouseX - panOffset.x) / zoom;
     const worldY = (mouseY - panOffset.y) / zoom;
 
-    // Oblicz nowy zoom
     const zoomSensitivity = 0.001;
     const delta = -e.deltaY * zoomSensitivity;
     const newZoom = Math.min(Math.max(zoom + delta, MIN_ZOOM), MAX_ZOOM);
 
-    // Oblicz nowy panOffset, aby punkt pod myszką pozostał w tym samym miejscu
     const newPanX = mouseX - (worldX * newZoom);
     const newPanY = mouseY - (worldY * newZoom);
 
@@ -173,7 +170,7 @@ const Canvas = ({
     setPanOffset({ x: newPanX, y: newPanY });
   };
 
-  // --- OBSŁUGA KLAWISZA SPACJI ---
+  // --- Space key ---
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.code === 'Space' && !e.repeat) {
@@ -208,8 +205,6 @@ const Canvas = ({
     e.stopPropagation();
 
     const files = e.dataTransfer.files;
-
-    // getCanvasCoordinates zwraca już współrzędne ŚWIATA (uwzględniając zoom i pan)
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY);
 
     if (files && files.length > 0) {
@@ -220,24 +215,15 @@ const Canvas = ({
           const reader = new FileReader();
           reader.onload = (event) => {
             const url = event.target.result;
-
-            // Ustalamy domyślne wymiary (zgodnie z Twoim kodem width=300)
             const defaultWidth = 300;
-            const defaultHeight = 200; // Zakładamy przybliżoną wysokość do centrowania
+            const defaultHeight = 200;
 
-            // 1. Obliczamy pozycję lewego górnego rogu (centrujemy obrazek na kursore)
             let finalX = x - (defaultWidth / 2);
             let finalY = y - (defaultHeight / 2);
 
-            // 2. --- 🔹 LOGIKA OGRANICZEŃ (CLAMP) 🔹 ---
-
-            // A. Sprawdzamy lewą i górną granicę (-WORLD_LIMIT)
-            // Jeśli wychodzi poza -2500, ustawiamy na -2500
             finalX = Math.max(-WORLD_LIMIT, finalX);
             finalY = Math.max(-WORLD_LIMIT, finalY);
 
-            // B. Sprawdzamy prawą i dolną granicę (WORLD_LIMIT)
-            // Jeśli pozycja + szerokość wychodzi poza 2500, cofamy pozycję
             if (finalX + defaultWidth > WORLD_LIMIT) {
               finalX = WORLD_LIMIT - defaultWidth;
             }
@@ -257,7 +243,6 @@ const Canvas = ({
           };
           reader.readAsDataURL(file);
         } else if (file.type.startsWith('video/')) {
-          // UPROSZCZONE DODAWANIE VIDEO
           const reader = new FileReader();
           reader.onload = (event) => {
             const url = event.target.result;
@@ -285,10 +270,12 @@ const Canvas = ({
               url: url,
               width: defaultWidth,
               height: defaultHeight,
-              type: "direct"
+              type: "direct",
+              provider: "file",
+              playing: false,
+              currentTime: 0
             };
 
-            // Użyj uproszczonej funkcji
             addVideo(newVideo);
           };
           reader.readAsDataURL(file);
@@ -309,7 +296,6 @@ const Canvas = ({
     const img = new Image();
     img.onload = () => {
       setupDrawingContext();
-      // Rysujemy obrazek na canvasie, który już ma transform (zoom/pan)
       ctx.drawImage(img, selectionBox.x, selectionBox.y, selectionBox.width, selectionBox.height);
     };
     img.src = selectionSnapshot;
@@ -323,14 +309,11 @@ const Canvas = ({
     const context = drawingContextRef.current;
     if (!context) return;
 
-    // Reset transformacji do czyszczenia całego ekranu
     context.setTransform(1, 0, 0, 1, 0, 0);
     context.clearRect(0, 0, drawingCanvasRef.current.width, drawingCanvasRef.current.height);
 
-    // Przywróć transformację zoom/pan
     setupDrawingContext();
 
-    // 2. Przygotuj listę operacji (Remote + Local)
     let allOperations = [];
 
     if (remoteDrawingsRef.current && remoteDrawingsRef.current.length > 0) {
@@ -341,21 +324,15 @@ const Canvas = ({
       allOperations = [...allOperations, ...localDrawingsRef.current];
     }
 
-    // 3. Sortuj chronologicznie - to jest KLUCZOWE, timestamp musi istnieć
     allOperations.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
 
-    // 4. Rysuj
     allOperations.forEach(op => {
-      // 🔹 ZMIANA: Traktujemy "erase-area" jak gumkę (destination-out)
       if (op.type === 'erase-area') {
         context.save();
-        context.globalCompositeOperation = 'destination-out'; // Tryb gumki
-        context.fillStyle = 'rgba(0,0,0,1)'; // Kolor nie ma znaczenia, ważna pełna alfa
+        context.globalCompositeOperation = 'destination-out';
+        context.fillStyle = 'rgba(0,0,0,1)';
         context.fillRect(op.x, op.y, op.width, op.height);
         context.restore();
-
-        // Ważne: przywróć ustawienia narzędzia po operacji czyszczenia, 
-        // jeśli pętla tego nie robi (tutaj poniżej drawCompletePath ustawia swoje, więc jest ok)
       } else {
         if (op.points && op.points.length > 1) {
           drawCompletePath(context, op.tool, op.color, op.size, op.points);
@@ -364,7 +341,7 @@ const Canvas = ({
     });
   };
 
-  // UPROSZCZONE FUNKCJE USUWANIA
+  // Funkcje usuwania
   const removeShape = (id) => {
     setShapes(prev => prev.filter(s => s.id !== id));
     if (selectedShapeId === id) setSelectedShapeId(null);
@@ -383,12 +360,11 @@ const Canvas = ({
     if (onImageDelete) onImageDelete(id);
   };
 
-  // UPROSZCZONE USUWANIE VIDEO
   const removeVideo = (id) => {
     setVideos(prev => prev.filter(v => v.id !== id));
     if (selectedVideoId === id) setSelectedVideoId(null);
     if (onVideoDelete) onVideoDelete(id);
-    if (socket) socket.emit("video-delete", { whiteboardId, id });
+    emitVideoDelete(id);
   };
 
   const removeEmoji = (id) => {
@@ -397,12 +373,14 @@ const Canvas = ({
     if (onEmojiDelete) onEmojiDelete(id);
   };
 
+  // Efekty synchronizacji
   useEffect(() => { setGifs(initialGifs || []); }, [initialGifs]);
   useEffect(() => { setImages(initialImages || []); }, [initialImages]);
   useEffect(() => { setVideos(initialVideos || []); }, [initialVideos]);
   useEffect(() => { setEmojis(initialEmojis || []); }, [initialEmojis]);
   useEffect(() => { setTextBoxes(initialTextBoxes || []); }, [initialTextBoxes]);
   useEffect(() => { setNotes(initialNotes || []); }, [initialNotes]);
+  useEffect(() => { setShapes(initialShapes || []); }, [initialShapes]);
 
   const backgroundModes = [
     { id: 'white', name: 'Białe tło', icon: '🌕' },
@@ -426,7 +404,6 @@ const Canvas = ({
     context.fillRect(0, 0, width, height);
 
     context.save();
-    // Tło również musi uwzględniać zoom
     context.translate(panOffsetRef.current.x, panOffsetRef.current.y);
     context.scale(zoom, zoom);
 
@@ -436,7 +413,6 @@ const Canvas = ({
     context.shadowColor = 'rgba(0, 0, 0, 0.2)';
     context.shadowBlur = 20;
 
-    // Dostosuj grubość linii do zoomu, aby nie znikały
     const lineWidth = 1 / zoom;
 
     switch (backgroundModeRef.current) {
@@ -507,7 +483,7 @@ const Canvas = ({
   useEffect(() => {
     drawBackground();
     redrawCanvas();
-  }, [panOffset, zoom]); // Dodano zoom do zależności
+  }, [panOffset, zoom]);
 
   const setupDrawingContext = () => {
     const ctx = drawingContextRef.current;
@@ -519,8 +495,6 @@ const Canvas = ({
     ctx.lineWidth = getToolSize();
     ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
 
-    // 🔹 POPRAWKA: setTransform(a, b, c, d, e, f) ustawia zarówno skalę jak i translację.
-    // Usunięto nadmiarowe ctx.translate(), które powodowało podwójny offset.
     ctx.setTransform(zoom, 0, 0, zoom, panOffsetRef.current.x, panOffsetRef.current.y);
   };
 
@@ -585,92 +559,95 @@ const Canvas = ({
     setupDrawingContext();
   }, [color, size, tool, panOffset, zoom]);
 
+  // --- Socket Handlers (bez video) ---
   useEffect(() => {
-    if (socket) {
-      const handleRemoteDrawing = (data) => {
-        remoteDrawingsRef.current.push(data);
-        drawRemote(data);
-      };
+    if (!socket) return;
 
-      const handleEraseArea = (data) => {
-        remoteDrawingsRef.current.push({ ...data, type: 'erase-area' });
-        const ctx = drawingContextRef.current;
-        if (ctx) {
-          // Używamy setupDrawingContext aby mieć dobry zoom/pan
-          setupDrawingContext();
+    const handleRemoteDrawing = (data) => {
+      remoteDrawingsRef.current.push(data);
+      drawRemote(data);
+    };
 
-          ctx.save();
-          ctx.globalCompositeOperation = 'destination-out';
-          ctx.fillStyle = 'rgba(0,0,0,1)';
-          ctx.fillRect(data.x, data.y, data.width, data.height);
-          ctx.restore();
+    const handleEraseArea = (data) => {
+      remoteDrawingsRef.current.push({ ...data, type: 'erase-area' });
+      const ctx = drawingContextRef.current;
+      if (ctx) {
+        setupDrawingContext();
 
-          // Przywróć standardowy tryb rysowania (opcjonalne, ale bezpieczne)
-          ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
-        }
-      };
-      const handleRemoteCursorMove = (data) => {
-        if (data.userId !== socket.id) {
-          setRemoteCursors(prev => {
-            const newMap = new Map(prev);
-            newMap.set(data.userId, {
-              userId: data.userId,
-              position: data.position,
-              user: data.user,
-              lastUpdate: Date.now()
-            });
-            return newMap;
-          });
-        }
-      };
-      const handleWhiteboardState = (data) => {
-        remoteDrawingsRef.current = data.drawingData || [];
-        clearDrawingCanvas();
-        setTimeout(() => {
-          data.drawingData.forEach(drawing => { drawRemote(drawing); });
-        }, 100);
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.fillStyle = 'rgba(0,0,0,1)';
+        ctx.fillRect(data.x, data.y, data.width, data.height);
+        ctx.restore();
 
-        const otherUsers = data.users.filter(user => user.id !== currentUser.id);
-        const cursorsMap = new Map();
-        otherUsers.forEach(user => {
-          cursorsMap.set(user.id, {
-            userId: user.id,
-            position: user.position,
-            user: user,
+        ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
+      }
+    };
+
+    const handleRemoteCursorMove = (data) => {
+      if (data.userId !== socket.id) {
+        setRemoteCursors(prev => {
+          const newMap = new Map(prev);
+          newMap.set(data.userId, {
+            userId: data.userId,
+            position: data.position,
+            user: data.user,
             lastUpdate: Date.now()
           });
-        });
-        setRemoteCursors(cursorsMap);
-      };
-      const handleUsersUpdated = (data) => {
-        setRemoteCursors(prev => {
-          const newMap = new Map();
-          for (const [userId, cursor] of prev) {
-            if (data.users.some(user => user.id === userId)) {
-              newMap.set(userId, cursor);
-            }
-          }
           return newMap;
         });
-      };
+      }
+    };
 
-      socket.on('drawing', handleRemoteDrawing);
-      socket.on('cursor-move', handleRemoteCursorMove);
-      socket.on('whiteboard-data', handleWhiteboardState);
-      socket.on('user-joined', handleUsersUpdated);
-      socket.on('user-left', handleUsersUpdated);
-      socket.on('erase-area', handleEraseArea);
+    const handleWhiteboardState = (data) => {
+      remoteDrawingsRef.current = data.drawingData || [];
+      clearDrawingCanvas();
+      setTimeout(() => {
+        data.drawingData.forEach(drawing => { drawRemote(drawing); });
+      }, 100);
 
-      return () => {
-        socket.off('drawing', handleRemoteDrawing);
-        socket.off('cursor-move', handleRemoteCursorMove);
-        socket.off('whiteboard-data', handleWhiteboardState);
-        socket.off('user-joined', handleUsersUpdated);
-        socket.off('user-left', handleUsersUpdated);
-        socket.off('erase-area', handleEraseArea);
-      };
-    }
-  }, [socket, currentUser]);
+      const otherUsers = data.users.filter(user => user.id !== currentUser.id);
+      const cursorsMap = new Map();
+      otherUsers.forEach(user => {
+        cursorsMap.set(user.id, {
+          userId: user.id,
+          position: user.position,
+          user: user,
+          lastUpdate: Date.now()
+        });
+      });
+      setRemoteCursors(cursorsMap);
+    };
+
+    const handleUsersUpdated = (data) => {
+      setRemoteCursors(prev => {
+        const newMap = new Map();
+        for (const [userId, cursor] of prev) {
+          if (data.users.some(user => user.id === userId)) {
+            newMap.set(userId, cursor);
+          }
+        }
+        return newMap;
+      });
+    };
+
+    // Drawing
+    socket.on('drawing', handleRemoteDrawing);
+    socket.on('cursor-move', handleRemoteCursorMove);
+    socket.on('whiteboard-data', handleWhiteboardState);
+    socket.on('user-joined', handleUsersUpdated);
+    socket.on('user-left', handleUsersUpdated);
+    socket.on('erase-area', handleEraseArea);
+
+    return () => {
+      socket.off('drawing', handleRemoteDrawing);
+      socket.off('cursor-move', handleRemoteCursorMove);
+      socket.off('whiteboard-data', handleWhiteboardState);
+      socket.off('user-joined', handleUsersUpdated);
+      socket.off('user-left', handleUsersUpdated);
+      socket.off('erase-area', handleEraseArea);
+    };
+  }, [socket, currentUser, tool]);
 
   const clearDrawingCanvas = () => {
     const context = drawingContextRef.current;
@@ -700,40 +677,52 @@ const Canvas = ({
     const canvas = drawingCanvasRef.current;
     const rect = canvas.getBoundingClientRect();
 
-    // Wzór: (ScreenPos - Pan) / Zoom
     return {
       x: (clientX - rect.left - panOffsetRef.current.x) / zoom,
       y: (clientY - rect.top - panOffsetRef.current.y) / zoom
     };
   };
 
-  const getWorldFromScreen = (screenX, screenY) => {
-    return {
-      x: (screenX - panOffset.x) / zoom,
-      y: (screenY - panOffset.y) / zoom
-    };
-  };
-
-  const handleGifUpdate = (id, updates) => {
-    setGifs(prev => prev.map(gif => gif.id === id ? { ...gif, ...updates } : gif));
-    if (onGifUpdate) onGifUpdate(id, updates);
-  };
-
-  const handleImageUpdate = (id, updates) => {
-    setImages(prev => prev.map(img => img.id === id ? { ...img, ...updates } : img));
-    if (onImageUpdate) onImageUpdate(id, updates);
-  };
-
-  // UPROSZCZONE FUNKCJE VIDEO
-  const handleVideoUpdate = (id, updates) => {
-    setVideos(prev => prev.map(v => v.id === id ? { ...v, ...updates } : v));
-    if (onVideoUpdate) onVideoUpdate(id, updates);
-    if (socket) socket.emit("video-update", { whiteboardId, id, updates });
-  };
+  // Funkcje aktualizacji dla video
+  const handleVideoUpdate = useCallback((id, updates) => {
+    // Konwersja: Screen → World coordinates dla pozycji/rozmiaru
+    const worldUpdates = { ...updates };
+    
+    if (updates.x !== undefined && panOffset) {
+      worldUpdates.x = (updates.x - panOffset.x) / zoom;
+    }
+    
+    if (updates.y !== undefined && panOffset) {
+      worldUpdates.y = (updates.y - panOffset.y) / zoom;
+    }
+    
+    if (updates.width !== undefined) {
+      worldUpdates.width = updates.width / zoom;
+    }
+    
+    if (updates.height !== undefined) {
+      worldUpdates.height = updates.height / zoom;
+    }
+    
+    // Aktualizuj lokalny stan
+    setVideos(prev => prev.map(v => v.id === id ? { ...v, ...worldUpdates } : v));
+    
+    // Wyślij do serwera tylko jeśli to zmiana pozycji/rozmiaru
+    if (!updates.currentTime && !updates.playing) {
+      emitVideoTransform(id, updates);
+    } else {
+      emitVideoStateUpdate(id, updates);
+    }
+    
+    // Wywołaj callback z world coordinates
+    if (onVideoUpdate) {
+      onVideoUpdate(id, worldUpdates);
+    }
+  }, [emitVideoTransform, emitVideoStateUpdate, onVideoUpdate, panOffset, zoom]);
 
   const addVideo = (video) => {
     setVideos(prev => [...prev, video]);
-    if (socket) socket.emit('video-create', { whiteboardId, video });
+    emitVideoCreate(video);
     if (onVideoCreate) onVideoCreate(video);
   };
 
@@ -889,6 +878,21 @@ const Canvas = ({
     if (onShapeUpdate) onShapeUpdate(id, newProps);
   };
 
+  const handleGifUpdate = (id, updates) => {
+    setGifs(prev => prev.map(gif => gif.id === id ? { ...gif, ...updates } : gif));
+    if (onGifUpdate) onGifUpdate(id, updates);
+  };
+
+  const handleImageUpdate = (id, updates) => {
+    setImages(prev => prev.map(img => img.id === id ? { ...img, ...updates } : img));
+    if (onImageUpdate) onImageUpdate(id, updates);
+  };
+
+  const handleEmojiUpdate = (id, updates) => {
+    setEmojis(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
+    if (onEmojiUpdate) onEmojiUpdate(id, updates);
+  };
+
   const clampCreationPos = (x, y, w, h) => {
     const safeX = Math.max(-WORLD_LIMIT, Math.min(x, WORLD_LIMIT - w));
     const safeY = Math.max(-WORLD_LIMIT, Math.min(y, WORLD_LIMIT - h));
@@ -966,11 +970,6 @@ const Canvas = ({
     if (onNoteDelete) onNoteDelete(id);
   };
 
-  const handleEmojiUpdate = (id, updates) => {
-    setEmojis(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
-    if (onEmojiUpdate) onEmojiUpdate(id, updates);
-  };
-
   const handleNoteUpdate = (id, updates) => {
     if (onNoteUpdate) { onNoteUpdate(id, updates); }
   };
@@ -987,7 +986,6 @@ const Canvas = ({
 
   useEffect(() => {
     const handlePaste = (e) => {
-      // Ignorujemy wklejanie w inputach/textarea
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
       const items = (e.clipboardData || e.originalEvent.clipboardData).items;
@@ -1001,24 +999,18 @@ const Canvas = ({
           reader.onload = (event) => {
             const url = event.target.result;
 
-            // Pobieramy pozycję myszki lub środek ekranu
             const mouseX = currentMousePosRef.current.x || (window.innerWidth / 2);
             const mouseY = currentMousePosRef.current.y || (window.innerHeight / 2);
 
-            // 1. Obliczamy pozycję w świecie (World Coordinates)
             let worldX = (mouseX - panOffset.x) / zoom;
             let worldY = (mouseY - panOffset.y) / zoom;
 
-            // 2. Szacujemy wymiary obrazka (domyślnie ImageItem ma 200px szerokości, zakładamy kwadrat dla bezpieczeństwa)
             const estimatedWidth = 200;
             const estimatedHeight = 200;
 
-            // 3. LOGIKA OGRANICZEŃ (CLAMP)
-            // Sprawdzamy lewą i górną krawędź
             if (worldX < -WORLD_LIMIT) worldX = -WORLD_LIMIT;
             if (worldY < -WORLD_LIMIT) worldY = -WORLD_LIMIT;
 
-            // Sprawdzamy prawą i dolną krawędź
             if (worldX + estimatedWidth > WORLD_LIMIT) {
               worldX = WORLD_LIMIT - estimatedWidth;
             }
@@ -1026,7 +1018,6 @@ const Canvas = ({
               worldY = WORLD_LIMIT - estimatedHeight;
             }
 
-            // 4. Tworzymy obiekt z bezpiecznymi współrzędnymi
             const newImage = {
               id: `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
               x: worldX,
@@ -1136,7 +1127,7 @@ const Canvas = ({
           if (emojisToDelete.length) { setEmojis(prev => prev.filter(e => !emojisToDelete.some(del => del.id === e.id))); emojisToDelete.forEach(e => socket && socket.emit('emoji-delete', { whiteboardId, id: e.id })); }
           if (gifsToDelete.length) { setGifs(prev => prev.filter(g => !gifsToDelete.some(del => del.id === g.id))); gifsToDelete.forEach(g => socket && socket.emit('gif-delete', { whiteboardId, id: g.id })); }
           if (imagesToDelete.length) { setImages(prev => prev.filter(img => !imagesToDelete.some(del => del.id === img.id))); imagesToDelete.forEach(img => socket && socket.emit('image-delete', { whiteboardId, id: img.id })); }
-          if (videosToDelete.length) { setVideos(prev => prev.filter(v => !videosToDelete.some(del => del.id === v.id))); videosToDelete.forEach(v => socket && socket.emit('video-delete', { whiteboardId, id: v.id })); }
+          if (videosToDelete.length) { setVideos(prev => prev.filter(v => !videosToDelete.some(del => del.id === v.id))); videosToDelete.forEach(v => emitVideoDelete(v.id)); }
           if (shapesToDelete.length) { setShapes(prev => prev.filter(s => !shapesToDelete.some(del => del.id === s.id))); shapesToDelete.forEach(s => socket && socket.emit('shape-delete', { whiteboardId, id: s.id })); }
 
           setSelectionSnapshot(null);
@@ -1166,71 +1157,62 @@ const Canvas = ({
     clipboard
   ]);
 
-  // UPROSZCZONE OBSŁUGI SOCKETÓW
+  // Socket handlers dla innych elementów
   useEffect(() => {
-    if (socket) {
-      const handleNoteCreate = (data) => setNotes(prev => [...prev, data.note]);
-      const handleNoteUpdate = (data) => {
-        setNotes(prev => prev.map(note => note.id === data.id ? { ...note, ...data } : note));
-      };
-      const handleNoteDelete = (data) => setNotes(prev => prev.filter(note => note.id !== data.id));
-      const handleEmojiUpdate = (data) => setEmojis(prev => prev.map(e => e.id === data.id ? { ...e, ...data } : e));
-      const handleGifUpdate = (data) => setGifs(prev => prev.map(g => g.id === data.id ? { ...g, ...data } : g));
-      const handleImageUpdateSocket = (data) => setImages(prev => prev.map(img => img.id === data.id ? { ...img, ...data } : img));
-      const handleVideoUpdateSocket = (data) => {setVideos(prev => prev.map(v => v.id === data.id ? { ...v, ...data } : v));};
-      const handleVideoCreateSocket = (data) => { setVideos(prev => prev.some(v => v.id === data.video.id) ? prev : [...prev, data.video]);};
-      const handleVideoDeleteSocket = (data) => {setVideos(prev => prev.filter(v => v.id !== data.id));};
-      const handleShapeUpdate = (data) => setShapes(prev => prev.map(s => s.id === data.id ? { ...s, ...data } : s));
+    if (!socket) return;
 
-      const handleEmojiCreateSocket = (data) => setEmojis(prev => prev.some(e => e.id === data.emoji.id) ? prev : [...prev, data.emoji]);
-      const handleEmojiDeleteSocket = (data) => setEmojis(prev => prev.filter(e => e.id !== data.id));
-      const handleGifCreateSocket = (data) => setGifs(prev => prev.some(g => g.id === data.gif.id) ? prev : [...prev, data.gif]);
-      const handleGifDeleteSocket = (data) => setGifs(prev => prev.filter(g => g.id !== data.id));
-      const handleImageCreateSocket = (data) => setImages(prev => prev.some(img => img.id === data.image.id) ? prev : [...prev, data.image]);
-      const handleImageDeleteSocket = (data) => setImages(prev => prev.filter(img => img.id !== data.id));
-      const handleShapeCreateSocket = (data) => setShapes(prev => prev.some(s => s.id === data.shape.id) ? prev : [...prev, data.shape]);
-      const handleShapeDeleteSocket = (data) => setShapes(prev => prev.filter(s => s.id !== data.id));
+    const handleNoteCreate = (data) => setNotes(prev => [...prev, data.note]);
+    const handleNoteUpdate = (data) => {
+      setNotes(prev => prev.map(note => note.id === data.id ? { ...note, ...data } : note));
+    };
+    const handleNoteDelete = (data) => setNotes(prev => prev.filter(note => note.id !== data.id));
+    const handleEmojiUpdate = (data) => setEmojis(prev => prev.map(e => e.id === data.id ? { ...e, ...data } : e));
+    const handleGifUpdate = (data) => setGifs(prev => prev.map(g => g.id === data.id ? { ...g, ...data } : g));
+    const handleImageUpdateSocket = (data) => setImages(prev => prev.map(img => img.id === data.id ? { ...img, ...data } : img));
+    const handleShapeUpdate = (data) => setShapes(prev => prev.map(s => s.id === data.id ? { ...s, ...data } : s));
 
-      socket.on('note-create', handleNoteCreate);
-      socket.on('note-update', handleNoteUpdate);
-      socket.on('note-delete', handleNoteDelete);
-      socket.on('emoji-update', handleEmojiUpdate);
-      socket.on('gif-update', handleGifUpdate);
-      socket.on('image-update', handleImageUpdateSocket);
-      socket.on('video-update', handleVideoUpdateSocket);
-      socket.on('video-create', handleVideoCreateSocket);
-      socket.on('video-delete', handleVideoDeleteSocket);
-      socket.on('shape-update', handleShapeUpdate);
-      socket.on('emoji-create', handleEmojiCreateSocket);
-      socket.on('emoji-delete', handleEmojiDeleteSocket);
-      socket.on('gif-create', handleGifCreateSocket);
-      socket.on('gif-delete', handleGifDeleteSocket);
-      socket.on('image-create', handleImageCreateSocket);
-      socket.on('image-delete', handleImageDeleteSocket);
-      socket.on('shape-create', handleShapeCreateSocket);
-      socket.on('shape-delete', handleShapeDeleteSocket);
+    const handleEmojiCreateSocket = (data) => setEmojis(prev => prev.some(e => e.id === data.emoji.id) ? prev : [...prev, data.emoji]);
+    const handleEmojiDeleteSocket = (data) => setEmojis(prev => prev.filter(e => e.id !== data.id));
+    const handleGifCreateSocket = (data) => setGifs(prev => prev.some(g => g.id === data.gif.id) ? prev : [...prev, data.gif]);
+    const handleGifDeleteSocket = (data) => setGifs(prev => prev.filter(g => g.id !== data.id));
+    const handleImageCreateSocket = (data) => setImages(prev => prev.some(img => img.id === data.image.id) ? prev : [...prev, data.image]);
+    const handleImageDeleteSocket = (data) => setImages(prev => prev.filter(img => img.id !== data.id));
+    const handleShapeCreateSocket = (data) => setShapes(prev => prev.some(s => s.id === data.shape.id) ? prev : [...prev, data.shape]);
+    const handleShapeDeleteSocket = (data) => setShapes(prev => prev.filter(s => s.id !== data.id));
 
-      return () => {
-        socket.off('note-create', handleNoteCreate);
-        socket.off('note-update', handleNoteUpdate);
-        socket.off('note-delete', handleNoteDelete);
-        socket.off('emoji-update', handleEmojiUpdate);
-        socket.off('gif-update', handleGifUpdate);
-        socket.off('image-update', handleImageUpdateSocket);
-        socket.off('video-update', handleVideoUpdateSocket);
-        socket.off('video-create', handleVideoCreateSocket);
-        socket.off('video-delete', handleVideoDeleteSocket);
-        socket.off('shape-update', handleShapeUpdate);
-        socket.off('emoji-create', handleEmojiCreateSocket);
-        socket.off('emoji-delete', handleEmojiDeleteSocket);
-        socket.off('gif-create', handleGifCreateSocket);
-        socket.off('gif-delete', handleGifDeleteSocket);
-        socket.off('image-create', handleImageCreateSocket);
-        socket.off('image-delete', handleImageDeleteSocket);
-        socket.off('shape-create', handleShapeCreateSocket);
-        socket.off('shape-delete', handleShapeDeleteSocket);
-      };
-    }
+    socket.on('note-create', handleNoteCreate);
+    socket.on('note-update', handleNoteUpdate);
+    socket.on('note-delete', handleNoteDelete);
+    socket.on('emoji-update', handleEmojiUpdate);
+    socket.on('gif-update', handleGifUpdate);
+    socket.on('image-update', handleImageUpdateSocket);
+    socket.on('shape-update', handleShapeUpdate);
+    socket.on('emoji-create', handleEmojiCreateSocket);
+    socket.on('emoji-delete', handleEmojiDeleteSocket);
+    socket.on('gif-create', handleGifCreateSocket);
+    socket.on('gif-delete', handleGifDeleteSocket);
+    socket.on('image-create', handleImageCreateSocket);
+    socket.on('image-delete', handleImageDeleteSocket);
+    socket.on('shape-create', handleShapeCreateSocket);
+    socket.on('shape-delete', handleShapeDeleteSocket);
+
+    return () => {
+      socket.off('note-create', handleNoteCreate);
+      socket.off('note-update', handleNoteUpdate);
+      socket.off('note-delete', handleNoteDelete);
+      socket.off('emoji-update', handleEmojiUpdate);
+      socket.off('gif-update', handleGifUpdate);
+      socket.off('image-update', handleImageUpdateSocket);
+      socket.off('shape-update', handleShapeUpdate);
+      socket.off('emoji-create', handleEmojiCreateSocket);
+      socket.off('emoji-delete', handleEmojiDeleteSocket);
+      socket.off('gif-create', handleGifCreateSocket);
+      socket.off('gif-delete', handleGifDeleteSocket);
+      socket.off('image-create', handleImageCreateSocket);
+      socket.off('image-delete', handleImageDeleteSocket);
+      socket.off('shape-create', handleShapeCreateSocket);
+      socket.off('shape-delete', handleShapeDeleteSocket);
+    };
   }, [socket]);
 
   const handleMouseMove = (e) => {
@@ -1300,19 +1282,19 @@ const Canvas = ({
   }, []);
 
   useEffect(() => {
-    if (socket) {
-      const handleTextCreate = (data) => setTextBoxes(prev => [...prev, data.textBox]);
-      const handleTextUpdate = (data) => setTextBoxes(prev => prev.map(textBox => textBox.id === data.id ? { ...textBox, ...data } : textBox));
-      const handleTextDelete = (data) => setTextBoxes(prev => prev.filter(tb => tb.id !== data.id));
-      socket.on('text-create', handleTextCreate);
-      socket.on('text-update', handleTextUpdate);
-      socket.on('text-delete', handleTextDelete);
-      return () => {
-        socket.off('text-create', handleTextCreate);
-        socket.off('text-update', handleTextUpdate);
-        socket.off('text-delete', handleTextDelete);
-      };
-    }
+    if (!socket) return;
+    
+    const handleTextCreate = (data) => setTextBoxes(prev => [...prev, data.textBox]);
+    const handleTextUpdate = (data) => setTextBoxes(prev => prev.map(textBox => textBox.id === data.id ? { ...textBox, ...data } : textBox));
+    const handleTextDelete = (data) => setTextBoxes(prev => prev.filter(tb => tb.id !== data.id));
+    socket.on('text-create', handleTextCreate);
+    socket.on('text-update', handleTextUpdate);
+    socket.on('text-delete', handleTextDelete);
+    return () => {
+      socket.off('text-create', handleTextCreate);
+      socket.off('text-update', handleTextUpdate);
+      socket.off('text-delete', handleTextDelete);
+    };
   }, [socket]);
 
   useEffect(() => {
@@ -1515,18 +1497,14 @@ const Canvas = ({
             limit={WORLD_LIMIT}
             zoom={zoom}
             socket={socket}
+            whiteboardId={whiteboardId}
             selected={selectedVideoId === video.id}
             onSelect={setSelectedVideoId}
-            onUpdate={(id, data) => {
-              const cleanData = { ...data };
-              if (cleanData.x !== undefined) cleanData.x = (cleanData.x - panOffset.x) / zoom;
-              if (cleanData.y !== undefined) cleanData.y = (cleanData.y - panOffset.y) / zoom;
-              if (cleanData.width !== undefined) cleanData.width = cleanData.width / zoom;
-              if (cleanData.height !== undefined) cleanData.height = cleanData.height / zoom;
-              handleVideoUpdate(id, cleanData);
-            }}
+            onUpdate={handleVideoUpdate}
             onRemove={removeVideo}
-            tool={tool} // Dodano tool
+            tool={tool}
+            registerVideoRef={registerVideoRef} // 🔹 DODAJ
+            unregisterVideoRef={unregisterVideoRef} // 🔹 DODAJ
           />
         ))}
 
@@ -1562,14 +1540,13 @@ const Canvas = ({
           );
         })}
 
-        {/* 🔹 POPRAWKA: Kursory skalowane przez mnożenie pozycji przez zoom */}
-      {remoteCursorsArray.map((cursor, index) => {
+        {/* Kursory */}
+        {remoteCursorsArray.map((cursor, index) => {
           const userName = cursor.user?.name || 'Unknown';
           const userColor = cursor.user?.color || '#ff4444';
           
           if (!cursor.position) return null;
 
-          // 🧮 PRZELICZANIE: (Świat * Zoom) + Przesunięcie
           const screenX = (cursor.position.x * zoom) + panOffset.x;
           const screenY = (cursor.position.y * zoom) + panOffset.y;
 
@@ -1590,7 +1567,7 @@ const Canvas = ({
                 width="24" height="24" viewBox="0 0 24 24"
                 style={{
                   position: 'absolute', top: 0, left: 0,
-                  transform: 'translate(-2px, -2px)', // Centrowanie czubka strzałki
+                  transform: 'translate(-2px, -2px)',
                   fill: userColor,
                   stroke: 'white', strokeWidth: 2,
                   filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))'
@@ -1611,7 +1588,7 @@ const Canvas = ({
               </div>
             </div>
           );
-        })} 
+        })}
 
         <button
           className="background-toggle"

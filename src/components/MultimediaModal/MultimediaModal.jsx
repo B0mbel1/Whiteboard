@@ -64,7 +64,8 @@ const MultimediaModal = ({
         id: `vid_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         ...baseVideoData(),
         url: videoUrl,
-        provider: "file"
+        provider: "file",
+        fileName: data.fileName
       });
 
       onClose?.();

@@ -1,5 +1,5 @@
-import React, { useRef, useEffect, useState } from "react";
-import DraggableResizableWrapper from "./DraggableResizableWrapper";
+import React, { useRef, useEffect, useCallback } from 'react';
+import DraggableResizableWrapper from './DraggableResizableWrapper';
 
 const Video = ({
   id,
@@ -8,187 +8,127 @@ const Video = ({
   width,
   height,
   url,
-  provider, // "file" | "youtube" | "vimeo"
+  provider,
   playing = false,
   currentTime = 0,
   selected,
   onSelect,
   onUpdate,
+  onRemove,
   panOffset,
-  limit,
-  zoom,
+  limit=1500,
+  zoom=1,
   socket,
   whiteboardId,
-  tool
+  tool,
+  registerVideoRef,
+  unregisterVideoRef
 }) => {
   const videoRef = useRef(null);
-  const isLocalAction = useRef(false);
-  const [localState, setLocalState] = useState({
-    playing: playing,
-    currentTime: currentTime
-  });
+  const isLocalActionRef = useRef(false);
+  const isDrawingTool = ['pencil', 'brush', 'eraser'].includes(tool);
 
-  // ========== SYNC INITIAL STATE ==========
+  // Zarejestruj/odrejestruj video element
   useEffect(() => {
-    if (provider === "file" && videoRef.current) {
-      videoRef.current.currentTime = currentTime;
-      
-      if (playing && videoRef.current.paused) {
-        videoRef.current.play().catch(e => console.log("Autoplay prevented:", e));
-      }
+    if (videoRef.current && registerVideoRef) {
+      registerVideoRef(id, videoRef.current);
     }
-  }, []);
-
-  // ========== SOCKET LISTENERS ==========
-  useEffect(() => {
-    if (!socket || !whiteboardId) return;
-
-    const handleVideoPlay = (data) => {
-      if (data.id === id && data.whiteboardId === whiteboardId) {
-        if (provider === "file" && videoRef.current) {
-          isLocalAction.current = false;
-          videoRef.current.currentTime = data.currentTime || 0;
-          videoRef.current.play().catch(e => console.log("Play failed:", e));
-          setLocalState(prev => ({ ...prev, playing: true, currentTime: data.currentTime }));
-        }
-      }
-    };
-
-    const handleVideoPause = (data) => {
-      if (data.id === id && data.whiteboardId === whiteboardId) {
-        if (provider === "file" && videoRef.current) {
-          isLocalAction.current = false;
-          videoRef.current.currentTime = data.currentTime || 0;
-          videoRef.current.pause();
-          setLocalState(prev => ({ ...prev, playing: false, currentTime: data.currentTime }));
-        }
-      }
-    };
-
-    const handleVideoSeek = (data) => {
-      if (data.id === id && data.whiteboardId === whiteboardId) {
-        if (provider === "file" && videoRef.current) {
-          isLocalAction.current = false;
-          videoRef.current.currentTime = data.currentTime || 0;
-          setLocalState(prev => ({ ...prev, currentTime: data.currentTime }));
-        }
-      }
-    };
-
-    const handleVideoUpdate = (data) => {
-      if (data.id === id && data.whiteboardId === whiteboardId && data.updates) {
-        console.log("📡 Received video position/size update:", data.updates);
-        // Aktualizuj pozycję/rozmiar
-        if (onUpdate) {
-          // Konwertuj współrzędne świata na ekran jeśli potrzeba
-          onUpdate(id, data.updates);
-        }
-      }
-    };
-
-    socket.on("video-play", handleVideoPlay);
-    socket.on("video-pause", handleVideoPause);
-    socket.on("video-seek", handleVideoSeek);
-    socket.on("video-update", handleVideoUpdate);
-
-    // Request initial sync
-    if (socket && whiteboardId && id) {
-      socket.emit("video-sync-request", { whiteboardId, videoId: id });
-    }
-
-    socket.on("video-sync", (data) => {
-      if (data.videoId === id && data.whiteboardId === whiteboardId && videoRef.current) {
-        console.log("📡 Received video sync:", data.state);
-        isLocalAction.current = false;
-        videoRef.current.currentTime = data.state.currentTime || 0;
-        
-        if (data.state.playing && videoRef.current.paused) {
-          videoRef.current.play().catch(e => console.log("Sync play failed:", e));
-        } else if (!data.state.playing && !videoRef.current.paused) {
-          videoRef.current.pause();
-        }
-        
-        setLocalState(data.state);
-      }
-    });
-
+    
     return () => {
-      socket.off("video-play", handleVideoPlay);
-      socket.off("video-pause", handleVideoPause);
-      socket.off("video-seek", handleVideoSeek);
-      socket.off("video-update", handleVideoUpdate);
-      socket.off("video-sync");
+      if (unregisterVideoRef) {
+        unregisterVideoRef(id);
+      }
     };
-  }, [socket, id, whiteboardId, provider, onUpdate]);
+  }, [id, registerVideoRef, unregisterVideoRef]);
 
-  // ========== LOKALNE AKCJE ==========
-  const emitPlay = () => {
-    if (!socket || !videoRef.current) return;
-    isLocalAction.current = true;
-    const currentTime = videoRef.current.currentTime;
+  // Synchronizuj stan z props
+  useEffect(() => {
+    if (!videoRef.current) return;
     
-    socket.emit("video-play", {
-      whiteboardId,
-      id,
-      currentTime: currentTime
-    });
-    
-    if (onUpdate) onUpdate(id, { 
-      playing: true, 
-      currentTime: currentTime
-    });
-  };
-
-  const emitPause = () => {
-    if (!socket || !videoRef.current) return;
-    isLocalAction.current = true;
-    const currentTime = videoRef.current.currentTime;
-    
-    socket.emit("video-pause", {
-      whiteboardId,
-      id,
-      currentTime: currentTime
-    });
-    
-    if (onUpdate) onUpdate(id, { 
-      playing: false, 
-      currentTime: currentTime
-    });
-  };
-
-  const emitSeek = () => {
-    if (!socket || !videoRef.current) return;
-    isLocalAction.current = true;
-    
-    socket.emit("video-seek", {
-      whiteboardId,
-      id,
-      currentTime: videoRef.current.currentTime
-    });
-    
-    if (onUpdate) onUpdate(id, { currentTime: videoRef.current.currentTime });
-  };
-
-  // ========== AKTUALIZACJA POZYCJI/ROZMIARU ==========
-  const handlePositionSizeUpdate = (updates) => {
-    if (!socket || !whiteboardId) return;
-    
-    console.log("📤 Emitting video position/size update:", updates);
-    
-    // Wyślij aktualizację przez socket
-    socket.emit("video-update", {
-      whiteboardId,
-      id,
-      updates
-    });
-    
-    // Zaktualizuj lokalny stan
-    if (onUpdate) {
-      onUpdate(id, updates);
+    // Synchronizuj czas tylko jeśli różni się znacząco (> 0.5s)
+    if (Math.abs(videoRef.current.currentTime - (currentTime || 0)) > 0.5) {
+      videoRef.current.currentTime = currentTime || 0;
     }
-  };
+    
+    // Synchronizuj play/pause
+    if (playing && videoRef.current.paused) {
+      videoRef.current.play().catch(e => console.log("Auto-play prevented:", e));
+    } else if (!playing && !videoRef.current.paused) {
+      videoRef.current.pause();
+    }
+  }, [currentTime, playing]);
 
-  // ========== RENDER ==========
+  const handleVideoPlay = useCallback(() => {
+    if (!videoRef.current || isLocalActionRef.current) return;
+    
+    isLocalActionRef.current = true;
+    
+    if (onUpdate) {
+      onUpdate(id, {
+        playing: true,
+        currentTime: videoRef.current.currentTime
+      });
+    }
+    
+    setTimeout(() => {
+      isLocalActionRef.current = false;
+    }, 100);
+  }, [id, onUpdate]);
+
+  const handleVideoPause = useCallback(() => {
+    if (!videoRef.current || isLocalActionRef.current) return;
+    
+    isLocalActionRef.current = true;
+    
+    if (onUpdate) {
+      onUpdate(id, {
+        playing: false,
+        currentTime: videoRef.current.currentTime
+      });
+    }
+    
+    setTimeout(() => {
+      isLocalActionRef.current = false;
+    }, 100);
+  }, [id, onUpdate]);
+
+  const handleVideoTimeUpdate = useCallback(() => {
+    if (!videoRef.current || isLocalActionRef.current) return;
+    
+    // Emituj update czasu tylko co 2 sekundy lub przy znaczącej zmianie
+    const shouldUpdate = 
+      Math.abs(videoRef.current.currentTime - (currentTime || 0)) > 2;
+    
+    if (shouldUpdate && onUpdate) {
+      isLocalActionRef.current = true;
+      
+      onUpdate(id, {
+        currentTime: videoRef.current.currentTime,
+        playing: !videoRef.current.paused
+      });
+      
+      setTimeout(() => {
+        isLocalActionRef.current = false;
+      }, 100);
+    }
+  }, [id, currentTime, onUpdate]);
+
+  const handleVideoSeeked = useCallback(() => {
+    if (!videoRef.current || isLocalActionRef.current) return;
+    
+    isLocalActionRef.current = true;
+    
+    if (onUpdate) {
+      onUpdate(id, {
+        currentTime: videoRef.current.currentTime
+      });
+    }
+    
+    setTimeout(() => {
+      isLocalActionRef.current = false;
+    }, 100);
+  }, [id, onUpdate]);
+
   return (
     <DraggableResizableWrapper
       id={id}
@@ -198,29 +138,42 @@ const Video = ({
       height={height}
       isSelected={selected}
       onSelect={onSelect}
-      onUpdate={handlePositionSizeUpdate} // 🔹 KLUCZOWE: Emituje zmiany pozycji/rozmiaru
+      onUpdate={onUpdate}
       panOffset={panOffset}
       limit={limit}
       zoom={zoom}
       aspectRatioLocked={true}
       aspectRatio={16/9}
-      style={{ pointerEvents: "auto" }}
+      minWidth={100}
+      minHeight={60}
+      style={{ 
+        pointerEvents: isDrawingTool ? 'none' : 'auto',
+        overflow: 'hidden'
+      }}
     >
       {provider === "file" && (
-        <video
-          ref={videoRef}
-          src={url}
-          width="100%"
-          height="100%"
-          controls
-          onPlay={emitPlay}
-          onPause={emitPause}
-          onSeeking={emitSeek}
-          style={{ 
-            background: "#000",
-            objectFit: "contain"
-          }}
-        />
+        <div style={{ 
+          position: 'relative', 
+          width: '100%', 
+          height: '100%',
+          background: '#000'
+        }}>
+          <video
+            ref={videoRef}
+            src={url}
+            width="100%"
+            height="100%"
+            controls
+            onPlay={handleVideoPlay}
+            onPause={handleVideoPause}
+            onTimeUpdate={handleVideoTimeUpdate}
+            onSeeked={handleVideoSeeked}
+            style={{ 
+              objectFit: "contain",
+              display: 'block'
+            }}
+          />
+        </div>
       )}
 
       {(provider === "youtube" || provider === "vimeo") && (
@@ -232,7 +185,6 @@ const Video = ({
           allowFullScreen
           style={{ 
             border: "none", 
-            pointerEvents: "auto",
             aspectRatio: "16/9"
           }}
         />
