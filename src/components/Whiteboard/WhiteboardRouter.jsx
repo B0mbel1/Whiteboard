@@ -277,6 +277,18 @@ const WhiteboardRouter = () => {
       setImages(prev => prev.map(img => img.id === data.id ? { ...img, ...data } : img));
     });
 
+    newSocket.on('video-create', (data) => {
+      setVideos(prev => [...prev, data.video]);
+    });
+
+    newSocket.on('video-delete', (data) => {
+      setVideos(prev => prev.filter(v => v.id !== data.id));
+    });
+
+    newSocket.on('video-update', (data) => {
+      setVideos(prev => prev.map(v => v.id === data.id ? { ...v, ...data } : v));
+    });
+
     newSocket.on('connect_error', (error) => {
       console.error("❌ Connection error:", error);
       setIsLoading(false);

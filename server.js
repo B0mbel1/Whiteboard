@@ -7,6 +7,7 @@ const https = require('https');
 
 const app = express();
 const server = http.createServer(app);
+const videoFileUsage = new Map();
 
 const io = new Server(server, {
   cors: {
@@ -165,18 +166,6 @@ io.on("connection", (socket) => {
       messages: whiteboard.chatMessages
     });
     
-    // Synchronizuj video dla nowego użytkownika
-    whiteboard.videos.forEach(video => {
-      socket.emit("video-sync", {
-        whiteboardId,
-        videoId: video.id,
-        state: {
-          playing: video.playing || false,
-          currentTime: video.currentTime || 0
-        }
-      });
-    });
-    
     io.to(whiteboardId).emit("users-updated", {
       users: Array.from(whiteboard.users.values())
     });
@@ -185,375 +174,371 @@ io.on("connection", (socket) => {
       user: userData,
       users: Array.from(whiteboard.users.values())
     });
+    
+    console.log(`👤 User ${userData.id} joined whiteboard ${whiteboardId}`);
   });
 
   // ========== VIDEO HANDLERS ==========
-  
-  socket.on("video-create", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  socket.on("video-create", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (!wb) return;
 
-    // Sprawdź czy video już istnieje (zapobieganie duplikatom)
-    if (wb.videos.some(v => v.id === d.video.id)) return;
+    if (wb.videos.some(v => v.id === data.video.id)) return;
 
     const video = {
-      ...d.video,
-      playing: false,
-      currentTime: 0
+      ...data.video,
+      lastUpdate: Date.now()
     };
 
-    wb.videos.push(video); // Dodaj do tablicy
-    io.to(d.whiteboardId).emit("video-create", {
-      whiteboardId: d.whiteboardId,
+    wb.videos.push(video);
+
+    if (video.fileName) {
+      const count = videoFileUsage.get(video.fileName) || 0;
+      videoFileUsage.set(video.fileName, count + 1);
+    }
+
+    // ✅ POPRAWKA: Broadcast tylko do innych użytkowników (bez nadawcy)
+    socket.to(data.whiteboardId).emit("video-create", {
+      whiteboardId: data.whiteboardId,
       video
     });
+    
+    console.log(`🎥 Video created: ${data.video.id} in ${data.whiteboardId}`);
   });
 
-  socket.on("video-update", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  socket.on("video-update", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (!wb) return;
     
-    const videoIndex = wb.videos.findIndex(v => v.id === d.id);
-    if (videoIndex === -1) return;
+    const video = wb.videos.find(v => v.id === data.id);
+    if (!video) return;
     
-    const video = wb.videos[videoIndex];
+    // Sprawdź czy wideo jest YouTube
+    const isYouTube = video.provider === 'youtube';
     
     // Aktualizuj tylko przekazane właściwości
-    if (d.updates) {
-      Object.assign(video, d.updates);
+    if (data.updates) {
+      const now = Date.now();
+      
+      // Dla YouTube - mniejsze opóźnienie (100ms), dla reszty 200ms
+      const minDelay = isYouTube ? 100 : 200;
+      
+      if (video.lastUpdate && now - video.lastUpdate < minDelay) {
+        return;
+      }
+      
+      // Aktualizuj tylko playing i currentTime
+      if (data.updates.playing !== undefined) {
+        video.playing = data.updates.playing;
+      }
+      if (data.updates.currentTime !== undefined) {
+        video.currentTime = data.updates.currentTime;
+      }
+      
+      video.lastUpdate = now;
     }
     
-    socket.to(d.whiteboardId).emit("video-update", {
-      id: d.id,
-      updates: d.updates
+    // Broadcast do wszystkich INNYCH użytkowników
+    socket.to(data.whiteboardId).emit("video-update", {
+      id: data.id,
+      updates: data.updates,
+      timestamp: data.timestamp || Date.now(),
+      isYouTube: isYouTube // Dodajemy flagę dla klienta
     });
   });
 
-  socket.on("video-play", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  socket.on("video-transform", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (!wb) return;
     
-    const video = wb.videos.find(v => v.id === d.id);
+    const video = wb.videos.find(v => v.id === data.id);
     if (!video) return;
 
-    video.playing = true;
-    video.currentTime = d.currentTime || 0;
-
-    io.to(d.whiteboardId).emit("video-play", {
-      id: d.id,
-      currentTime: video.currentTime
+    // Aktualizuj pozycję i rozmiar
+    if (data.updates.x !== undefined) video.x = data.updates.x;
+    if (data.updates.y !== undefined) video.y = data.updates.y;
+    if (data.updates.width !== undefined) video.width = data.updates.width;
+    if (data.updates.height !== undefined) video.height = data.updates.height;
+    
+    video.lastUpdate = Date.now();
+    
+    // Broadcast do wszystkich innych użytkowników
+    socket.to(data.whiteboardId).emit("video-transform", {
+      id: data.id,
+      updates: data.updates
     });
   });
 
-  socket.on("video-pause", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  socket.on("video-delete", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (!wb) return;
     
-    const video = wb.videos.find(v => v.id === d.id);
-    if (!video) return;
-
-    video.playing = false;
-    video.currentTime = d.currentTime || 0;
-
-    io.to(d.whiteboardId).emit("video-pause", {
-      id: d.id,
-      currentTime: video.currentTime
-    });
-  });
-
-  socket.on("video-seek", d => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (!wb) return;
+    const videoIndex = wb.videos.findIndex(v => v.id === data.id);
+    if (videoIndex === -1) return;
     
-    const video = wb.videos.find(v => v.id === d.id);
-    if (!video) return;
-
-    video.currentTime = d.currentTime || 0;
-
-    io.to(d.whiteboardId).emit("video-seek", {
-      id: d.id,
-      currentTime: video.currentTime
-    });
-  });
-
-  socket.on("video-delete", d => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (!wb) return;
-
+    const deletedVideo = wb.videos[videoIndex];
+    
     // Usuń z tablicy
-    wb.videos = wb.videos.filter(v => v.id !== d.id);
-    io.to(d.whiteboardId).emit("video-delete", {
-      id: d.id
-    });
-  });
-
-  socket.on("video-sync-request", d => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (!wb) return;
+    wb.videos.splice(videoIndex, 1);
     
-    const video = wb.videos.find(v => v.id === d.videoId);
-    if (!video) return;
-    
-    socket.emit("video-sync", {
-      videoId: d.videoId,
-      whiteboardId: d.whiteboardId,
-      state: {
-        playing: video.playing || false,
-        currentTime: video.currentTime || 0
+    // Zaktualizuj licznik użycia pliku
+    if (deletedVideo.fileName) {
+      const count = (videoFileUsage.get(deletedVideo.fileName) || 1) - 1;
+      if (count <= 0) {
+        videoFileUsage.delete(deletedVideo.fileName);
+        const filePath = path.join("uploads/videos", deletedVideo.fileName);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          console.log(`🗑️ Deleted video file: ${deletedVideo.fileName}`);
+        }
+      } else {
+        videoFileUsage.set(deletedVideo.fileName, count);
       }
+    }
+
+    // Broadcast do WSZYSTKICH użytkowników (w tym nadawcy)
+    io.to(data.whiteboardId).emit("video-delete", {
+      id: data.id
     });
+    
+    console.log(`🎥 Video deleted: ${data.id} from ${data.whiteboardId}`);
   });
 
-  // Other handlers (skrócone)
-  socket.on("user-update", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  // ========== USER HANDLERS ==========
+  socket.on("user-update", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb && wb.users.has(socket.id)) {
-      Object.assign(wb.users.get(socket.id), d.updates);
-      io.to(d.whiteboardId).emit("users-updated", {
+      Object.assign(wb.users.get(socket.id), data.updates);
+      io.to(data.whiteboardId).emit("users-updated", {
         users: Array.from(wb.users.values())
       });
     }
   });
 
-  // Tekst
-  socket.on("text-create", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  // ========== TEXT HANDLERS ==========
+  socket.on("text-create", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb) {
       if (!wb.textBoxes) wb.textBoxes = [];
-      wb.textBoxes.push(d.textBox);
-      socket.to(d.whiteboardId).emit("text-create", d);
+      wb.textBoxes.push(data.textBox);
+      socket.to(data.whiteboardId).emit("text-create", data);
+      console.log(`📝 Text created: ${data.textBox.id}`);
     }
   });
 
-  socket.on("text-update", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  socket.on("text-update", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb && wb.textBoxes) {
-      const t = wb.textBoxes.find(x => x.id === d.id);
-      if (t) Object.assign(t, d.updates || d);
-      socket.to(d.whiteboardId).emit("text-update", d);
+      const textBox = wb.textBoxes.find(x => x.id === data.id);
+      if (textBox) Object.assign(textBox, data.updates || data);
+      socket.to(data.whiteboardId).emit("text-update", data);
     }
   });
 
-  socket.on("text-delete", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  socket.on("text-delete", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb && wb.textBoxes) {
-      wb.textBoxes = wb.textBoxes.filter(x => x.id !== d.id);
-      socket.to(d.whiteboardId).emit("text-delete", d);
+      wb.textBoxes = wb.textBoxes.filter(x => x.id !== data.id);
+      socket.to(data.whiteboardId).emit("text-delete", data);
+      console.log(`📝 Text deleted: ${data.id}`);
     }
   });
 
-  // Notatki
-  socket.on("note-create", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  // ========== NOTE HANDLERS ==========
+  socket.on("note-create", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb) {
       if (!wb.notes) wb.notes = [];
-      wb.notes.push(d.note);
-      socket.to(d.whiteboardId).emit("note-create", d);
+      wb.notes.push(data.note);
+      socket.to(data.whiteboardId).emit("note-create", data);
+      console.log(`📒 Note created: ${data.note.id}`);
     }
   });
 
-  socket.on("note-update", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  socket.on("note-update", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb && wb.notes) {
-      const n = wb.notes.find(x => x.id === d.id);
-      if (n) Object.assign(n, d.updates || d);
-      socket.to(d.whiteboardId).emit("note-update", d);
+      const note = wb.notes.find(x => x.id === data.id);
+      if (note) Object.assign(note, data.updates || data);
+      socket.to(data.whiteboardId).emit("note-update", data);
     }
   });
 
-  socket.on("note-delete", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  socket.on("note-delete", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb && wb.notes) {
-      wb.notes = wb.notes.filter(x => x.id !== d.id);
-      socket.to(d.whiteboardId).emit("note-delete", d);
+      wb.notes = wb.notes.filter(x => x.id !== data.id);
+      socket.to(data.whiteboardId).emit("note-delete", data);
+      console.log(`📒 Note deleted: ${data.id}`);
     }
   });
 
-
-  socket.on("text-update", (d) => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (wb && wb.textBoxes) {
-      const t = wb.textBoxes.find(x => x.id === d.id);
-      if (t) {
-        Object.assign(t, d); // Aktualizacja danych na serwerze
-        // Broadcast do wszystkich INNYCH użytkowników w tym pokoju
-        socket.to(d.whiteboardId).emit("text-update", d);
-      }
-    }
-  });
-
-  socket.on("note-update", (d) => {
-    const wb = whiteboards.get(d.whiteboardId);
-    if (wb && wb.notes) {
-      const n = wb.notes.find(x => x.id === d.id);
-      if (n) {
-        Object.assign(n, d); // Aktualizacja danych na serwerze
-        // Broadcast do wszystkich INNYCH użytkowników w tym pokoju
-        socket.to(d.whiteboardId).emit("note-update", d);
-      }
-    }
-  });
-
-  // ========== OBSŁUGA EMOJI ==========
-  socket.on("emoji-create", (d) => {
-    const wb = whiteboards.get(d.whiteboardId);
+  // ========== EMOJI HANDLERS ==========
+  socket.on("emoji-create", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb) {
       if (!wb.emojis) wb.emojis = [];
-      wb.emojis.push(d.emoji);
-      socket.to(d.whiteboardId).emit("emoji-create", d);
+      wb.emojis.push(data.emoji);
+      socket.to(data.whiteboardId).emit("emoji-create", data);
+      console.log(`😊 Emoji created: ${data.emoji.id}`);
     }
   });
 
-  socket.on("emoji-update", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  socket.on("emoji-update", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb && wb.emojis) {
-      const e = wb.emojis.find(x => x.id === d.id);
-      if (e) Object.assign(e, d.updates || d);
-      socket.to(d.whiteboardId).emit("emoji-update", d);
+      const emoji = wb.emojis.find(x => x.id === data.id);
+      if (emoji) Object.assign(emoji, data.updates || data);
+      socket.to(data.whiteboardId).emit("emoji-update", data);
     }
   });
 
-  socket.on("emoji-delete", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  socket.on("emoji-delete", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb && wb.emojis) {
-      wb.emojis = wb.emojis.filter(x => x.id !== d.id);
-      socket.to(d.whiteboardId).emit("emoji-delete", d);
+      wb.emojis = wb.emojis.filter(x => x.id !== data.id);
+      socket.to(data.whiteboardId).emit("emoji-delete", data);
+      console.log(`😊 Emoji deleted: ${data.id}`);
     }
   });
 
-  // GIFy
-  socket.on("gif-create", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  // ========== GIF HANDLERS ==========
+  socket.on("gif-create", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb) {
       if (!wb.gifs) wb.gifs = [];
-      wb.gifs.push(d.gif);
-      socket.to(d.whiteboardId).emit("gif-create", d);
+      wb.gifs.push(data.gif);
+      socket.to(data.whiteboardId).emit("gif-create", data);
+      console.log(`🎬 GIF created: ${data.gif.id}`);
     }
   });
 
-  socket.on("gif-update", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  socket.on("gif-update", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb && wb.gifs) {
-      const g = wb.gifs.find(x => x.id === d.id);
-      if (g) Object.assign(g, d.updates || d);
-      socket.to(d.whiteboardId).emit("gif-update", d);
+      const gif = wb.gifs.find(x => x.id === data.id);
+      if (gif) Object.assign(gif, data.updates || data);
+      socket.to(data.whiteboardId).emit("gif-update", data);
     }
   });
 
-  socket.on("gif-delete", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  socket.on("gif-delete", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb && wb.gifs) {
-      wb.gifs = wb.gifs.filter(x => x.id !== d.id);
-      socket.to(d.whiteboardId).emit("gif-delete", d);
+      wb.gifs = wb.gifs.filter(x => x.id !== data.id);
+      socket.to(data.whiteboardId).emit("gif-delete", data);
+      console.log(`🎬 GIF deleted: ${data.id}`);
     }
   });
 
-  // Obrazy
-  socket.on("image-create", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  // ========== IMAGE HANDLERS ==========
+  socket.on("image-create", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb) {
       if (!wb.images) wb.images = [];
-      wb.images.push(d.image);
-      socket.to(d.whiteboardId).emit("image-create", d);
+      wb.images.push(data.image);
+      socket.to(data.whiteboardId).emit("image-create", data);
+      console.log(`🖼️ Image created: ${data.image.id}`);
     }
   });
 
-  socket.on("image-update", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  socket.on("image-update", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb && wb.images) {
-      const img = wb.images.find(x => x.id === d.id);
-      if (img) {
-        Object.assign(img, d.updates || d);
-      }
-      socket.to(d.whiteboardId).emit("image-update", d);
+      const image = wb.images.find(x => x.id === data.id);
+      if (image) Object.assign(image, data.updates || data);
+      socket.to(data.whiteboardId).emit("image-update", data);
     }
   });
 
-  socket.on("image-delete", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  socket.on("image-delete", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb && wb.images) {
-      wb.images = wb.images.filter(x => x.id !== d.id);
-      socket.to(d.whiteboardId).emit("image-delete", d);
+      wb.images = wb.images.filter(x => x.id !== data.id);
+      socket.to(data.whiteboardId).emit("image-delete", data);
+      console.log(`🖼️ Image deleted: ${data.id}`);
     }
   });
 
-  // Kształty
-  socket.on("shape-create", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  // ========== SHAPE HANDLERS ==========
+  socket.on("shape-create", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb) {
       if (!wb.shapes) wb.shapes = [];
-      wb.shapes.push(d.shape);
-      socket.to(d.whiteboardId).emit("shape-create", d);
+      wb.shapes.push(data.shape);
+      socket.to(data.whiteboardId).emit("shape-create", data);
+      console.log(`🔷 Shape created: ${data.shape.id}`);
     }
   });
 
-  socket.on("shape-update", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  socket.on("shape-update", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb && wb.shapes) {
-      const s = wb.shapes.find(x => x.id === d.id);
-      if (s) Object.assign(s, d.updates || d);
-      socket.to(d.whiteboardId).emit("shape-update", d);
+      const shape = wb.shapes.find(x => x.id === data.id);
+      if (shape) Object.assign(shape, data.updates || data);
+      socket.to(data.whiteboardId).emit("shape-update", data);
     }
   });
 
-  socket.on("shape-delete", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  socket.on("shape-delete", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb && wb.shapes) {
-      wb.shapes = wb.shapes.filter(x => x.id !== d.id);
-      socket.to(d.whiteboardId).emit("shape-delete", d);
+      wb.shapes = wb.shapes.filter(x => x.id !== data.id);
+      socket.to(data.whiteboardId).emit("shape-delete", data);
+      console.log(`🔷 Shape deleted: ${data.id}`);
     }
   });
 
-  // Rysowanie
-  socket.on("drawing", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  // ========== DRAWING HANDLERS ==========
+  socket.on("drawing", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb) {
-      wb.drawingData.push(d);
+      wb.drawingData.push(data);
       if (wb.drawingData.length > 1000) wb.drawingData.shift();
-      socket.to(d.whiteboardId).emit("drawing", d);
+      socket.to(data.whiteboardId).emit("drawing", data);
     }
   });
 
-  socket.on("erase-area", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  socket.on("erase-area", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb) {
       const eraseAction = {
         type: 'erase-area',
-        x: d.x,
-        y: d.y,
-        width: d.width,
-        height: d.height,
-        whiteboardId: d.whiteboardId,
-        timestamp: d.timestamp || Date.now()
+        x: data.x,
+        y: data.y,
+        width: data.width,
+        height: data.height,
+        whiteboardId: data.whiteboardId,
+        timestamp: data.timestamp || Date.now()
       };
 
       wb.drawingData.push(eraseAction);
       if (wb.drawingData.length > 20000) wb.drawingData.shift();
-      socket.to(d.whiteboardId).emit("erase-area", eraseAction);
+      socket.to(data.whiteboardId).emit("erase-area", eraseAction);
     }
   });
 
-  // Kursor
-  socket.on("cursor-move", d => {
-    const wb = whiteboards.get(d.whiteboardId);
+  // ========== CURSOR HANDLERS ==========
+  socket.on("cursor-move", (data) => {
+    const wb = whiteboards.get(data.whiteboardId);
     if (wb) {
       const user = wb.users.get(socket.id);
       if (user) {
-        user.position = d.position;
-        socket.to(d.whiteboardId).emit("cursor-move", {
+        user.position = data.position;
+        socket.to(data.whiteboardId).emit("cursor-move", {
           userId: socket.id,
-          position: d.position,
+          position: data.position,
           user
         });
       }
     }
   });
 
-  socket.on("pointer-move", d => socket.to(d.whiteboardId).emit("pointer-move", d));
-  socket.on("pointer-click", d => socket.to(d.whiteboardId).emit("pointer-click", d));
+  socket.on("pointer-move", (data) => socket.to(data.whiteboardId).emit("pointer-move", data));
+  socket.on("pointer-click", (data) => socket.to(data.whiteboardId).emit("pointer-click", data));
 
-  // Czat
-  socket.on("chat-message", data => {
+  // ========== CHAT HANDLERS ==========
+  socket.on("chat-message", (data) => {
     const { whiteboardId, message } = data;
     const wb = whiteboards.get(whiteboardId);
     if (!wb) return;
@@ -575,9 +560,11 @@ io.on("connection", (socket) => {
     if (wb.chatMessages.length > 200) wb.chatMessages.shift();
     
     io.to(whiteboardId).emit("chat-message", { whiteboardId, message: completeMessage });
+    
+    console.log(`💬 Chat message in ${whiteboardId} from ${completeMessage.user.name}`);
   });
 
-  socket.on("get-chat-history", data => {
+  socket.on("get-chat-history", (data) => {
     const wb = whiteboards.get(data.whiteboardId);
     if (wb) {
       socket.emit("chat-history", {
@@ -587,22 +574,23 @@ io.on("connection", (socket) => {
     }
   });
 
-  // WebRTC
-  socket.on("call-user", d => socket.to(d.to).emit("call-made", { offer: d.offer, socket: socket.id }));
-  socket.on("make-answer", d => socket.to(d.to).emit("answer-made", { answer: d.answer, socket: socket.id }));
-  socket.on("ice-candidate", d => socket.to(d.to).emit("ice-candidate", { candidate: d.candidate, socket: socket.id }));
+  // ========== WEBRTC HANDLERS ==========
+  socket.on("call-user", (data) => socket.to(data.to).emit("call-made", { offer: data.offer, socket: socket.id }));
+  socket.on("make-answer", (data) => socket.to(data.to).emit("answer-made", { answer: data.answer, socket: socket.id }));
+  socket.on("ice-candidate", (data) => socket.to(data.to).emit("ice-candidate", { candidate: data.candidate, socket: socket.id }));
 
-  // Tło
-  socket.on("background-update", data => {
+  // ========== BACKGROUND HANDLERS ==========
+  socket.on("background-update", (data) => {
     const wb = whiteboards.get(data.whiteboardId);
     if (wb) {
       wb.backgroundMode = data.mode;
       io.to(data.whiteboardId).emit("background-update", { mode: data.mode });
+      console.log(`🎨 Background updated to ${data.mode} in ${data.whiteboardId}`);
     }
   });
 
-  // Odświeżanie
-  socket.on("refresh-whiteboard-data", data => {
+  // ========== REFRESH HANDLERS ==========
+  socket.on("refresh-whiteboard-data", (data) => {
     const wb = whiteboards.get(data.whiteboardId);
     if (wb) {
       socket.emit("whiteboard-data", {
@@ -622,19 +610,46 @@ io.on("connection", (socket) => {
         whiteboardId: data.whiteboardId,
         messages: wb.chatMessages || []
       });
+      
+      console.log(`🔄 Whiteboard data refreshed for ${socket.id}`);
     }
   });
 
-  // Rozłączenie
+  // ========== DISCONNECT HANDLER ==========
   socket.on("disconnect", () => {
     console.log("❌ User disconnected:", socket.id);
-    if (currentWhiteboardId && whiteboards.has(currentWhiteboardId)) {
-      const whiteboard = whiteboards.get(currentWhiteboardId);
-      whiteboard.users.delete(socket.id);
-      io.to(currentWhiteboardId).emit("user-left", {
-        userId: socket.id,
-        users: Array.from(whiteboard.users.values())
+
+    if (!currentWhiteboardId || !whiteboards.has(currentWhiteboardId)) return;
+
+    const whiteboard = whiteboards.get(currentWhiteboardId);
+
+    whiteboard.users.delete(socket.id);
+    io.to(currentWhiteboardId).emit("user-left", {
+      userId: socket.id,
+      users: Array.from(whiteboard.users.values())
+    });
+
+    // Sprzątanie video plików jeśli nikt już ich nie używa
+    if (whiteboard.users.size === 0) {
+      whiteboard.videos.forEach(v => {
+        if (v.fileName) {
+          const count = (videoFileUsage.get(v.fileName) || 1) - 1;
+          if (count <= 0) {
+            videoFileUsage.delete(v.fileName);
+            const filePath = path.join("uploads/videos", v.fileName);
+            if (fs.existsSync(filePath)) {
+              fs.unlinkSync(filePath);
+              console.log(`🗑️ Cleanup: Deleted unused video file: ${v.fileName}`);
+            }
+          } else {
+            videoFileUsage.set(v.fileName, count);
+          }
+        }
       });
+
+      // Usuń whiteboard z pamięci jeśli nie ma już użytkowników
+      whiteboards.delete(currentWhiteboardId);
+      console.log("🧹 Whiteboard usunięty z pamięci:", currentWhiteboardId);
     }
   });
 });
@@ -646,7 +661,6 @@ function generateId() {
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`\n🚀 SERVER RUNNING: http://localhost:${PORT}`);
-  console.log(`🎬 Video synchronization: FIXED`);
   
   const uploadDir = 'uploads/videos';
   if (!fs.existsSync(uploadDir)) {
