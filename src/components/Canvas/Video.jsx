@@ -8,7 +8,6 @@ const Video = ({
   width,
   height,
   url,
-  provider,
   playing = false,
   currentTime = 0,
   selected,
@@ -151,44 +150,28 @@ const Video = ({
         overflow: 'hidden'
       }}
     >
-      {provider === "file" && (
-        <div style={{ 
-          position: 'relative', 
-          width: '100%', 
-          height: '100%',
-          background: '#000'
-        }}>
-          <video
-            ref={videoRef}
-            src={url}
-            width="100%"
-            height="100%"
-            controls
-            onPlay={handleVideoPlay}
-            onPause={handleVideoPause}
-            onTimeUpdate={handleVideoTimeUpdate}
-            onSeeked={handleVideoSeeked}
-            style={{ 
-              objectFit: "contain",
-              display: 'block'
-            }}
-          />
-        </div>
-      )}
-
-      {(provider === "youtube" || provider === "vimeo") && (
-        <iframe
+      <div style={{ 
+        position: 'relative', 
+        width: '100%', 
+        height: '100%',
+        background: '#000'
+      }}>
+        <video
+          ref={videoRef}
           src={url}
           width="100%"
           height="100%"
-          allow="autoplay; encrypted-media"
-          allowFullScreen
+          controls
+          onPlay={handleVideoPlay}
+          onPause={handleVideoPause}
+          onTimeUpdate={handleVideoTimeUpdate}
+          onSeeked={handleVideoSeeked}
           style={{ 
-            border: "none", 
-            aspectRatio: "16/9"
+            objectFit: "contain",
+            display: 'block'
           }}
         />
-      )}
+      </div>
     </DraggableResizableWrapper>
   );
 };

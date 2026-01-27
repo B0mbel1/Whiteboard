@@ -61,8 +61,6 @@ export const useVideoSocketManager = ({
     setTimeout(() => {
       isLocalActionRef.current = false;
     }, 100);
-    
-    console.log("📤 Emitting video transform:", worldUpdates);
   }, [socket, whiteboardId, panOffset, zoom]);
 
   // Emituj update stanu odtwarzania
@@ -95,8 +93,6 @@ export const useVideoSocketManager = ({
     setTimeout(() => {
       isLocalActionRef.current = false;
     }, 100);
-    
-    console.log("📤 Emitting video state update:", updates);
   }, [socket, whiteboardId]);
 
   // Emituj tworzenie nowego video
@@ -114,11 +110,9 @@ export const useVideoSocketManager = ({
     });
   }, [socket, whiteboardId]);
 
-  // Emituj usuwanie video - POPRAWIONE!
+  // Emituj usuwanie video
   const emitVideoDelete = useCallback((id) => {
     if (!socket || !whiteboardId) return;
-    
-    console.log(`🗑️ Emitting video delete for ${id}`);
     
     socket.emit("video-delete", {
       whiteboardId,
@@ -129,15 +123,13 @@ export const useVideoSocketManager = ({
     unregisterVideoRef(id);
   }, [socket, whiteboardId, unregisterVideoRef]);
 
-  // Setup socket listeners - POPRAWIONE!
+  // Setup socket listeners
   useEffect(() => {
     if (!socket) return;
 
     const handleVideoTransformSocket = (data) => {
       if (isLocalActionRef.current) return;
       if (!data.id || !data.updates) return;
-      
-      console.log("📥 Received video transform:", data);
       
       // Konwersja: World → Screen coordinates
       const screenUpdates = { ...data.updates };
@@ -172,8 +164,6 @@ export const useVideoSocketManager = ({
     const handleVideoUpdateSocket = (data) => {
       if (isLocalActionRef.current) return;
       if (!data.id || !data.updates) return;
-      
-      console.log("📥 Received video state update:", data);
       
       // Aktualizuj stan lokalny
       setVideos(prev => prev.map(v => {
@@ -219,8 +209,6 @@ export const useVideoSocketManager = ({
     const handleVideoCreateSocket = (data) => {
       if (!data.video) return;
       
-      console.log("📥 Received video create:", data.video);
-      
       setVideos(prev => {
         // Sprawdź czy video już istnieje
         if (prev.some(v => v.id === data.video.id)) {
@@ -233,11 +221,8 @@ export const useVideoSocketManager = ({
     const handleVideoDeleteSocket = (data) => {
       if (!data.id) return;
       
-      console.log("📥 Received video delete:", data.id);
-      
       setVideos(prev => {
         const newVideos = prev.filter(v => v.id !== data.id);
-        console.log(`🗑️ Deleting video ${data.id}, before: ${prev.length}, after: ${newVideos.length}`);
         return newVideos;
       });
       
@@ -245,61 +230,17 @@ export const useVideoSocketManager = ({
       unregisterVideoRef(data.id);
     };
 
-    const handleVideoSync = (data) => {
-      if (!data.videoId || !data.state) return;
-      
-      console.log("🔄 Received video sync:", data);
-      
-      setVideos(prev => prev.map(v => {
-        if (v.id === data.videoId) {
-          // Zastosuj sync tylko jeśli różni się znacząco
-          const shouldSync = 
-            Math.abs((v.currentTime || 0) - (data.state.currentTime || 0)) > 1 ||
-            v.playing !== data.state.playing;
-          
-          if (shouldSync) {
-            const videoElement = videoRefs.current[data.videoId];
-            if (videoElement) {
-              videoElement.currentTime = data.state.currentTime || 0;
-              if (data.state.playing && videoElement.paused) {
-                videoElement.play().catch(e => console.log("Sync play failed:", e));
-              } else if (!data.state.playing && !videoElement.paused) {
-                videoElement.pause();
-              }
-            }
-            
-            return {
-              ...v,
-              playing: data.state.playing || false,
-              currentTime: data.state.currentTime || 0
-            };
-          }
-        }
-        return v;
-      }));
-    };
-
     // Nasłuchuj
     socket.on("video-transform", handleVideoTransformSocket);
     socket.on("video-update", handleVideoUpdateSocket);
     socket.on("video-create", handleVideoCreateSocket);
     socket.on("video-delete", handleVideoDeleteSocket);
-    socket.on("video-sync", handleVideoSync);
-
-    // Request initial sync po dołączeniu
-    if (socket && whiteboardId) {
-      setTimeout(() => {
-        console.log("🔄 Requesting initial video sync");
-        socket.emit("video-sync-request", { whiteboardId });
-      }, 1000);
-    }
 
     return () => {
       socket.off("video-transform", handleVideoTransformSocket);
       socket.off("video-update", handleVideoUpdateSocket);
       socket.off("video-create", handleVideoCreateSocket);
       socket.off("video-delete", handleVideoDeleteSocket);
-      socket.off("video-sync", handleVideoSync);
     };
   }, [socket, whiteboardId, setVideos, onVideoUpdate, panOffset, zoom, unregisterVideoRef]);
 

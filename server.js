@@ -166,22 +166,6 @@ io.on("connection", (socket) => {
       messages: whiteboard.chatMessages
     });
     
-
-
-
-    // Synchronizuj video dla nowego użytkownika
-    whiteboard.videos.forEach(video => {
-      socket.emit("video-sync", {
-        whiteboardId,
-        videoId: video.id,
-        state: {
-          playing: video.playing || false,
-          currentTime: video.currentTime || 0
-        },
-        timestamp: Date.now()
-      });
-    });
-    
     io.to(whiteboardId).emit("users-updated", {
       users: Array.from(whiteboard.users.values())
     });
@@ -213,6 +197,7 @@ io.on("connection", (socket) => {
       videoFileUsage.set(video.fileName, count + 1);
     }
 
+    // ✅ POPRAWKA: Broadcast tylko do innych użytkowników (bez nadawcy)
     socket.to(data.whiteboardId).emit("video-create", {
       whiteboardId: data.whiteboardId,
       video
@@ -228,12 +213,19 @@ io.on("connection", (socket) => {
     const video = wb.videos.find(v => v.id === data.id);
     if (!video) return;
     
+    // Sprawdź czy wideo jest YouTube
+    const isYouTube = video.provider === 'youtube';
+    
     // Aktualizuj tylko przekazane właściwości
     if (data.updates) {
       const now = Date.now();
       
-      // Zapobiegaj zbyt częstym update'om (min 200ms)
-      if (video.lastUpdate && now - video.lastUpdate < 200) return;
+      // Dla YouTube - mniejsze opóźnienie (100ms), dla reszty 200ms
+      const minDelay = isYouTube ? 100 : 200;
+      
+      if (video.lastUpdate && now - video.lastUpdate < minDelay) {
+        return;
+      }
       
       // Aktualizuj tylko playing i currentTime
       if (data.updates.playing !== undefined) {
@@ -250,10 +242,9 @@ io.on("connection", (socket) => {
     socket.to(data.whiteboardId).emit("video-update", {
       id: data.id,
       updates: data.updates,
-      timestamp: data.timestamp || Date.now()
+      timestamp: data.timestamp || Date.now(),
+      isYouTube: isYouTube // Dodajemy flagę dla klienta
     });
-    
-    console.log(`🎥 Video state updated: ${data.id}`, data.updates);
   });
 
   socket.on("video-transform", (data) => {
@@ -276,8 +267,6 @@ io.on("connection", (socket) => {
       id: data.id,
       updates: data.updates
     });
-    
-    console.log(`🎥 Video transformed: ${data.id}`, data.updates);
   });
 
   socket.on("video-delete", (data) => {
@@ -306,53 +295,13 @@ io.on("connection", (socket) => {
         videoFileUsage.set(deletedVideo.fileName, count);
       }
     }
-    
-  socket.on("video-sync", (data) => {
-  const wb = whiteboards.get(data.whiteboardId);
-  if (!wb) return;
-  
-  const video = wb.videos.find(v => v.id === data.videoId);
-  if (!video) return;
-  
-  // Wyślij aktualny stan video do żądającego klienta
-  socket.emit("video-sync", {
-    videoId: data.videoId,
-    whiteboardId: data.whiteboardId,
-    state: {
-      playing: video.playing || false,
-      currentTime: video.currentTime || 0
-    },
-    timestamp: Date.now()
-  });
-  
-  console.log(`🔄 Video sync sent for ${data.videoId}`);
-});
 
-    socket.to(data.whiteboardId).emit("video-delete", {
+    // Broadcast do WSZYSTKICH użytkowników (w tym nadawcy)
+    io.to(data.whiteboardId).emit("video-delete", {
       id: data.id
     });
     
     console.log(`🎥 Video deleted: ${data.id} from ${data.whiteboardId}`);
-  });
-
-  socket.on("video-sync-request", (data) => {
-    const wb = whiteboards.get(data.whiteboardId);
-    if (!wb) return;
-    
-    // Wyślij sync dla wszystkich video
-    wb.videos.forEach(video => {
-      socket.emit("video-sync", {
-        videoId: video.id,
-        whiteboardId: data.whiteboardId,
-        state: {
-          playing: video.playing || false,
-          currentTime: video.currentTime || 0
-        },
-        timestamp: Date.now()
-      });
-    });
-    
-    console.log(`🔄 Video sync requested for whiteboard: ${data.whiteboardId}`);
   });
 
   // ========== USER HANDLERS ==========
