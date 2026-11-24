@@ -5,20 +5,20 @@ A real-time collaborative whiteboard web application built with **React** and **
 ## Features
 
 Based on the project structure, the application includes:
-* **Freehand Drawing & Tools:** Brush, pencil, and eraser tools with customizable sizes and color picker (`Toolbar`, `Canvas`)[cite: 1].
-* **Interactive Canvas Elements:** Support for shapes, sticky notes, text blocks, images, GIFs, and emojis (`Shape`, `Note`, `Text`, `ImageItem`, `Gif`, `Emoji`)[cite: 1].
-* **Multimedia & Video Sync:** Synchronized video playback across connected clients (`Video`, `VideoSocketManager`, `useVideoSync`)[cite: 1].
-* **Real-Time Chat:** Built-in chat panel for live communication while collaborating (`Chat`)[cite: 1].
-* **Object Manipulation:** Draggable and resizable elements on the board (`DraggableResizableWrapper`)[cite: 1].
+* **Freehand Drawing & Tools:** Brush, pencil, and eraser tools with customizable sizes and color picker (`Toolbar`, `Canvas`).
+* **Interactive Canvas Elements:** Support for shapes, sticky notes, text blocks, images, GIFs, and emojis (`Shape`, `Note`, `Text`, `ImageItem`, `Gif`, `Emoji`).
+* **Multimedia & Video Sync:** Synchronized video playback across connected clients (`Video`, `VideoSocketManager`, `useVideoSync`).
+* **Real-Time Chat:** Built-in chat panel for live communication while collaborating (`Chat`).
+* **Object Manipulation:** Draggable and resizable elements on the board (`DraggableResizableWrapper`).
 
 ---
 
 ## Project Structure
 
-* `server.js` – Backend Node.js server handling real-time synchronization and WebSocket connections[cite: 1].
-* `src/` – React frontend application containing components for the canvas, toolbar, sidebar, and chat[cite: 1].
-* `public/` – Static assets, custom tool cursors, and icons[cite: 1].
-* `ustawienie.env` – Environment configuration file[cite: 1].
+* `server.js` – Backend Node.js server handling real-time synchronization and WebSocket connections.
+* `src/` – React frontend application containing components for the canvas, toolbar, sidebar, and chat.
+* `public/` – Static assets, custom tool cursors, and icons.
+* `ustawienie.env` – Environment configuration file.
 
 ---
 
@@ -35,7 +35,7 @@ Follow these steps to set up your environment and run the project locally:
    * *Verification:* Once the installation completes, a screen with the **Finish** button will appear.
 
 3. **Restart your code editor / terminal:**
-   * **Important:** Completely close the program where your terminal is open (e.g., Visual Studio Code or PowerShell) and open it again[cite: 2]. An already open terminal will not recognize the newly installed software.
+   * **Important:** Completely close the program where your terminal is open (e.g., Visual Studio Code or PowerShell) and open it again. An already open terminal will not recognize the newly installed software.
    * *Verification:* Open a new terminal, type `node -v` and `npm -v`, and press Enter – version numbers (e.g., `v22.x.x`) should be displayed instead of an error message.
 
 4. **Install dependencies and run the project:**
@@ -43,7 +43,7 @@ Follow these steps to set up your environment and run the project locally:
      ```bash
      npm install
      ```
-   * *(Optional)* Check the `ustawienie.env` file in the root directory (rename it to `.env` if required by your server configuration) and ensure all variables are properly set[cite: 1].
+   * *(Optional)* Check the `ustawienie.env` file in the root directory (rename it to `.env` if required by your server configuration) and ensure all variables are properly set.
    * Start the **backend server** in your first terminal:
      ```bash
      node server.js
